@@ -192,7 +192,6 @@ for p in unique_periods:
     label = f"{pretty} ({p})"
     period_map[label] = p
 
-default_label = datetime.now().strftime("%b %Y")
 period_options = ["Geral"] + [k for k in period_map.keys() if k != "Geral"]
 
 # ======================
@@ -200,7 +199,7 @@ period_options = ["Geral"] + [k for k in period_map.keys() if k != "Geral"]
 # ======================
 tab1, tab2, tab3 = st.tabs(["📈 Visão Geral", "📦 Estoque Atual", "🛒 Vendas Detalhadas"])
 
-# ---- Tab 1: Visão Geral (KPIs + Top10 + Últimas Vendas) ----
+# ---- Tab 1: Visão Geral (KPIs + Top10 + Últimas Vendas + Evolução) ----
 with tab1:
     periodo_sel = st.selectbox("Selecione o período", period_options, index=0)
     periodo_val = period_map.get(periodo_sel)
@@ -209,6 +208,7 @@ with tab1:
     else:
         vendas_period = vendas[vendas["_PERIODO"] == periodo_val].copy()
 
+    # KPIs
     total_vendido = vendas_period["_VAL_TOTAL"].sum() if not vendas_period.empty else 0
     total_qtd = vendas_period["_QTD"].sum() if not vendas_period.empty else 0
     lucro_period = vendas_period["_LUCRO"].sum() if not vendas_period.empty else 0
@@ -221,7 +221,21 @@ with tab1:
     c4.metric("📦 Valor Estoque (Venda)", fmt_brl(valor_estoque_venda))
 
     st.markdown("---")
-    # Top 10 produtos mais vendidos
+
+    # Evolução de vendas
+    st.subheader("📊 Evolução de Vendas por Mês")
+    if not vendas.empty:
+        evo = vendas.groupby("_PERIODO").agg(Total_Venda=("_VAL_TOTAL","sum")).reset_index()
+        evo["PERIODO_FMT"] = pd.to_datetime(evo["_PERIODO"] + "-01").dt.strftime("%b %Y")
+        evo_fig = px.line(evo, x="PERIODO_FMT", y="Total_Venda", markers=True)
+        evo_fig.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFD700",
+                              xaxis_title=None, yaxis_title="Valor R$",
+                              margin=dict(l=20,r=20,t=30,b=40))
+        st.plotly_chart(evo_fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # Top10 produtos
     st.subheader("🏆 Top 10 — Produtos Mais Vendidos")
     if not vendas_period.empty and v_prod in vendas_period.columns:
         grp = vendas_period.groupby(v_prod).agg(QTDE_SOMADA=("_QTD", "sum"), VAL_TOTAL=("_VAL_TOTAL","sum")).reset_index()
@@ -234,6 +248,7 @@ with tab1:
         st.plotly_chart(fig_top, use_container_width=True)
 
     st.markdown("---")
+
     # Últimas vendas
     st.subheader("🕒 Últimas Vendas")
     if not vendas_period.empty:
@@ -259,9 +274,29 @@ with tab2:
 
 # ---- Tab 3: Vendas Detalhadas ----
 with tab3:
-    st.subheader("🛒 Todas as vendas detalhadas")
+    st.subheader("🛒 Vendas Detalhadas")
+    # botão de período também aqui
+    periodo_sel2 = st.selectbox("Selecione o período", period_options, index=0, key="vendas_det_period")
+    periodo_val2 = period_map.get(periodo_sel2)
+    if periodo_val2 is None:
+        vendas_det = vendas.copy()
+    else:
+        vendas_det = vendas[vendas["_PERIODO"] == periodo_val2].copy()
+
+    # Evolução de vendas na aba de vendas detalhadas
+    st.subheader("📊 Evolução de Vendas por Mês")
     if not vendas.empty:
-        det = vendas.copy()
+        evo = vendas.groupby("_PERIODO").agg(Total_Venda=("_VAL_TOTAL","sum")).reset_index()
+        evo["PERIODO_FMT"] = pd.to_datetime(evo["_PERIODO"] + "-01").dt.strftime("%b %Y")
+        evo_fig = px.line(evo, x="PERIODO_FMT", y="Total_Venda", markers=True)
+        evo_fig.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFD700",
+                              xaxis_title=None, yaxis_title="Valor R$",
+                              margin=dict(l=20,r=20,t=30,b=40))
+        st.plotly_chart(evo_fig, use_container_width=True)
+
+    # tabela detalhada
+    if not vendas_det.empty:
+        det = vendas_det.copy()
         det[v_data] = det[v_data].dt.strftime("%d/%m/%Y")
         det["_VAL_TOTAL"] = det["_VAL_TOTAL"].apply(fmt_brl)
         det["_LUCRO"] = det["_LUCRO"].apply(fmt_brl)
