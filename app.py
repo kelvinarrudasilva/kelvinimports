@@ -18,8 +18,6 @@ st.markdown("""
     --text:#FFFFFF; 
     --primary:#00FF00; 
     --muted:#AAAAAA;
-    --btn-bg:#111111;
-    --btn-hover:#00FF00;
 }
 body { background-color: var(--bg); color: var(--text);}
 .title { font-size:36px; font-weight:900; color: var(--primary); margin-bottom:5px; }
@@ -29,27 +27,6 @@ body { background-color: var(--bg); color: var(--text);}
 .kpi-label { color:var(--muted); font-size:18px; }
 .stDataFrame table { background-color:var(--card); color:var(--text); font-size:16px;}
 .stDataFrame thead th { color: var(--primary); font-weight:700; font-size:16px;}
-.dashboard-btn {
-    display:inline-block;
-    padding:12px 25px;
-    margin:5px 5px 15px 5px;
-    background-color: var(--btn-bg);
-    color: var(--text);
-    font-weight:700;
-    font-size:18px;
-    border-radius:12px;
-    cursor:pointer;
-    border:2px solid var(--primary);
-    transition: all 0.3s;
-}
-.dashboard-btn:hover {
-    background-color: var(--primary);
-    color: var(--bg);
-}
-.dashboard-btn-selected {
-    background-color: var(--primary);
-    color: var(--bg);
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -200,23 +177,17 @@ if selected_tab == "📈 Visão Geral":
     k3.markdown(f"<div class='kpi'><div class='kpi-label'>📦 Valor Estoque</div><div class='kpi-value'>{fmt_brl(valor_estoque)}</div></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("## Top 10 Produtos Mais Vendidos")
+    # ÚLTIMAS VENDAS
+    st.markdown("## 🕒 Últimas Vendas")
     if not vendas_f.empty:
-        top = vendas_f.groupby(v_prod).agg(QTDE=pd.NamedAgg(column="_QTD", aggfunc="sum"),
-                                           VAL_TOTAL=pd.NamedAgg(column="_VAL_TOTAL", aggfunc="sum")).reset_index()
-        top = top.sort_values("VAL_TOTAL", ascending=False).head(10)
-        # gráfico torre (vertical waterfall style)
-        fig_torre = px.bar(top, x=v_prod, y="QTDE", text="QTDE", color="QTDE",
-                           color_continuous_scale=["#00FF00","#00AA00"])
-        fig_torre.update_traces(texttemplate='%{text:.0f} un', textposition='outside')
-        fig_torre.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF")
-        st.plotly_chart(fig_torre, use_container_width=True)
-
-        # gráfico criativo: rosquinha de participação por valor total
-        fig_donut = px.pie(top, names=v_prod, values="VAL_TOTAL", hole=0.5,
-                           color_discrete_sequence=px.colors.sequential.Teal)
-        fig_donut.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF")
-        st.plotly_chart(fig_donut, use_container_width=True)
+        ult_vendas = vendas_f.sort_values(v_data, ascending=False).head(15)
+        ult_display = ult_vendas[[v_data, v_prod, "_QTD", "_VAL_UNIT", "_VAL_TOTAL", "_LUCRO"]].copy()
+        ult_display.columns = ["DATA","PRODUTO","QUANTIDADE","PREÇO UNITÁRIO","VALOR TOTAL","LUCRO"]
+        for col in ["PREÇO UNITÁRIO","VALOR TOTAL","LUCRO"]:
+            ult_display[col] = ult_display[col].apply(fmt_brl)
+        st.dataframe(ult_display, use_container_width=True)
+    else:
+        st.info("Nenhuma venda no período/produto filtrado.")
 
 # ======================
 # ESTOQUE
@@ -232,15 +203,6 @@ if selected_tab == "📦 Estoque Atual":
         for col in ["PREÇO UNITÁRIO","VALOR TOTAL"]:
             est_view_display[col] = est_view_display[col].apply(fmt_brl)
         st.dataframe(est_view_display.sort_values("QUANTIDADE", ascending=False), use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### Top 15 Produtos em Estoque (Quantidade)")
-        top_qtd = est_view.sort_values("_QTD_ESTOQUE", ascending=False).head(15)
-        fig_e = px.bar(top_qtd, x=e_prod, y="_QTD_ESTOQUE", text="_QTD_ESTOQUE",
-                       color="_QTD_ESTOQUE", color_continuous_scale=["#00FF00","#00AA00"])
-        fig_e.update_traces(texttemplate='%{text:.0f} un', textposition='outside')
-        fig_e.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF")
-        st.plotly_chart(fig_e, use_container_width=True)
 
 # ======================
 # VENDAS DETALHADAS
