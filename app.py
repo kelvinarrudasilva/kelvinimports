@@ -1,162 +1,221 @@
 # =========================
-# Painel de Estoque - KELVIN ARRUDA
+# Painel de Estoque - KELVIN ARRUDA (Versão robusta de detecção de colunas)
 # =========================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
+import io, os
 
-# -------------------------
-# CONFIGURAÇÕES BÁSICAS
-# -------------------------
 st.set_page_config(page_title="Painel de Estoque", layout="wide")
-
-# -------------------------
-# CABEÇALHO
-# -------------------------
 st.title("📦 Painel de Estoque")
 st.markdown("### **KELVIN ARRUDA**")
-st.write("Monitoramento inteligente de produtos, vendas e reposição 🧠💡")
+st.write("Leitura automática de CSV — detectando colunas inteligentemente.")
 
 # -------------------------
-# FUNÇÕES AUXILIARES
+# Helpers
 # -------------------------
-def normalize_columns(df):
-    df.columns = df.columns.str.strip().str.lower()
+def try_read_file(filelike):
+    """Tenta ler o arquivo com combinações de encoding e separador, retorna DataFrame ou levanta exceção."""
+    encs = ["latin1", "utf-8"]
+    seps = [";", ","]
+    last_err = None
+    for enc in encs:
+        for sep in seps:
+            try:
+                filelike.seek(0)
+                text = filelike.read()
+                # if bytes, decode for StringIO
+                if isinstance(text, (bytes, bytearray)):
+                    text = text.decode(enc, errors="replace")
+                buf = io.StringIO(text)
+                df = pd.read_csv(buf, sep=sep, skip_blank_lines=True)
+                if df is None:
+                    continue
+                # if reads but only one column and looks like whole line, still accept and try next combo
+                if df.empty:
+                    continue
+                return df
+            except Exception as e:
+                last_err = e
+                continue
+    raise last_err if last_err is not None else ValueError("Não foi possível ler o arquivo")
+
+def normalize_cols(df):
+    df.columns = [str(c).strip() for c in df.columns]
     return df
 
+def find_best_column(df, keywords):
+    """Procura no nome da coluna por palavras-chave; se não encontrar, tenta analisar valores."""
+    cols = df.columns.tolist()
+    # 1) busca por keywords no nome da coluna
+    for k in keywords:
+        for c in cols:
+            if k.lower() in str(c).lower():
+                return c
+    # 2) busca por coluna não numérica com muitos valores textuais (provável nome/descrição)
+    text_scores = {}
+    for c in cols:
+        s = df[c].astype(str).replace("nan","").replace("None","")
+        non_empty = s[s.str.strip() != ""]
+        if len(non_empty) == 0:
+            text_scores[c] = 0
+            continue
+        # percent of values that contain letters
+        pct_letters = non_empty.str.contains(r'[A-Za-zÀ-ÿ]').mean()
+        text_scores[c] = pct_letters
+    # pick column with highest pct_letters (and > 0.3)
+    best_col = max(text_scores, key=text_scores.get)
+    if text_scores[best_col] >= 0.25:
+        return best_col
+    # 3) fallback: first column
+    return cols[0] if cols else None
+
 def to_number_series(s):
-    return pd.to_numeric(s, errors='coerce').fillna(0)
+    s = s.fillna('').astype(str)
+    s = s.str.replace(r'[^0-9,.\-]', '', regex=True)
+    s = s.str.replace(r'\.(?=\d{3}(?!\d))', '', regex=True)
+    s = s.str.replace(',', '.', regex=False)
+    return pd.to_numeric(s.replace('', pd.NA), errors='coerce').fillna(0)
 
 # -------------------------
-# SIDEBAR - UPLOAD
+# Upload / leitura
 # -------------------------
 st.sidebar.header("Dados")
-file = st.sidebar.file_uploader("📁 Envie seu arquivo CSV do estoque", type=["csv"])
+uploaded = st.sidebar.file_uploader("Envie o CSV (ou deixe em branco se já estiver no repositório)", type=["csv"])
 
-if file is not None:
-    # -------------------------
-    # TENTA LER O CSV COM DIFERENTES ENCODINGS E SEPARADORES
-    # -------------------------
+df_raw = None
+if uploaded is not None:
     try:
-        df = pd.read_csv(file, sep=";", skip_blank_lines=True, encoding="latin1")
-        if df.empty or len(df.columns) <= 1:
-            file.seek(0)
-            df = pd.read_csv(file, sep=",", skip_blank_lines=True, encoding="latin1")
-    except Exception:
+        df_raw = try_read_file(uploaded)
+    except Exception as e:
+        st.error(f"Erro ao ler o arquivo enviado: {e}")
+        st.stop()
+else:
+    DEFAULT_CSV = "LOJA IMPORTADOS(ESTOQUE).csv"
+    if os.path.exists(DEFAULT_CSV):
         try:
-            file.seek(0)
-            df = pd.read_csv(file, sep=";", skip_blank_lines=True, encoding="utf-8")
-            if df.empty or len(df.columns) <= 1:
-                file.seek(0)
-                df = pd.read_csv(file, sep=",", skip_blank_lines=True, encoding="utf-8")
+            with open(DEFAULT_CSV, "rb") as f:
+                df_raw = try_read_file(f)
         except Exception as e:
-            st.error(f"❌ Erro ao ler o arquivo CSV: {e}")
+            st.error(f"Erro ao ler o arquivo padrão '{DEFAULT_CSV}': {e}")
             st.stop()
-
-    df = normalize_columns(df)
-
-    # -------------------------
-    # AJUSTA NOMES DAS COLUNAS
-    # -------------------------
-    rename_map = {
-        "produto": "Produto",
-        "em estoque": "Estoque",
-        "estoque": "Estoque",
-        "compras": "Compras",
-        "media c. unitario": "Custo_Unitario",
-        "valor venda sugerido": "Preco_Venda",
-        "vendas": "Vendas"
-    }
-    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
-
-    # Corrige colunas numéricas
-    for col in ["Estoque", "Compras", "Custo_Unitario", "Preco_Venda", "Vendas"]:
-        if col in df.columns:
-            df[col] = to_number_series(df[col])
-
-    # Remove linhas sem produto
-    if "Produto" in df.columns:
-        df = df[df["Produto"].notna() & (df["Produto"] != "")]
     else:
-        st.error("❌ Não foi possível identificar a coluna 'Produto'. Verifique o nome no CSV.")
+        st.info("Nenhum arquivo enviado e arquivo padrão não encontrado. Faça upload do CSV na barra lateral.")
         st.stop()
 
-    # -------------------------
-    # PAINEL PRINCIPAL
-    # -------------------------
-    st.divider()
-    st.subheader("📊 Visão Geral")
+# normalize header names spacing
+df_raw = normalize_cols(df_raw)
 
-    total_produtos = len(df)
-    total_estoque = int(df["Estoque"].sum()) if "Estoque" in df.columns else 0
-    total_vendas = int(df["Vendas"].sum()) if "Vendas" in df.columns else 0
+# -------------------------
+# Detectar colunas principais
+# -------------------------
+# palavras-chave prováveis para cada tipo de coluna
+product_keywords = ["produto", "prod", "item", "descri", "nome", "description"]
+estoque_keywords = ["estoque", "em estoque", "quantidade", "qtd", "quant"]
+compras_keywords = ["compra", "compras"]
+venda_keywords = ["venda", "preco", "valor", "price"]
+vendas_col_keywords = ["vendas", "vendido", "qtd vend", "sold"]
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Produtos Cadastrados", f"{total_produtos}")
-    col2.metric("Itens em Estoque", f"{total_estoque:,}".replace(",", "."))
-    col3.metric("Total de Vendas", f"{total_vendas:,}".replace(",", "."))
+product_col = find_best_column(df_raw, product_keywords)
+estoque_col = find_best_column(df_raw, estoque_keywords)
+compras_col = find_best_column(df_raw, compras_keywords)
+preco_col = find_best_column(df_raw, venda_keywords)
+vendas_col = find_best_column(df_raw, vendas_col_keywords)
 
-    # -------------------------
-    # RESUMO INTELIGENTE
-    # -------------------------
-    st.divider()
-    st.subheader("🧠 Resumo Automático")
-    low_stock = df[df["Estoque"] <= 5]
-    no_sales = df[df["Vendas"] == 0] if "Vendas" in df.columns else pd.DataFrame()
+# show detections
+st.sidebar.subheader("Colunas detectadas (verifique)")
+st.sidebar.write({
+    "produto": product_col,
+    "estoque": estoque_col,
+    "compras": compras_col,
+    "preco_venda": preco_col,
+    "vendas": vendas_col
+})
 
-    resumo = f"""
-    - 🔻 {len(low_stock)} produtos estão com estoque abaixo de 5 unidades.  
-    - 💤 {len(no_sales)} produtos sem nenhuma venda registrada.  
-    - 📦 Total atual de produtos: {total_produtos}.
-    """
-    st.markdown(resumo)
+# rename to canonical names
+mapping = {}
+if product_col: mapping[product_col] = "PRODUTO"
+if estoque_col: mapping[estoque_col] = "EM_ESTOQUE"
+if compras_col: mapping[compras_col] = "COMPRAS"
+if preco_col: mapping[preco_col] = "VALOR_VENDA"
+if vendas_col: mapping[vendas_col] = "VENDAS"
 
-    # -------------------------
-    # ALERTAS DE REPOSIÇÃO
-    # -------------------------
-    st.divider()
-    st.subheader("⚠️ Alertas de Reposição")
-    if not low_stock.empty:
-        st.dataframe(low_stock[["Produto", "Estoque", "Vendas"]].head(15), use_container_width=True)
+df = df_raw.rename(columns=mapping)
+
+# ensure product column exists; if not, use first non-numeric column or first column
+if "PRODUTO" not in df.columns:
+    # try to find first column with many letters
+    fallback = find_best_column(df_raw, [])
+    if fallback:
+        df = df.rename(columns={fallback: "PRODUTO"})
     else:
-        st.success("Todos os produtos estão com níveis de estoque adequados 🎉")
+        # as ultimate fallback, create SKU names
+        df.insert(0, "PRODUTO", [f"SKU_{i}" for i in range(len(df))])
 
-    # -------------------------
-    # GRÁFICO DE ESTOQUE
-    # -------------------------
-    st.divider()
-    st.subheader("📈 Estoque por Produto")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(df["Produto"], df["Estoque"], color="#1f77b4")
-    ax.set_ylabel("Quantidade em Estoque")
-    ax.set_xlabel("Produto")
-    plt.xticks(rotation=90, fontsize=8)
+# ensure numeric columns exist
+for c in ["EM_ESTOQUE", "COMPRAS", "VALOR_VENDA", "VENDAS"]:
+    if c in df.columns:
+        df[c] = to_number_series(df[c])
+    else:
+        df[c] = 0
+
+# Remove rows that are clearly header fragments or blank:
+# Keep rows where at least one numeric column is non-zero OR product name looks real
+mask_real = (
+    (df["EM_ESTOQUE"].fillna(0) != 0)
+    | (df["COMPRAS"].fillna(0) != 0)
+    | (df["VENDAS"].fillna(0) != 0)
+    | (df["PRODUTO"].astype(str).str.strip().str.len() > 0)
+)
+df = df[mask_real].copy()
+
+# also drop rows where PRODUTO is something like 'PRODUTO' (literal header repeated)
+df = df[~df["PRODUTO"].astype(str).str.upper().str.contains(r'PRODUT|PRODUTO|ITEM|DESCRI|NOME')].copy()
+
+# final cleanup: fill product names empty with placeholder
+df["PRODUTO"] = df["PRODUTO"].fillna("").astype(str).replace("", "SEM_NOME_PRODUTO")
+
+# Derived columns
+df["VALOR_ESTOQUE_CUSTO"] = df["EM_ESTOQUE"] * df["VALOR_VENDA"] * 0  # placeholder if no custo; kept 0 to avoid errors
+# If there is a custo column name detected (not implemented heuristically here), you'd set it.
+
+# -------------------------
+# Exibição e KPIs
+# -------------------------
+st.write(f"Arquivo lido com sucesso — {len(df)} linhas após limpeza.")
+st.markdown("---")
+
+# KPIs
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("SKUs", int(df["PRODUTO"].nunique()))
+col2.metric("Total em estoque", int(df["EM_ESTOQUE"].sum()))
+col3.metric("Total vendas (soma)", int(df["VENDAS"].sum()))
+col4.metric("Produtos sem nome", int((df["PRODUTO"] == "SEM_NOME_PRODUTO").sum()))
+
+st.markdown("---")
+st.subheader("Resumo rápido")
+low_stock = df[df["EM_ESTOQUE"] <= 5]
+no_sales = df[df["VENDAS"] == 0]
+st.write(f"- 🔻 {len(low_stock)} produtos com estoque <= 5")
+st.write(f"- 💤 {len(no_sales)} produtos com VENDAS == 0")
+
+# top vendidos
+if df["VENDAS"].sum() > 0:
+    top_v = df.sort_values("VENDAS", ascending=False).head(10)
+    fig, ax = plt.subplots()
+    ax.barh(top_v["PRODUTO"][::-1], top_v["VENDAS"][::-1])
+    ax.set_xlabel("VENDAS")
     st.pyplot(fig)
 
-    # -------------------------
-    # GRÁFICO DE VENDAS
-    # -------------------------
-    st.divider()
-    st.subheader("💸 Vendas por Produto")
-    if "Vendas" in df.columns:
-        fig2, ax2 = plt.subplots(figsize=(10, 4))
-        ax2.bar(df["Produto"], df["Vendas"], color="#2ca02c")
-        ax2.set_ylabel("Quantidade Vendida")
-        ax2.set_xlabel("Produto")
-        plt.xticks(rotation=90, fontsize=8)
-        st.pyplot(fig2)
-    else:
-        st.info("Coluna 'Vendas' não encontrada no arquivo.")
-
-    # -------------------------
-    # RELATÓRIO DETALHADO
-    # -------------------------
-    st.divider()
-    st.subheader("📋 Relatório Completo")
-    st.dataframe(df, use_container_width=True)
-
+st.subheader("Alertas de Reposição")
+if low_stock.empty:
+    st.success("Nenhum produto crítico por estoque.")
 else:
-    st.info("⬅️ Envie um arquivo CSV para começar.")
+    st.table(low_stock[["PRODUTO", "EM_ESTOQUE", "COMPRAS", "VENDAS"]].head(50))
+
+st.subheader("Tabela completa (filtrável)")
+st.dataframe(df.reset_index(drop=True))
+
+st.download_button("Baixar CSV limpo", df.to_csv(index=False).encode("utf-8"), "estoque_limpo.csv", "text/csv")
