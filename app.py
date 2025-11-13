@@ -8,7 +8,7 @@ import re
 st.set_page_config(page_title="Painel Loja Importados", layout="wide")
 
 # ======================
-# Estilo Moderno Dark
+# Estilo Dark Moderno
 # ======================
 st.markdown("""
 <style>
@@ -53,9 +53,6 @@ body { background-color: var(--bg); color: var(--text);}
 </style>
 """, unsafe_allow_html=True)
 
-# ======================
-# Cabeçalho
-# ======================
 st.markdown("<div class='title'>📊 Painel — Loja Importados</div>", unsafe_allow_html=True)
 st.markdown("<div class='subtitle'>Dashboard Escuro | Contraste Máximo | Responsivo</div>", unsafe_allow_html=True)
 st.markdown("---")
@@ -180,7 +177,7 @@ if prod_filter:
     vendas_f = vendas_f[vendas_f[v_prod].astype(str).isin(prod_filter)]
 
 # ======================
-# Botões estilo moderno para seções
+# Botões modernos
 # ======================
 selected_tab = st.radio(
     "",
@@ -190,9 +187,8 @@ selected_tab = st.radio(
 )
 
 # ======================
-# Seções
+# VISÃO GERAL
 # ======================
-# ---------- VISÃO GERAL ----------
 if selected_tab == "📈 Visão Geral":
     st.markdown("## KPIs")
     total_vendido = vendas_f["_VAL_TOTAL"].sum() if "_VAL_TOTAL" in vendas_f.columns else 0
@@ -209,13 +205,22 @@ if selected_tab == "📈 Visão Geral":
         top = vendas_f.groupby(v_prod).agg(QTDE=pd.NamedAgg(column="_QTD", aggfunc="sum"),
                                            VAL_TOTAL=pd.NamedAgg(column="_VAL_TOTAL", aggfunc="sum")).reset_index()
         top = top.sort_values("VAL_TOTAL", ascending=False).head(10)
-        fig_top = px.bar(top, x="VAL_TOTAL", y=v_prod, orientation="h", text="QTDE",
-                         color="VAL_TOTAL", color_continuous_scale=["#00FF00","#00AA00"])
-        fig_top.update_traces(texttemplate='%{text:.0f} un', textposition='outside')
-        fig_top.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF", yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig_top, use_container_width=True)
+        # gráfico torre (vertical waterfall style)
+        fig_torre = px.bar(top, x=v_prod, y="QTDE", text="QTDE", color="QTDE",
+                           color_continuous_scale=["#00FF00","#00AA00"])
+        fig_torre.update_traces(texttemplate='%{text:.0f} un', textposition='outside')
+        fig_torre.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF")
+        st.plotly_chart(fig_torre, use_container_width=True)
 
-# ---------- ESTOQUE ----------
+        # gráfico criativo: rosquinha de participação por valor total
+        fig_donut = px.pie(top, names=v_prod, values="VAL_TOTAL", hole=0.5,
+                           color_discrete_sequence=px.colors.sequential.Teal)
+        fig_donut.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF")
+        st.plotly_chart(fig_donut, use_container_width=True)
+
+# ======================
+# ESTOQUE
+# ======================
 if selected_tab == "📦 Estoque Atual":
     st.markdown("## Estoque Atual")
     est_view = estoque.copy() if estoque is not None else pd.DataFrame()
@@ -227,7 +232,7 @@ if selected_tab == "📦 Estoque Atual":
         for col in ["PREÇO UNITÁRIO","VALOR TOTAL"]:
             est_view_display[col] = est_view_display[col].apply(fmt_brl)
         st.dataframe(est_view_display.sort_values("QUANTIDADE", ascending=False), use_container_width=True)
-        
+
         st.markdown("---")
         st.markdown("### Top 15 Produtos em Estoque (Quantidade)")
         top_qtd = est_view.sort_values("_QTD_ESTOQUE", ascending=False).head(15)
@@ -237,7 +242,9 @@ if selected_tab == "📦 Estoque Atual":
         fig_e.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF")
         st.plotly_chart(fig_e, use_container_width=True)
 
-# ---------- VENDAS DETALHADAS ----------
+# ======================
+# VENDAS DETALHADAS
+# ======================
 if selected_tab == "🛒 Vendas Detalhadas":
     st.markdown("## Vendas Detalhadas")
     if not vendas_f.empty:
