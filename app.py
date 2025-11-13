@@ -1,5 +1,5 @@
 # =========================
-# Painel de Estoque - Kelvin Arruda (Versão Inteligente de Leitura)
+# Painel de Estoque - Kelvin Arruda (Versão Blindada)
 # =========================
 
 import streamlit as st
@@ -11,10 +11,10 @@ st.set_page_config(page_title="Painel de Estoque", layout="wide")
 
 st.title("📦 Painel de Estoque")
 st.markdown("### **KELVIN ARRUDA**")
-st.write("Leitura automática e correção de cabeçalhos incorretos no CSV.")
+st.write("Versão que lê qualquer CSV e renomeia colunas automaticamente.")
 
 # -------------------------
-# Função de leitura com autoajuste
+# Função de leitura inteligente
 # -------------------------
 def load_csv(file):
     encodings = ["utf-8", "latin1"]
@@ -23,18 +23,12 @@ def load_csv(file):
         for sep in seps:
             try:
                 file.seek(0)
-                df = pd.read_csv(file, sep=sep, encoding=enc, skip_blank_lines=True, header=None)
-                # detecta se a primeira linha contém nomes de colunas (ex: Produto, Estoque, etc)
-                primeira_linha = df.iloc[0].astype(str).str.lower()
-                if any(word in " ".join(primeira_linha) for word in ["produto", "estoque", "venda", "compra", "valor"]):
-                    df.columns = primeira_linha
-                    df = df.drop(0)
-                else:
-                    # tenta usar o header normal (segunda tentativa)
+                df = pd.read_csv(file, sep=sep, encoding=enc, skip_blank_lines=True)
+                if df.empty:
                     file.seek(0)
-                    df = pd.read_csv(file, sep=sep, encoding=enc)
+                    df = pd.read_csv(file, sep=sep, encoding=enc, header=None)
                 df = df.dropna(how="all").dropna(axis=1, how="all")
-                if len(df.columns) > 1:
+                if not df.empty:
                     return df
             except Exception:
                 continue
@@ -58,10 +52,22 @@ else:
         st.stop()
 
 # -------------------------
-# Normaliza colunas
+# Normaliza e tenta identificar o cabeçalho
 # -------------------------
 df.columns = [str(c).strip().lower() for c in df.columns]
+primeira_linha = df.iloc[0].astype(str).str.lower()
 
+if any(x in " ".join(primeira_linha) for x in ["produto", "estoque", "venda", "compra", "valor"]):
+    df.columns = primeira_linha
+    df = df.drop(0)
+    df.columns = [str(c).strip().lower() for c in df.columns]
+else:
+    # Se não houver cabeçalho, cria nomes genéricos
+    df.columns = [f"col_{i}" for i in range(len(df.columns))]
+
+# -------------------------
+# Tenta detectar colunas
+# -------------------------
 def detectar_coluna(possiveis):
     for p in possiveis:
         for c in df.columns:
@@ -69,18 +75,17 @@ def detectar_coluna(possiveis):
                 return c
     return None
 
-col_prod = detectar_coluna(["prod", "nome", "descri"])
-col_estoque = detectar_coluna(["estoque", "quantidade", "qtd"])
+col_prod = detectar_coluna(["prod", "nome", "descri", "item"])
+col_estoque = detectar_coluna(["estoque", "quant", "qtd"])
 col_vendas = detectar_coluna(["venda", "vendido"])
-col_preco = detectar_coluna(["preco", "valor"])
-col_compras = detectar_coluna(["compra"])
+col_preco = detectar_coluna(["preco", "valor", "unit"])
+col_compras = detectar_coluna(["compra", "pedido"])
 
-# tenta usar primeira coluna não numérica como produto
+# Se nada encontrado, assume colunas pela posição
 if col_prod is None:
-    for c in df.columns:
-        if not pd.api.types.is_numeric_dtype(df[c]):
-            col_prod = c
-            break
+    col_prod = df.columns[0]
+if col_estoque is None and len(df.columns) > 1:
+    col_estoque = df.columns[1]
 
 st.sidebar.subheader("Colunas detectadas (verifique)")
 st.sidebar.json({
@@ -91,6 +96,9 @@ st.sidebar.json({
     "vendas": col_vendas
 })
 
+# -------------------------
+# Renomeia para padrão fixo
+# -------------------------
 rename_map = {
     col_prod: "Produto",
     col_estoque: "Estoque",
@@ -100,14 +108,18 @@ rename_map = {
 }
 df = df.rename(columns={k: v for k, v in rename_map.items() if k})
 
+# -------------------------
+# Limpeza de dados
+# -------------------------
 for col in ["Estoque", "Compras", "Preco", "Vendas"]:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
 if "Produto" not in df.columns:
-    df["Produto"] = df.index.astype(str)
+    df["Produto"] = "Produto_" + df.index.astype(str)
 
-df = df[df["Produto"].astype(str).str.strip().ne("")]
+df["Produto"] = df["Produto"].astype(str).str.strip()
+df = df[df["Produto"].ne("")]
 
 # -------------------------
 # Indicadores
