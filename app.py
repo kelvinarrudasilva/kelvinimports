@@ -1,125 +1,81 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import unicodedata
+import os
 
-# -----------------------------------------
-# CONFIGURAÇÃO INICIAL
-# -----------------------------------------
-st.set_page_config(page_title="Painel de Estoque - Kelvin Arruda", layout="wide")
-st.title("📦 Painel de Estoque - Kelvin Arruda")
+st.set_page_config(page_title="Gestão de Estoque - Kelvin Arruda", layout="wide")
 
-# -----------------------------------------
-# FUNÇÕES AUXILIARES
-# -----------------------------------------
-def limpar_nome(texto):
-    """Remove acentos, espaços e coloca tudo em minúsculo."""
-    if not isinstance(texto, str):
-        return ""
-    texto = texto.strip().lower()
-    texto = "".join(
-        c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn"
-    )
-    return texto
+st.title("📦 Gestão de Estoque - Kelvin Arruda")
 
-def detectar_coluna(df, possiveis):
-    """Procura colunas compatíveis dentro do DataFrame."""
-    for nome in df.columns:
-        nome_limpo = limpar_nome(nome)
-        for p in possiveis:
-            if p in nome_limpo:
-                return nome
-    return None
+# --- Função para detectar colunas ---
+def detectar_colunas(df):
+    cols = {c.lower().strip(): c for c in df.columns}
+    mapa = {
+        "produto": None,
+        "estoque": None,
+        "preco_venda": None,
+        "vendas": None
+    }
 
-# -----------------------------------------
-# LEITURA DO ARQUIVO EXCEL DIRETO
-# -----------------------------------------
-try:
-    df = pd.read_excel("LOJA IMPORTADOS.xlsx", engine="openpyxl")
-    st.sidebar.success(f"Arquivo Excel carregado! ({len(df)} linhas)")
+    for chave in mapa:
+        for nome_coluna in cols:
+            if any(p in nome_coluna for p in [chave, "item", "nome", "descri", "quant", "valor", "preço", "venda", "estoque"]):
+                mapa[chave] = cols[nome_coluna]
+                break
+    return mapa
 
-    # Normalizar colunas
-    df.columns = [limpar_nome(c) for c in df.columns]
+# --- Carregar o Excel automaticamente ---
+ARQUIVO = "LOJA IMPORTADOS.xlsx"
 
-    # Detectar colunas principais
-    col_produto = detectar_coluna(df, ["produto", "descricao", "item", "nome"])
-    col_estoque = detectar_coluna(df, ["estoque", "quantidade", "em estoque", "qtd"])
-    col_preco = detectar_coluna(df, ["preco", "valor", "venda", "sugerido"])
-    col_vendas = detectar_coluna(df, ["venda", "vendida", "saida", "qtd vendida"])
+if not os.path.exists(ARQUIVO):
+    st.error("❌ O arquivo 'LOJA IMPORTADOS.xlsx' não foi encontrado na pasta.")
+else:
+    try:
+        df = pd.read_excel(ARQUIVO, engine="openpyxl")
+        st.success("✅ Arquivo carregado com sucesso!")
 
-    # Garantir que não confunda preço com vendas
-    if col_vendas == col_preco:
-        col_vendas = None
+        # Limpeza básica
+        df = df.dropna(how="all")
+        df.columns = df.columns.astype(str)
 
-    st.write("### 🔍 Colunas detectadas:")
-    st.json({
-        "produto": col_produto,
-        "estoque": col_estoque,
-        "preco_venda": col_preco,
-        "vendas": col_vendas,
-    })
+        mapa = detectar_colunas(df)
+        st.write("🔍 **Colunas detectadas (verifique)**")
+        st.json(mapa)
 
-    # Verificação mínima
-    if not col_produto or not col_estoque:
-        st.error("❌ Não foi possível identificar as colunas principais (produto/estoque). Verifique o Excel.")
-        st.stop()
+        if mapa["produto"] is None or mapa["estoque"] is None:
+            st.error("❌ Não foi possível identificar as colunas principais (produto/estoque). Verifique o Excel.")
+        else:
+            df = df.rename(columns={
+                mapa["produto"]: "Produto",
+                mapa["estoque"]: "Estoque",
+                mapa["preco_venda"]: "Preço",
+                mapa["vendas"]: "Vendas"
+            })
 
-    # Limpar e converter dados
-    df = df.dropna(subset=[col_produto])
-    df = df[df[col_produto].astype(str).str.strip() != ""]
+            # Converter colunas numéricas
+            for c in ["Estoque", "Preço", "Vendas"]:
+                if c in df.columns:
+                    df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    for col in [col_estoque, col_preco, col_vendas]:
-        if col and col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            st.subheader("📋 Dados do Estoque")
+            st.dataframe(df, use_container_width=True)
 
-    # -----------------------------------------
-    # MÉTRICAS
-    # -----------------------------------------
-    total_itens = len(df)
-    total_estoque = df[col_estoque].sum()
-    valor_total = (df[col_estoque] * df[col_preco]).sum() if col_preco else 0
+            # --- Gráfico de estoque ---
+            st.subheader("📊 Quantidade em Estoque")
+            fig, ax = plt.subplots(figsize=(8, 4))
+            df.plot(kind="bar", x="Produto", y="Estoque", ax=ax, legend=False)
+            ax.set_ylabel("Quantidade")
+            ax.set_xlabel("")
+            st.pyplot(fig)
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Produtos Cadastrados", total_itens)
-    col2.metric("Quantidade Total em Estoque", f"{total_estoque:,.0f}".replace(",", "."))
-    col3.metric("Valor Total do Estoque (R$)", f"{valor_total:,.2f}".replace(".", ","))
+            # --- Alertas de reposição ---
+            st.subheader("⚠️ Alertas de Reposição")
+            baixo_estoque = df[df["Estoque"] <= 5]
+            if baixo_estoque.empty:
+                st.success("✅ Nenhum produto com estoque baixo.")
+            else:
+                st.warning("🚨 Produtos com baixo estoque:")
+                st.dataframe(baixo_estoque, use_container_width=True)
 
-    st.divider()
-
-    # -----------------------------------------
-    # GRÁFICO
-    # -----------------------------------------
-    top_produtos = df.sort_values(by=col_estoque, ascending=False).head(15)
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.barh(top_produtos[col_produto], top_produtos[col_estoque], color="#4C72B0")
-    ax.invert_yaxis()
-    ax.set_xlabel("Quantidade em Estoque")
-    ax.set_ylabel("Produto")
-    ax.set_title("Top 15 Produtos em Estoque")
-    st.pyplot(fig)
-
-    st.divider()
-
-    # -----------------------------------------
-    # ALERTAS DE REPOSIÇÃO
-    # -----------------------------------------
-    limite = st.slider("Defina o limite para alerta de reposição", 0, 50, 5)
-    alerta = df[df[col_estoque] <= limite]
-    st.subheader("⚠️ Produtos com Estoque Baixo")
-    if not alerta.empty:
-        st.dataframe(alerta[[col_produto, col_estoque]])
-    else:
-        st.success("✅ Nenhum produto abaixo do limite definido.")
-
-    st.divider()
-
-    # -----------------------------------------
-    # TABELA COMPLETA
-    # -----------------------------------------
-    with st.expander("📋 Ver tabela completa"):
-        st.dataframe(df)
-
-except FileNotFoundError:
-    st.error("❌ Arquivo 'LOJA IMPORTADOS.xlsx' não encontrado na pasta do app.")
-except Exception as e:
-    st.error(f"❌ Erro ao processar o arquivo: {e}")
+    except Exception as e:
+        st.error(f"❌ Erro ao processar o arquivo: {e}")
