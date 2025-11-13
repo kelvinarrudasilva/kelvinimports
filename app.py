@@ -32,11 +32,10 @@ st.markdown("<div class='subtitle'>Tema: Alto contraste — Preto & Dourado • 
 st.markdown("---")
 
 # ======================
-# Util helpers: detect header, clean df, col finder, formatting
+# Util helpers
 # ======================
 def detect_header(path_or_bytes, sheet_name, look_for="PRODUTO"):
-    """Leia sem header, detecte linha que contém look_for e retorne df com header correto."""
-    raw = pd.read_excel(path_or_bytes, sheet_name=sheet_name, header=None)
+    raw = pd.read_excel(path_or_bytes, sheet_name=sheet_name, header=None, engine="openpyxl")
     header_row = None
     for i in range(min(len(raw), 12)):
         row = raw.iloc[i].astype(str).str.upper().fillna("")
@@ -45,7 +44,7 @@ def detect_header(path_or_bytes, sheet_name, look_for="PRODUTO"):
             break
     if header_row is None:
         header_row = 0
-    df = pd.read_excel(path_or_bytes, sheet_name=sheet_name, header=header_row)
+    df = pd.read_excel(path_or_bytes, sheet_name=sheet_name, header=header_row, engine="openpyxl")
     return df, header_row
 
 def clean_df(df):
@@ -77,18 +76,17 @@ def fmt_brl(x):
         return "R$ 0,00"
 
 # ======================
-# Carregar planilha direto do OneDrive
+# Carregar planilha direto do OneDrive (link de download direto)
 # ======================
 ONEDRIVE_URL = "https://onedrive.live.com/download?resid=IQDHyRSnkqqEQZT1Vg9e3VJwARLyccQhj9JG3uL2lBdduGg"
-resp = requests.get(ONEDRIVE_URL)
-xls = pd.ExcelFile(io.BytesIO(resp.content))
 
 try:
     resp = requests.get(ONEDRIVE_URL)
     if resp.status_code != 200:
         st.error("Não foi possível baixar o arquivo do OneDrive.")
         st.stop()
-    xls = pd.ExcelFile(io.BytesIO(resp.content))
+    excel_bytes = io.BytesIO(resp.content)
+    xls = pd.ExcelFile(excel_bytes, engine="openpyxl")
 except Exception as e:
     st.error(f"Erro ao carregar o Excel: {e}")
     st.stop()
@@ -104,7 +102,7 @@ st.sidebar.markdown("---")
 def load_sheet(name):
     if name not in available:
         return None, f"Aba '{name}' não encontrada"
-    df, hdr = detect_header(io.BytesIO(resp.content), name)
+    df, hdr = detect_header(excel_bytes, name)
     df = clean_df(df)
     return df, None
 
@@ -137,10 +135,7 @@ c_qtd = find_col(compras, "QUANTIDADE", "QTD")
 c_custo_unit = find_col(compras, "CUSTO UNITÁRIO", "CUSTO UNIT")
 c_custo_total = find_col(compras, "CUSTO TOTAL", "VALOR TOTAL")
 
-# (o restante do código continua igual, sem alterações)
-
 # ======================
-# [Aqui vai todo o resto do seu código que já tinha: normalização, filtros, abas, KPIs, gráficos]
+# [A partir daqui você mantém todo o código do seu dashboard: normalização, filtros, abas, KPIs, gráficos]
 # ======================
-# Você só precisa substituir as chamadas de leitura local para usar xls vindo do OneDrive
-
+# Apenas substitua toda referência de planilha local por `excel_bytes` ou `xls` já carregados do OneDrive
