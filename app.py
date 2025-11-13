@@ -11,24 +11,31 @@ import re
 st.set_page_config(page_title="Painel - Loja Importados", layout="wide")
 
 # ======================
-# Estilo - Tema Escuro
+# Estilo - Tema Escuro Alto Contraste
 # ======================
 st.markdown("""
 <style>
-:root { --primary:#1ABC9C; --bg:#111111; --card:#1C1C1C; --muted:#AAAAAA; }
-.stApp { background-color: var(--bg); color: #FFFFFF; }
-.title { color: var(--primary); font-weight:700; font-size:24px; }
-.subtitle { color: var(--muted); font-size:13px; margin-bottom:12px; }
-.kpi { background: var(--card); padding:14px; border-radius:10px; text-align:center; }
-.kpi-value { color: var(--primary); font-size:22px; font-weight:700; }
-.kpi-label { color:var(--muted); font-size:13px; }
-.stDataFrame table { background-color:var(--card); color:#FFFFFF; }
-.stDataFrame tbody tr th, .stDataFrame tbody tr td { color:#FFFFFF; }
+:root {
+    --bg:#000000; 
+    --card:#111111; 
+    --text:#FFFFFF; 
+    --primary:#00FF00; 
+    --muted:#AAAAAA;
+    --bar:#00FF00;
+}
+.stApp { background-color: var(--bg); color: var(--text); }
+.title { color: var(--primary); font-weight:700; font-size:26px; }
+.subtitle { color: var(--muted); font-size:14px; margin-bottom:12px; }
+.kpi { background: var(--card); padding:16px; border-radius:12px; text-align:center; }
+.kpi-value { color: var(--primary); font-size:24px; font-weight:700; }
+.kpi-label { color:var(--muted); font-size:14px; }
+.stDataFrame table { background-color:var(--card); color:var(--text); }
+.stDataFrame tbody tr th, .stDataFrame tbody tr td { color:var(--text); }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<div class='title'>📊 Painel — Loja Importados</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>Tema: Escuro • Abas: Visão Geral / Estoque / Vendas Detalhadas</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Tema: Escuro Alto Contraste • Abas: Visão Geral / Estoque / Vendas Detalhadas</div>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ======================
@@ -126,7 +133,7 @@ if vendas is not None:
     if v_lucro in vendas.columns:
         vendas["_LUCRO"] = to_num(vendas[v_lucro])
     else:
-        vendas["_LUCRO"] = vendas["_VAL_TOTAL"]  # simples
+        vendas["_LUCRO"] = vendas["_VAL_TOTAL"]
 
 # Estoque
 if estoque is not None:
@@ -185,9 +192,9 @@ with tab1:
             VAL_TOTAL=pd.NamedAgg(column="_VAL_TOTAL", aggfunc="sum")
         ).reset_index().sort_values("VAL_TOTAL", ascending=False).head(10)
         fig_top = px.bar(top, x="VAL_TOTAL", y=v_prod, orientation="h", text="QTDE",
-                         color="VAL_TOTAL", color_continuous_scale=["#1ABC9C","#16A085"])
+                         color="VAL_TOTAL", color_continuous_scale=["#00FF00","#00AA00"])
         fig_top.update_traces(texttemplate='%{text:.0f} un', textposition='outside')
-        fig_top.update_layout(plot_bgcolor="#111111", paper_bgcolor="#111111", font_color="#FFFFFF", yaxis={'categoryorder':'total ascending'})
+        fig_top.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF", yaxis={'categoryorder':'total ascending'})
         st.plotly_chart(fig_top, use_container_width=True)
 
 with tab2:
@@ -206,9 +213,9 @@ with tab2:
         st.markdown("### Top 15 Produtos em Estoque (Quantidade)")
         top_qtd = est_view.sort_values("_QTD_ESTOQUE", ascending=False).head(15)
         fig_e = px.bar(top_qtd, x=e_prod, y="_QTD_ESTOQUE", text="_QTD_ESTOQUE",
-                       color="_QTD_ESTOQUE", color_continuous_scale=["#1ABC9C","#16A085"])
+                       color="_QTD_ESTOQUE", color_continuous_scale=["#00FF00","#00AA00"])
         fig_e.update_traces(texttemplate='%{text:.0f} un', textposition='outside')
-        fig_e.update_layout(plot_bgcolor="#111111", paper_bgcolor="#111111", font_color="#FFFFFF")
+        fig_e.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFFFFF")
         st.plotly_chart(fig_e, use_container_width=True)
 
 with tab3:
