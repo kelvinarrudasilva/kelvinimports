@@ -9,28 +9,23 @@ st.title("📦 Gestão de Estoque - Kelvin Arruda")
 
 ARQUIVO = "LOJA IMPORTADOS.xlsx"
 
-# --- Função: detectar linha do cabeçalho verdadeiro ---
 def detectar_linha_cabecalho(arquivo):
     wb = openpyxl.load_workbook(arquivo, read_only=True)
     ws = wb.active
     for i, row in enumerate(ws.iter_rows(values_only=True)):
-        # Remove espaços e converte tudo para minúsculo
         valores = [str(c).strip().lower() if c else "" for c in row]
-        # Se achar uma linha que contenha "esto" ou "prod", é o cabeçalho
         if any("esto" in c or "prod" in c or "descr" in c for c in valores):
             return i
-    return 0  # fallback: primeira linha
+    return 0
 
-# --- Função: carregar Excel e limpar ---
 def carregar_e_limpar(arquivo):
     header_row = detectar_linha_cabecalho(arquivo)
     df = pd.read_excel(arquivo, engine="openpyxl", header=header_row)
     df.columns = [str(c).strip().lower() for c in df.columns]
-    df = df.dropna(how="all")  # remove linhas totalmente vazias
-    df = df.loc[:, ~df.columns.duplicated()]  # remove colunas duplicadas
+    df = df.dropna(how="all")
+    df = df.loc[:, ~df.columns.duplicated()]
     return df
 
-# --- Função: mapear colunas ---
 def mapear_colunas(df):
     mapa = {"produto": None, "estoque": None, "preco_venda": None, "vendas": None}
     for c in df.columns:
@@ -48,7 +43,6 @@ def mapear_colunas(df):
             mapa["vendas"] = c
     return mapa
 
-# --- MAIN ---
 if not os.path.exists(ARQUIVO):
     st.error("❌ O arquivo 'LOJA IMPORTADOS.xlsx' não foi encontrado.")
 else:
@@ -59,12 +53,16 @@ else:
         st.write("🔍 **Colunas detectadas (verifique)**")
         st.json(mapa)
 
-        if mapa["estoque"] is None or mapa["produto"] is None:
-            st.warning("⚠️ Não foi possível identificar as colunas 'Produto' ou 'Estoque'. Tentando exibir amostra bruta...")
-            st.dataframe(df.head(10))
+        # Se não achar produto, cria uma coluna fictícia
+        if mapa["produto"] is None:
+            st.warning("⚠️ Nenhuma coluna de produtos detectada. Criando nomes automáticos...")
+            df.insert(0, "Produto", [f"Produto {i+1}" for i in range(len(df))])
+            mapa["produto"] = "Produto"
+
+        if mapa["estoque"] is None:
+            st.error("❌ Nenhuma coluna de estoque encontrada. Corrija o arquivo e tente novamente.")
             st.stop()
 
-        # Renomear
         df = df.rename(columns={
             mapa["produto"]: "Produto",
             mapa["estoque"]: "Estoque",
@@ -72,7 +70,6 @@ else:
             mapa["vendas"]: "Vendas"
         })
 
-        # Limpar dados
         df = df.dropna(subset=["Produto"])
         for c in ["Estoque", "Preço", "Vendas"]:
             if c in df.columns:
