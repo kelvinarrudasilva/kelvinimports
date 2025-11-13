@@ -1,157 +1,128 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import io
 import chardet
+import io
 
-# =====================================
-# 🎯 Função para detectar encoding
-# =====================================
-def detectar_encoding(arquivo):
-    resultado = chardet.detect(arquivo.read())
-    arquivo.seek(0)
-    return resultado["encoding"]
+st.set_page_config(page_title="Painel de Estoque - Kelvin Arruda", layout="wide")
 
-# =====================================
-# 🎯 Função para detectar nomes de colunas automaticamente
-# =====================================
-def detectar_coluna(df, opcoes):
-    for col in df.columns:
-        nome = str(col).strip().lower()
-        for op in opcoes:
-            if op in nome:
-                return col
-    return None
+st.title("📦 Painel de Estoque - Kelvin Arruda")
 
-# =====================================
-# 🎨 Interface do Streamlit
-# =====================================
-st.set_page_config(page_title="Gestão de Estoque - Kelvin Arruda", layout="wide")
+st.sidebar.header("📂 Carregue seu arquivo CSV")
+file = st.sidebar.file_uploader("Selecione o arquivo de estoque (.csv)", type=["csv"])
 
-st.title("📦 Gestão de Estoque - Kelvin Arruda")
-
-st.sidebar.header("📁 Dados do Arquivo")
-
-arquivo_csv = st.sidebar.file_uploader("Envie seu arquivo CSV de estoque", type=["csv"])
-
-if arquivo_csv is not None:
+if file:
     try:
-        # Detectar encoding e ler o CSV
-        encoding = detectar_encoding(arquivo_csv)
-        df = pd.read_csv(arquivo_csv, encoding=encoding)
+        # Detectar encoding
+        raw_data = file.read()
+        encoding = chardet.detect(raw_data)["encoding"] or "utf-8"
+        file.seek(0)
 
-        st.sidebar.success(f"Arquivo lido com sucesso! (Encoding: {encoding})")
+        # Tentar detectar separador automaticamente
+        sample = raw_data.decode(encoding, errors="ignore")[:1000]
+        if ";" in sample:
+            sep = ";"
+        elif "\t" in sample:
+            sep = "\t"
+        else:
+            sep = ","
 
-        # Remover linhas totalmente vazias
-        df = df.dropna(how="all")
+        # Ler CSV com tratamento de erros
+        df = pd.read_csv(
+            io.BytesIO(raw_data),
+            encoding=encoding,
+            sep=sep,
+            on_bad_lines="skip",
+            engine="python"
+        )
+
+        st.sidebar.success(f"Arquivo lido com sucesso! ({len(df)} linhas)")
+
+        # Normalizar nomes das colunas
+        df.columns = [c.strip().lower() for c in df.columns]
 
         # Detectar colunas automaticamente
-        col_produto = detectar_coluna(df, ["produto", "descrição", "nome"])
-        col_estoque = detectar_coluna(df, ["estoque", "em estoque", "quantidade"])
-        col_compras = detectar_coluna(df, ["compra", "entrada", "compras"])
-        col_preco = detectar_coluna(df, ["preço", "valor", "venda sugerido"])
-        col_vendas = detectar_coluna(df, ["venda", "vendida", "quantidade vendida", "saída"])
+        def detectar_coluna(possiveis):
+            for nome in df.columns:
+                for p in possiveis:
+                    if p in nome:
+                        return nome
+            return None
 
-        # Evitar duplicação de colunas
+        col_produto = detectar_coluna(["produto", "item", "descr"])
+        col_estoque = detectar_coluna(["estoque", "quant"])
+        col_compras = detectar_coluna(["compra"])
+        col_preco = detectar_coluna(["valor", "preço", "venda"])
+        col_vendas = detectar_coluna(["venda", "vendida", "qtd vendida"])
+
+        # Evitar duplicação
         if col_vendas == col_preco:
             col_vendas = None
 
         # Mostrar colunas detectadas
-        st.write("### 🧭 Colunas detectadas (verifique se estão corretas):")
+        st.write("### 🔍 Colunas detectadas:")
         st.json({
             "produto": col_produto,
             "estoque": col_estoque,
             "compras": col_compras,
             "preco_venda": col_preco,
-            "vendas": col_vendas
+            "vendas": col_vendas,
         })
 
-        # Verificação básica
         if not col_produto or not col_estoque:
-            st.error("❌ Não foi possível identificar colunas essenciais ('Produto' e 'Estoque'). Verifique o arquivo.")
+            st.error("❌ Não foi possível identificar as colunas principais. Verifique o cabeçalho do CSV.")
             st.stop()
 
-        # Limpar e preparar os dados
-        df = df.rename(columns={
-            col_produto: "Produto",
-            col_estoque: "Estoque",
-            col_compras: "Compras" if col_compras else None,
-            col_preco: "PrecoVenda" if col_preco else None,
-            col_vendas: "Vendas" if col_vendas else None
-        })
-        df = df.loc[:, ~df.columns.duplicated()]
-        df = df[df["Produto"].astype(str).str.strip().ne("")]
+        # Limpar dados
+        df = df.dropna(subset=[col_produto])
+        df = df[df[col_produto].astype(str).str.strip() != ""]
 
-        # Converter números
-        for col in ["Estoque", "Compras", "PrecoVenda", "Vendas"]:
-            if col in df.columns:
+        # Converter numéricos
+        for col in [col_estoque, col_compras, col_preco, col_vendas]:
+            if col and col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        # ===============================
-        # 📊 Análises e Indicadores
-        # ===============================
-        total_produtos = len(df)
-        total_estoque = df["Estoque"].sum()
-        total_compras = df["Compras"].sum() if "Compras" in df.columns else 0
-        total_vendas = df["Vendas"].sum() if "Vendas" in df.columns else 0
+        # Métricas principais
+        total_itens = len(df)
+        total_estoque = df[col_estoque].sum()
+        valor_total = (df[col_estoque] * df[col_preco]).sum()
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Produtos Cadastrados", f"{total_produtos}")
-        col2.metric("Total em Estoque", f"{total_estoque:,.0f}")
-        col3.metric("Total Compras", f"{total_compras:,.0f}")
-        col4.metric("Total Vendas", f"{total_vendas:,.0f}")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Produtos Cadastrados", total_itens)
+        col2.metric("Quantidade Total em Estoque", f"{total_estoque:,.0f}".replace(",", "."))
+        col3.metric("Valor Total do Estoque (R$)", f"{valor_total:,.2f}".replace(".", ","))
 
         st.divider()
 
-        # ===============================
-        # ⚠️ Produtos com estoque baixo
-        # ===============================
-        limite = st.sidebar.number_input("Definir limite de alerta (ex: 5 unidades)", min_value=0, value=5)
-        alertas = df[df["Estoque"] <= limite]
-
-        st.subheader("🚨 Alertas de Reposição")
-        if alertas.empty:
-            st.success("✅ Todos os produtos estão acima do limite mínimo de estoque.")
-        else:
-            st.warning(f"⚠️ {len(alertas)} produtos abaixo do limite definido:")
-            st.dataframe(alertas[["Produto", "Estoque"]])
-
-        st.divider()
-
-        # ===============================
-        # 📈 Gráficos de desempenho
-        # ===============================
-        st.subheader("📈 Gráficos de Estoque e Vendas")
-
+        # Gráfico de barras - Top 15 produtos em estoque
+        top_produtos = df.sort_values(by=col_estoque, ascending=False).head(15)
         fig, ax = plt.subplots(figsize=(10, 5))
-        top_estoque = df.nlargest(10, "Estoque")
-        ax.barh(top_estoque["Produto"], top_estoque["Estoque"])
+        ax.barh(top_produtos[col_produto], top_produtos[col_estoque])
+        ax.invert_yaxis()
         ax.set_xlabel("Quantidade em Estoque")
         ax.set_ylabel("Produto")
-        ax.set_title("Top 10 Produtos com Maior Estoque")
+        ax.set_title("Top 15 Produtos em Estoque")
         st.pyplot(fig)
-
-        if "Vendas" in df.columns:
-            fig2, ax2 = plt.subplots(figsize=(10, 5))
-            top_vendas = df.nlargest(10, "Vendas")
-            ax2.barh(top_vendas["Produto"], top_vendas["Vendas"], color="orange")
-            ax2.set_xlabel("Quantidade Vendida")
-            ax2.set_ylabel("Produto")
-            ax2.set_title("Top 10 Produtos Mais Vendidos")
-            st.pyplot(fig2)
 
         st.divider()
 
-        # ===============================
-        # 💾 Exportar relatório
-        # ===============================
-        st.subheader("💾 Exportar Dados")
-        buffer = io.BytesIO()
-        df.to_csv(buffer, index=False, encoding="utf-8-sig")
-        st.download_button("⬇️ Baixar relatório em CSV", buffer.getvalue(), "relatorio_estoque.csv", "text/csv")
+        # Tabela de alertas (estoque baixo)
+        limite = st.slider("Defina o limite para alerta de reposição", 0, 50, 5)
+        alerta = df[df[col_estoque] <= limite]
+        st.subheader("⚠️ Alertas de Reposição")
+        if not alerta.empty:
+            st.dataframe(alerta[[col_produto, col_estoque]])
+        else:
+            st.success("✅ Nenhum produto abaixo do limite definido.")
+
+        st.divider()
+
+        # Exibição completa
+        with st.expander("📋 Ver tabela completa"):
+            st.dataframe(df)
 
     except Exception as e:
         st.error(f"❌ Erro ao ler o arquivo: {e}")
 
 else:
-    st.info("👈 Envie um arquivo CSV para começar a análise.")
+    st.info("⬅️ Envie um arquivo CSV para visualizar o painel.")
