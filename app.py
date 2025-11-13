@@ -37,11 +37,15 @@ st.sidebar.header("Dados")
 file = st.sidebar.file_uploader("📁 Envie seu arquivo CSV do estoque", type=["csv"])
 
 if file is not None:
-    # Tenta ler o CSV com vários separadores
+    # Tenta ler o CSV com segurança
     try:
-        df = pd.read_csv(file, sep=";")
-    except:
-        df = pd.read_csv(file)
+        df = pd.read_csv(file, sep=";", skip_blank_lines=True)
+        if df.empty or len(df.columns) <= 1:
+            file.seek(0)
+            df = pd.read_csv(file, sep=",", skip_blank_lines=True)
+    except Exception as e:
+        st.error(f"Erro ao ler o arquivo: {e}")
+        st.stop()
     
     df = normalize_columns(df)
     
@@ -66,7 +70,7 @@ if file is not None:
     if "Produto" in df.columns:
         df = df[df["Produto"].notna() & (df["Produto"] != "")]
     else:
-        st.error("Não foi possível identificar a coluna 'Produto'. Verifique o nome no CSV.")
+        st.error("❌ Não foi possível identificar a coluna 'Produto'. Verifique o nome no CSV.")
         st.stop()
 
     # -------------------------
@@ -85,11 +89,25 @@ if file is not None:
     col3.metric("Total de Vendas", f"{total_vendas:,}".replace(",", "."))
 
     # -------------------------
+    # RESUMO INTELIGENTE
+    # -------------------------
+    st.divider()
+    st.subheader("🧠 Resumo Automático")
+    low_stock = df[df["Estoque"] <= 5]
+    no_sales = df[df["Vendas"] == 0] if "Vendas" in df.columns else pd.DataFrame()
+    
+    resumo = f"""
+    - 🔻 {len(low_stock)} produtos estão com estoque abaixo de 5 unidades.  
+    - 💤 {len(no_sales)} produtos sem nenhuma venda registrada.  
+    - 📦 Total atual de produtos: {total_produtos}.
+    """
+    st.markdown(resumo)
+
+    # -------------------------
     # ALERTAS DE REPOSIÇÃO
     # -------------------------
     st.divider()
     st.subheader("⚠️ Alertas de Reposição")
-    low_stock = df[df["Estoque"] <= 5].sort_values("Estoque")
     if not low_stock.empty:
         st.dataframe(low_stock[["Produto", "Estoque", "Vendas"]].head(15), use_container_width=True)
     else:
@@ -101,7 +119,7 @@ if file is not None:
     st.divider()
     st.subheader("📈 Estoque por Produto")
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(df["Produto"], df["Estoque"])
+    ax.bar(df["Produto"], df["Estoque"], color="#1f77b4")
     ax.set_ylabel("Quantidade em Estoque")
     ax.set_xlabel("Produto")
     plt.xticks(rotation=90, fontsize=8)
@@ -114,8 +132,9 @@ if file is not None:
     st.subheader("💸 Vendas por Produto")
     if "Vendas" in df.columns:
         fig2, ax2 = plt.subplots(figsize=(10, 4))
-        ax2.bar(df["Produto"], df["Vendas"], color="green")
+        ax2.bar(df["Produto"], df["Vendas"], color="#2ca02c")
         ax2.set_ylabel("Quantidade Vendida")
+        ax2.set_xlabel("Produto")
         plt.xticks(rotation=90, fontsize=8)
         st.pyplot(fig2)
     else:
