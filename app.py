@@ -1,5 +1,5 @@
 # =========================
-# Painel de Estoque - Kelvin Arruda (Versão Blindada)
+# Painel de Estoque - Kelvin Arruda (Versão Final Estável)
 # =========================
 
 import streamlit as st
@@ -11,7 +11,7 @@ st.set_page_config(page_title="Painel de Estoque", layout="wide")
 
 st.title("📦 Painel de Estoque")
 st.markdown("### **KELVIN ARRUDA**")
-st.write("Versão que lê qualquer CSV e renomeia colunas automaticamente.")
+st.write("Versão robusta: lê qualquer CSV e ajusta colunas automaticamente.")
 
 # -------------------------
 # Função de leitura inteligente
@@ -59,7 +59,8 @@ primeira_linha = df.iloc[0].astype(str).str.lower()
 
 if any(x in " ".join(primeira_linha) for x in ["produto", "estoque", "venda", "compra", "valor"]):
     df.columns = primeira_linha
-    df = df.drop(0)
+    if 0 in df.index:
+        df = df.drop(0)
     df.columns = [str(c).strip().lower() for c in df.columns]
 else:
     # Se não houver cabeçalho, cria nomes genéricos
