@@ -1,386 +1,136 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
-import numpy as np
 
-# --------------------------
-# Configuração da página
-# --------------------------
-st.set_page_config(page_title="Dashboard - Loja Importados", layout="wide", initial_sidebar_state="expanded")
-st.markdown(
-    """
+# ======================================
+# CONFIGURAÇÃO GERAL
+# ======================================
+st.set_page_config(page_title="Dashboard Loja Importados", layout="wide")
+st.markdown("""
     <style>
-    /* fundo escuro + header dourado */
-    .stApp { background-color: #0b0b0b; color: #e6e2d3; }
-    .stHeader, .css-18e3th9 { color: #e6e2d3; }
-    .big-title { color: #E8C36A; font-weight:700; font-size:30px; }
-    .kpi-card { background: linear-gradient(90deg, rgba(20,20,20,0.9), rgba(10,10,10,0.9)); border-radius:12px; padding:12px; }
-    .gold { color: #E8C36A; font-weight:700; }
-    .stCaption { color: #9e9b8f; }
-    /* make dataframes background dark */
-    .dataframe, .stDataFrame div.st-df { background: #0b0b0b !important; color: #e6e2d3 !important; }
+        body { background-color: #0e1117; color: #f1c40f; }
+        [data-testid="stAppViewContainer"] { background-color: #0e1117; }
+        [data-testid="stHeader"] { background: none; }
+        .kpi-card {
+            background-color: #1e1e1e; padding: 15px; border-radius: 10px;
+            text-align: center; box-shadow: 0 0 8px #00000055;
+        }
+        .kpi-value { font-size: 26px; color: #f1c40f; font-weight: bold; }
+        .kpi-label { font-size: 14px; color: #aaa; }
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
-st.markdown('<div class="big-title">📊 Dashboard - Loja Importados</div>', unsafe_allow_html=True)
-st.markdown("**Visualização dark elegante (preto + dourado)** — análise de Estoque, Vendas e Compras")
-
-# --------------------------
-# Helpers
-# --------------------------
-def fmt_brl(value):
+# ======================================
+# FUNÇÃO DE LEITURA SEGURA
+# ======================================
+@st.cache_data
+def load_data():
     try:
-        return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
-        return f"R$ 0,00"
+        xls = pd.ExcelFile("LOJA IMPORTADOS.xlsx")
 
-def find_header_row(path, sheet, keywords=("PRODUTO", "DATA", "QUANTIDADE", "VALOR")):
-    """
-    Procura em até as primeiras 12 linhas a linha que contém um dos keywords (case-insensitive).
-    Retorna índice da linha que deve ser usada como header (0-index).
-    """
-    try:
-        preview = pd.read_excel(path, sheet_name=sheet, header=None, nrows=12)
+        def read_sheet(name, header_guess=2):
+            try:
+                df = pd.read_excel(xls, sheet_name=name, header=header_guess)
+                df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+                df.columns = [str(c).strip().upper() for c in df.columns]
+                return df
+            except Exception as e:
+                st.warning(f"⚠️ Erro ao ler aba {name}: {e}")
+                return pd.DataFrame()
+
+        estoque = read_sheet("ESTOQUE")
+        vendas = read_sheet("VENDAS")
+        compras = read_sheet("COMPRAS")
+
+        return estoque, vendas, compras
+
     except Exception as e:
-        return None, str(e)
-    for i in range(len(preview)):
-        row_vals = preview.iloc[i].astype(str).str.upper().fillna("")
-        for kw in keywords:
-            if any(row_vals.str.contains(kw)):
-                return i, None
-    # fallback: se nenhuma linha encontrada, retorna 0
-    return 0, None
+        st.error(f"❌ Falha ao carregar o arquivo: {e}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-def clean_df(df):
-    # drop fully empty columns
-    df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
-    # remove columns that are all NaN
-    df = df.dropna(axis=1, how="all")
-    # strip names and uppercase
-    df.columns = [str(c).strip().upper() for c in df.columns]
-    # drop rows that are completely NaN
-    df = df.dropna(axis=0, how="all")
-    # reset index
-    df = df.reset_index(drop=True)
+# ======================================
+# CARREGAR DADOS
+# ======================================
+estoque, vendas, compras = load_data()
+
+if vendas.empty and compras.empty and estoque.empty:
+    st.stop()
+
+# ======================================
+# AJUSTES E CÁLCULOS
+# ======================================
+def safe_numeric(df, cols):
+    for col in cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        else:
+            st.warning(f"⚠️ Coluna ausente: {col}")
+            df[col] = 0
     return df
 
-def col_like(df, candidates):
-    """Procura a primeira coluna cujo nome contém qualquer candidato (case-insensitive)."""
-    if df is None:
-        return None
-    cols = list(df.columns)
-    for cand in candidates:
-        for c in cols:
-            if cand.upper() in c.upper():
-                return c
-    return None
-
-# --------------------------
-# Leitura robusta das abas
-# --------------------------
-@st.cache_data
-def load_sheet(path, sheet_name):
-    header_idx, err = find_header_row(path, sheet_name)
-    if err:
-        return None, f"Erro lendo folha {sheet_name}: {err}"
-    try:
-        df = pd.read_excel(path, sheet_name=sheet_name, header=header_idx)
-    except Exception as e:
-        return None, f"Erro lendo folha {sheet_name}: {e}"
-    df = clean_df(df)
-    return df, None
-
-EXCEL_PATH = "LOJA IMPORTADOS.xlsx"
-
-with st.sidebar:
-    st.markdown("### ⚙️ Controles")
-    show_diag = st.button("🔍 Diagnóstico (mostrar colunas detectadas)")
-    st.markdown("---")
-    st.markdown("Arquivo: **LOJA IMPORTADOS.xlsx** (deve estar no mesmo diretório do app)")
-
-# Carrega abas
-estoque, err_e = load_sheet(EXCEL_PATH, "ESTOQUE")
-vendas, err_v = load_sheet(EXCEL_PATH, "VENDAS")
-compras, err_c = load_sheet(EXCEL_PATH, "COMPRAS")
-
-# Mostrar erros de leitura (se houver)
-if err_e:
-    st.error(err_e)
-if err_v:
-    st.error(err_v)
-if err_c:
-    st.error(err_c)
-
-# --------------------------
-# Diagnóstico (opcional)
-# --------------------------
-if show_diag:
-    st.markdown("## 🔍 Diagnóstico de colunas detectadas")
-    def show_df_info(name, df):
-        if df is None or df.shape[0] == 0:
-            st.warning(f"{name}: dados vazios ou não carregados.")
-            return
-        st.write(f"**{name}** — {df.shape[0]} linhas × {df.shape[1]} colunas")
-        st.write(list(df.columns))
-        st.dataframe(df.head(6))
-    show_df_info("ESTOQUE", estoque)
-    show_df_info("VENDAS", vendas)
-    show_df_info("COMPRAS", compras)
-
-# --------------------------
-# Detectar colunas usadas (vendas)
-# --------------------------
-# Possíveis nomes usados nas suas planilhas (vamos tentar várias opções)
-v_col_valor_total = None
-v_col_valor_unit = None
-v_col_qtd = None
-v_col_prod = None
-v_col_data = None
-
-if vendas is not None:
-    v_col_prod = col_like(vendas, ["PRODUTO", "ITEM", "DESCRICAO"])
-    v_col_data = col_like(vendas, ["DATA", "DT"])
-    v_col_qtd = col_like(vendas, ["QUANTIDADE", "QTD", "QTDE"])
-    # valor total pode ter 'VALOR TOTAL', 'TOTAL', 'VALOR', 'VALOR VENDA'
-    v_col_valor_total = col_like(vendas, ["VALOR TOTAL", "VALOR_VENDA", "VALOR VENDA", "TOTAL", "VALOR"])
-    v_col_valor_unit = col_like(vendas, ["VALOR UNIT", "VALOR UNITÁRIO", "VALOR UNITARIO", "PRECO UNITARIO", "VALOR_UNITARIO", "PREÇO"])
-
-# Compras
-c_col_valor_total = None
-c_col_valor_unit = None
-c_col_qtd = None
-c_col_prod = None
-c_col_data = None
-
-if compras is not None:
-    c_col_prod = col_like(compras, ["PRODUTO", "ITEM", "DESCRICAO"])
-    c_col_data = col_like(compras, ["DATA", "DT"])
-    c_col_qtd = col_like(compras, ["QUANTIDADE", "QTD", "QTDE"])
-    c_col_valor_total = col_like(compras, ["CUSTO TOTAL", "VALOR TOTAL", "TOTAL", "CUSTO_TOTAL", "VALOR"])
-    c_col_valor_unit = col_like(compras, ["CUSTO UNIT", "CUSTO UNITARIO", "CUSTO UNITÁRIO", "CUSTO", "CUSTO_UNITARIO"])
-
-# Estoque
-e_col_prod = None
-e_col_qtd = None
-e_col_custo_unit = None
-if estoque is not None:
-    e_col_prod = col_like(estoque, ["PRODUTO", "ITEM", "DESCRICAO"])
-    e_col_qtd = col_like(estoque, ["EM ESTOQUE", "QUANTIDADE", "QTD", "QTDE"])
-    e_col_custo_unit = col_like(estoque, ["MEDIA C", "CUSTO UNIT", "CUSTO", "CUSTO UNITARIO", "CUSTO UNITÁRIO", "MEDIA C. UNITARIO"])
-
-# Mensagens de aviso para colunas não encontradas
-missing_msgs = []
-if vendas is None:
-    missing_msgs.append("A aba VENDAS não foi carregada.")
+if not vendas.empty:
+    vendas = safe_numeric(vendas, ["QTD", "VALOR VENDA", "MEDIA CUSTO UNITARIO"])
+    vendas["LUCRO_CALC"] = (vendas["VALOR VENDA"] - vendas["MEDIA CUSTO UNITARIO"]) * vendas["QTD"]
+    total_vendas = (vendas["VALOR VENDA"] * vendas["QTD"]).sum()
+    lucro_estimado = vendas["LUCRO_CALC"].sum()
 else:
-    if not v_col_prod: missing_msgs.append("VENDAS: coluna PRODUTO não encontrada.")
-    if not (v_col_valor_total or v_col_valor_unit): missing_msgs.append("VENDAS: coluna de VALOR (valor total ou unitário) não encontrada.")
-    if not v_col_qtd: missing_msgs.append("VENDAS: coluna QUANTIDADE não encontrada (usar QTD, QUANTIDADE, QTDE).")
+    total_vendas, lucro_estimado = 0, 0
 
-if compras is None:
-    missing_msgs.append("A aba COMPRAS não foi carregada.")
+if not compras.empty:
+    compras = safe_numeric(compras, ["VALOR TOTAL"])
+    total_compras = compras["VALOR TOTAL"].sum()
 else:
-    if not (c_col_valor_total or (c_col_valor_unit and c_col_qtd)): missing_msgs.append("COMPRAS: coluna de VALOR/CUSTO não encontrada.")
-    if not c_col_prod: missing_msgs.append("COMPRAS: coluna PRODUTO não encontrada.")
+    total_compras = 0
 
-if estoque is None:
-    missing_msgs.append("A aba ESTOQUE não foi carregada.")
+if not estoque.empty:
+    estoque = safe_numeric(estoque, ["QTD"])
+    qtd_estoque = estoque["QTD"].sum()
 else:
-    if not e_col_qtd: missing_msgs.append("ESTOQUE: coluna de QUANTIDADE não encontrada.")
-    if not e_col_prod: missing_msgs.append("ESTOQUE: coluna PRODUTO não encontrada.")
+    qtd_estoque = 0
 
-if missing_msgs:
-    with st.expander("⚠️ Avisos / Colunas faltando (clique para ver)"):
-        for m in missing_msgs:
-            st.warning(m)
+# ======================================
+# LAYOUT KPIs
+# ======================================
+st.markdown("<h2 style='color:#f1c40f;text-align:center;'>📊 Painel Gerencial - Loja Importados</h2>", unsafe_allow_html=True)
 
-# --------------------------
-# Normalizações básicas
-# --------------------------
-# Converter colunas de data
-def convert_dates(df, colname):
-    try:
-        df[colname] = pd.to_datetime(df[colname], errors="coerce")
-    except:
-        pass
-
-if vendas is not None and v_col_data:
-    convert_dates(vendas, v_col_data)
-if compras is not None and c_col_data:
-    convert_dates(compras, c_col_data)
-
-# --------------------------
-# Cálculo: Total Vendas
-# --------------------------
-total_vendas = 0.0
-if vendas is not None:
-    # tentar calcular por linha:
-    # Prioridade: se existir valor unitário e quantidade -> soma((valor_unit - custo_unit)*qtd) se custo disponivel
-    # Caso contrário: somar VALOR_TOTAL (se existir)
-    try:
-        # identificar col de custo unit (se existir) a partir de VENDAS ou ESTOQUE
-        v_col_custo_unit = col_like(vendas, ["CUSTO UNIT", "CUSTO", "MEDIA C", "CUSTO_UNITARIO"])
-        if not v_col_custo_unit:
-            # fallback para coluna de custo no estoque, se houver correspondência por produto
-            v_col_custo_unit = e_col_custo_unit
-
-        # Se tiver coluna VALOR_UNIT e QTD
-        if v_col_valor_unit and v_col_qtd and v_col_custo_unit:
-            # lucro por linha: (valor_unit - custo_unit) * qtd
-            vendas["__VAL_UNIT"] = pd.to_numeric(vendas[v_col_valor_unit], errors="coerce")
-            vendas["__CUST_UNIT"] = pd.to_numeric(vendas[v_col_custo_unit], errors="coerce")
-            vendas["__QTD"] = pd.to_numeric(vendas[v_col_qtd], errors="coerce").fillna(0)
-            vendas["__LUCRO_LIN"] = (vendas["__VAL_UNIT"].fillna(0) - vendas["__CUST_UNIT"].fillna(0)) * vendas["__QTD"]
-            total_vendas = vendas[v_col_valor_unit].astype(float).mul(vendas["__QTD"]).sum(skipna=True) if v_col_valor_unit else vendas.get("__LUCRO_LIN", pd.Series()).sum()
-        elif v_col_valor_total:
-            total_vendas = pd.to_numeric(vendas[v_col_valor_total], errors="coerce").sum(skipna=True)
-        else:
-            total_vendas = 0.0
-    except Exception as e:
-        st.error(f"Erro ao calcular total de vendas: {e}")
-        total_vendas = 0.0
-
-# --------------------------
-# Cálculo: Total Compras (Custo)
-# --------------------------
-total_compras = 0.0
-if compras is not None:
-    try:
-        if c_col_valor_total:
-            total_compras = pd.to_numeric(compras[c_col_valor_total], errors="coerce").sum(skipna=True)
-        elif c_col_valor_unit and c_col_qtd:
-            total_compras = (pd.to_numeric(compras[c_col_valor_unit], errors="coerce") * pd.to_numeric(compras[c_col_qtd], errors="coerce").fillna(0)).sum(skipna=True)
-        else:
-            total_compras = 0.0
-    except Exception as e:
-        st.error(f"Erro ao calcular total de compras: {e}")
-        total_compras = 0.0
-
-# --------------------------
-# Cálculo: Lucro estimado (recalcula)
-# --------------------------
-lucro_estimado = 0.0
-try:
-    # Se calculamos lucro por linha já, use somatório
-    if "__LUCRO_LIN" in (vendas.columns if vendas is not None else []):
-        lucro_estimado = vendas["__LUCRO_LIN"].sum(skipna=True)
-    else:
-        # fallback: total_vendas - total_compras
-        lucro_estimado = (total_vendas - total_compras)
-except Exception as e:
-    st.error(f"Erro ao calcular lucro: {e}")
-    lucro_estimado = total_vendas - total_compras
-
-# --------------------------
-# Cálculo: Estoque total (quantidade)
-# --------------------------
-qtde_estoque = 0
-if estoque is not None and e_col_qtd:
-    try:
-        qtde_estoque = int(pd.to_numeric(estoque[e_col_qtd], errors="coerce").fillna(0).sum())
-    except:
-        qtde_estoque = 0
-
-# --------------------------
-# Exibir KPIs
-# --------------------------
-k1, k2, k3, k4 = st.columns(4)
-k1.markdown(f"<div class='kpi-card'><h3 class='gold'>💰 Total de Vendas</h3><h2>{fmt_brl(total_vendas)}</h2></div>", unsafe_allow_html=True)
-k2.markdown(f"<div class='kpi-card'><h3 class='gold'>🧾 Total de Compras</h3><h2>{fmt_brl(total_compras)}</h2></div>", unsafe_allow_html=True)
-k3.markdown(f"<div class='kpi-card'><h3 class='gold'>📈 Lucro Estimado</h3><h2>{fmt_brl(lucro_estimado)}</h2></div>", unsafe_allow_html=True)
-k4.markdown(f"<div class='kpi-card'><h3 class='gold'>📦 Qtde em Estoque</h3><h2>{qtde_estoque}</h2></div>", unsafe_allow_html=True)
+col1, col2, col3, col4 = st.columns(4)
+col1.markdown(f"<div class='kpi-card'><div class='kpi-value'>R$ {total_vendas:,.2f}</div><div class='kpi-label'>💰 Total de Vendas</div></div>", unsafe_allow_html=True)
+col2.markdown(f"<div class='kpi-card'><div class='kpi-value'>R$ {total_compras:,.2f}</div><div class='kpi-label'>🧾 Total de Compras</div></div>", unsafe_allow_html=True)
+col3.markdown(f"<div class='kpi-card'><div class='kpi-value'>R$ {lucro_estimado:,.2f}</div><div class='kpi-label'>📈 Lucro Estimado</div></div>", unsafe_allow_html=True)
+col4.markdown(f"<div class='kpi-card'><div class='kpi-value'>{qtd_estoque:,}</div><div class='kpi-label'>📦 Qtde em Estoque</div></div>", unsafe_allow_html=True)
 
 st.markdown("---")
 
-# --------------------------
-# Gráficos (Plotly - tema escuro)
-# --------------------------
-px.defaults.template = "plotly_dark"
-gold_seq = ["#E8C36A"]
+# ======================================
+# GRÁFICOS
+# ======================================
+aba = st.sidebar.radio("📂 Escolha uma aba", ["Vendas", "Compras", "Estoque", "Diagnóstico"])
 
-# Vendas mensais
-if vendas is not None and v_col_data and (v_col_valor_total or v_col_valor_unit):
-    try:
-        vendas["_DATA_MES"] = pd.to_datetime(vendas[v_col_data], errors="coerce").dt.to_period("M").astype(str)
-        if v_col_valor_total:
-            vendas_mensais = vendas.groupby("_DATA_MES")[v_col_valor_total].sum().reset_index()
-            fig = px.bar(vendas_mensais, x="_DATA_MES", y=v_col_valor_total, title="📅 Evolução Mensal das Vendas",
-                         color_discrete_sequence=gold_seq)
-        elif v_col_valor_unit and v_col_qtd:
-            vendas["_VAL_TOTAL_calc"] = pd.to_numeric(vendas[v_col_valor_unit], errors="coerce") * pd.to_numeric(vendas[v_col_qtd], errors="coerce").fillna(0)
-            vendas_mensais = vendas.groupby("_DATA_MES")["_VAL_TOTAL_calc"].sum().reset_index()
-            fig = px.bar(vendas_mensais, x="_DATA_MES", y="_VAL_TOTAL_calc", title="📅 Evolução Mensal das Vendas (calc)",
-                         color_discrete_sequence=gold_seq)
+if aba == "Vendas" and not vendas.empty:
+    st.subheader("💵 Vendas por Produto")
+    graf_vendas = vendas.groupby("PRODUTO")["VALOR VENDA"].sum().sort_values(ascending=False).reset_index()
+    fig = px.bar(graf_vendas, x="PRODUTO", y="VALOR VENDA", title="Ranking de Vendas", color="VALOR VENDA", color_continuous_scale="gold")
+    fig.update_layout(template="plotly_dark", plot_bgcolor="#0e1117", paper_bgcolor="#0e1117", font_color="white")
+    st.plotly_chart(fig, use_container_width=True)
+
+elif aba == "Compras" and not compras.empty:
+    st.subheader("🧾 Compras por Produto")
+    if "PRODUTO" in compras.columns and "VALOR TOTAL" in compras.columns:
+        graf_compras = compras.groupby("PRODUTO")["VALOR TOTAL"].sum().reset_index()
+        fig = px.bar(graf_compras, x="PRODUTO", y="VALOR TOTAL", title="Compras por Produto", color="VALOR TOTAL", color_continuous_scale="gold")
+        fig.update_layout(template="plotly_dark", plot_bgcolor="#0e1117", paper_bgcolor="#0e1117", font_color="white")
         st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Erro ao gerar gráfico de vendas mensais: {e}")
+    else:
+        st.warning("⚠️ Colunas de produto ou valor não encontradas em COMPRAS.")
 
-# Top produtos vendidos
-if vendas is not None and v_col_prod and (v_col_valor_total or (v_col_valor_unit and v_col_qtd)):
-    try:
-        if v_col_valor_total:
-            top = vendas.groupby(v_col_prod)[v_col_valor_total].sum().nlargest(10).reset_index()
-            fig2 = px.bar(top, x=v_col_valor_total, y=v_col_prod, orientation="h", title="🏆 Top 10 Produtos (Vendas)",
-                          color_discrete_sequence=gold_seq)
-        else:
-            vendas["_VAL_TOTAL_calc"] = pd.to_numeric(vendas[v_col_valor_unit], errors="coerce") * pd.to_numeric(vendas[v_col_qtd], errors="coerce").fillna(0)
-            top = vendas.groupby(v_col_prod)["_VAL_TOTAL_calc"].sum().nlargest(10).reset_index()
-            fig2 = px.bar(top, x="_VAL_TOTAL_calc", y=v_col_prod, orientation="h", title="🏆 Top 10 Produtos (Vendas calculadas)",
-                          color_discrete_sequence=gold_seq)
-        st.plotly_chart(fig2, use_container_width=True)
-    except Exception as e:
-        st.error(f"Erro ao gerar top produtos: {e}")
+elif aba == "Estoque" and not estoque.empty:
+    st.subheader("📦 Estoque Atual")
+    fig = px.bar(estoque, x="PRODUTO", y="QTD", title="Quantidade em Estoque", color="QTD", color_continuous_scale="gold")
+    fig.update_layout(template="plotly_dark", plot_bgcolor="#0e1117", paper_bgcolor="#0e1117", font_color="white")
+    st.plotly_chart(fig, use_container_width=True)
 
-# Compras mensais (custo)
-if compras is not None and c_col_data and (c_col_valor_total or (c_col_valor_unit and c_col_qtd)):
-    try:
-        compras["_DATA_MES"] = pd.to_datetime(compras[c_col_data], errors="coerce").dt.to_period("M").astype(str)
-        if c_col_valor_total:
-            comp_m = compras.groupby("_DATA_MES")[c_col_valor_total].sum().reset_index()
-            fig3 = px.line(comp_m, x="_DATA_MES", y=c_col_valor_total, title="📦 Evolução Mensal das Compras", markers=True, color_discrete_sequence=gold_seq)
-        else:
-            compras["_CUST_TOTAL_calc"] = pd.to_numeric(compras[c_col_valor_unit], errors="coerce") * pd.to_numeric(compras[c_col_qtd], errors="coerce").fillna(0)
-            comp_m = compras.groupby("_DATA_MES")["_CUST_TOTAL_calc"].sum().reset_index()
-            fig3 = px.line(comp_m, x="_DATA_MES", y="_CUST_TOTAL_calc", title="📦 Evolução Mensal das Compras (calc)", markers=True, color_discrete_sequence=gold_seq)
-        st.plotly_chart(fig3, use_container_width=True)
-    except Exception as e:
-        st.error(f"Erro ao gerar gráfico de compras mensais: {e}")
-
-# Estoque top
-if estoque is not None and e_col_prod and e_col_qtd:
-    try:
-        top_e = estoque[[e_col_prod, e_col_qtd]].copy()
-        top_e[e_col_qtd] = pd.to_numeric(top_e[e_col_qtd], errors="coerce").fillna(0)
-        top_e = top_e.sort_values(e_col_qtd, ascending=False).head(15)
-        fig4 = px.bar(top_e, x=e_col_prod, y=e_col_qtd, title="📊 Top 15 Itens em Estoque", color_discrete_sequence=gold_seq)
-        st.plotly_chart(fig4, use_container_width=True)
-    except Exception as e:
-        st.error(f"Erro ao gerar gráfico de estoque: {e}")
-
-# --------------------------
-# Tabelas detalhadas e diagnóstico extra
-# --------------------------
-st.markdown("---")
-with st.expander("📋 Visualizar Dados Detalhados (Vendas / Compras / Estoque)"):
-    t1, t2, t3 = st.tabs(["🛒 Vendas", "📦 Compras", "🏷️ Estoque"])
-    with t1:
-        if vendas is not None:
-            st.dataframe(vendas.head(500))
-        else:
-            st.info("Vendas não carregada.")
-    with t2:
-        if compras is not None:
-            st.dataframe(compras.head(500))
-        else:
-            st.info("Compras não carregada.")
-    with t3:
-        if estoque is not None:
-            st.dataframe(estoque.head(500))
-        else:
-            st.info("Estoque não carregado.")
-
-st.markdown("---")
-st.caption("© 2025 Loja Importados | Dashboard gerado com Streamlit + Plotly — tema: Dark (Preto + Dourado)")
+elif aba == "Diagnóstico":
+    st.subheader("🔍 Diagnóstico de Colunas Detectadas")
+    st.write("**ESTOQUE:**", list(estoque.columns))
+    st.write("**VENDAS:**", list(vendas.columns))
+    st.write("**COMPRAS:**", list(compras.columns))
