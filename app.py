@@ -1,79 +1,132 @@
-# ---------- Upload / Leitura ----------
+# =========================
+# Painel de Estoque - KELVIN ARRUDA
+# =========================
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
+# -------------------------
+# CONFIGURAÇÕES BÁSICAS
+# -------------------------
+st.set_page_config(page_title="Painel de Estoque", layout="wide")
+
+# -------------------------
+# CABEÇALHO
+# -------------------------
+st.title("📦 Painel de Estoque")
+st.markdown("### **KELVIN ARRUDA**")
+st.write("Monitoramento inteligente de produtos, vendas e reposição 🧠💡")
+
+# -------------------------
+# FUNÇÕES AUXILIARES
+# -------------------------
+def normalize_columns(df):
+    df.columns = df.columns.str.strip().str.lower()
+    return df
+
+def to_number_series(s):
+    return pd.to_numeric(s, errors='coerce').fillna(0)
+
+# -------------------------
+# SIDEBAR - UPLOAD
+# -------------------------
 st.sidebar.header("Dados")
-use_upload = st.sidebar.checkbox("Fazer upload do CSV em vez de usar arquivo no repositório?", value=False)
+file = st.sidebar.file_uploader("📁 Envie seu arquivo CSV do estoque", type=["csv"])
 
-uploaded = None
-if use_upload:
-    uploaded = st.sidebar.file_uploader("Arraste o CSV aqui (ex: LOJA IMPORTADOS(ESTOQUE).csv)", type=['csv', 'txt'])
-    if uploaded is None:
-        st.sidebar.info("Faça upload para visualizar os dados aqui.")
-else:
-    DEFAULT_CSV = "LOJA IMPORTADOS(ESTOQUE).csv"
-    if not os.path.exists(DEFAULT_CSV) and not use_upload:
-        st.warning(f"O arquivo padrão '{DEFAULT_CSV}' não foi encontrado no repositório. Marque a opção de upload na barra lateral ou envie o arquivo para o repo.")
-        uploaded = None
-
-# ---------- Função que detecta automaticamente o cabeçalho ----------
-def read_csv_auto_header(file_path_or_buffer):
-    """Detecta a linha onde começa o cabeçalho (com 'PRODUTO') e lê a partir dali."""
+if file is not None:
+    # Tenta ler o CSV com vários separadores
     try:
-        # lê tudo em texto bruto primeiro
-        lines = []
-        if isinstance(file_path_or_buffer, str):
-            with open(file_path_or_buffer, encoding='latin1') as f:
-                lines = f.readlines()
-        else:
-            lines = file_path_or_buffer.read().decode('latin1').splitlines()
-
-        # procura a linha onde aparece "PRODUTO"
-        header_idx = 0
-        for i, line in enumerate(lines):
-            if "PRODUTO" in line.upper():
-                header_idx = i
-                break
-
-        # lê CSV a partir da linha do cabeçalho detectada
-        df = pd.read_csv(
-            pd.compat.StringIO("\n".join(lines[header_idx:])),
-            sep=";",
-            encoding="latin1"
-        )
-        df.columns = [c.strip() for c in df.columns]
-        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-        return df
-    except Exception as e:
-        st.error(f"Erro ao detectar cabeçalho: {e}")
-        raise e
-
-# ---------- Carregar dataframe ----------
-try:
-    if uploaded:
-        df_raw = read_csv_auto_header(uploaded)
+        df = pd.read_csv(file, sep=";")
+    except:
+        df = pd.read_csv(file)
+    
+    df = normalize_columns(df)
+    
+    # Renomeia colunas conhecidas automaticamente
+    rename_map = {
+        "produto": "Produto",
+        "em estoque": "Estoque",
+        "estoque": "Estoque",
+        "compras": "Compras",
+        "media c. unitario": "Custo_Unitario",
+        "valor venda sugerido": "Preco_Venda",
+        "vendas": "Vendas"
+    }
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+    
+    # Corrige colunas numéricas
+    for col in ["Estoque", "Compras", "Custo_Unitario", "Preco_Venda", "Vendas"]:
+        if col in df.columns:
+            df[col] = to_number_series(df[col])
+    
+    # Remove linhas sem produto
+    if "Produto" in df.columns:
+        df = df[df["Produto"].notna() & (df["Produto"] != "")]
     else:
-        df_raw = read_csv_auto_header(DEFAULT_CSV)
-except Exception as e:
-    st.error("Erro ao ler CSV: " + str(e))
-    st.stop()
+        st.error("Não foi possível identificar a coluna 'Produto'. Verifique o nome no CSV.")
+        st.stop()
 
-# ---------- Normalização ----------
-df = normalize_columns(df_raw.copy())
-df = ensure_product_names(df)
+    # -------------------------
+    # PAINEL PRINCIPAL
+    # -------------------------
+    st.divider()
+    st.subheader("📊 Visão Geral")
+    
+    total_produtos = len(df)
+    total_estoque = int(df["Estoque"].sum()) if "Estoque" in df.columns else 0
+    total_vendas = int(df["Vendas"].sum()) if "Vendas" in df.columns else 0
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Produtos Cadastrados", f"{total_produtos}")
+    col2.metric("Itens em Estoque", f"{total_estoque:,}".replace(",", "."))
+    col3.metric("Total de Vendas", f"{total_vendas:,}".replace(",", "."))
 
-# --- filtro anti-lixo: remove linhas sem dados reais ---
-mask_valid = (
-    df['PRODUTO'].notna()
-    & ~df['PRODUTO'].str.contains("SEM_NOME_PRODUTO", case=False)
-    & (
-        (df['EM_ESTOQUE'] > 0)
-        | (df['VENDAS'] > 0)
-        | (df['COMPRAS'] > 0)
-    )
-)
-df = df[mask_valid].copy()
-
-# garantir colunas numéricas mínimas
-for col in ['EM_ESTOQUE', 'COMPRAS', 'MEDIA_CUSTO', 'VALOR_VENDA', 'VENDAS']:
-    if col in df.columns:
-        df[col] = to_number_series(df[col])
+    # -------------------------
+    # ALERTAS DE REPOSIÇÃO
+    # -------------------------
+    st.divider()
+    st.subheader("⚠️ Alertas de Reposição")
+    low_stock = df[df["Estoque"] <= 5].sort_values("Estoque")
+    if not low_stock.empty:
+        st.dataframe(low_stock[["Produto", "Estoque", "Vendas"]].head(15), use_container_width=True)
     else:
-        df[col] = 0
+        st.success("Todos os produtos estão com níveis de estoque adequados 🎉")
+
+    # -------------------------
+    # GRÁFICO DE ESTOQUE
+    # -------------------------
+    st.divider()
+    st.subheader("📈 Estoque por Produto")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.bar(df["Produto"], df["Estoque"])
+    ax.set_ylabel("Quantidade em Estoque")
+    ax.set_xlabel("Produto")
+    plt.xticks(rotation=90, fontsize=8)
+    st.pyplot(fig)
+
+    # -------------------------
+    # GRÁFICO DE VENDAS
+    # -------------------------
+    st.divider()
+    st.subheader("💸 Vendas por Produto")
+    if "Vendas" in df.columns:
+        fig2, ax2 = plt.subplots(figsize=(10, 4))
+        ax2.bar(df["Produto"], df["Vendas"], color="green")
+        ax2.set_ylabel("Quantidade Vendida")
+        plt.xticks(rotation=90, fontsize=8)
+        st.pyplot(fig2)
+    else:
+        st.info("Coluna 'Vendas' não encontrada no arquivo.")
+
+    # -------------------------
+    # RELATÓRIO DETALHADO
+    # -------------------------
+    st.divider()
+    st.subheader("📋 Relatório Completo")
+    st.dataframe(df, use_container_width=True)
+    
+else:
+    st.info("⬅️ Envie um arquivo CSV para começar.")
