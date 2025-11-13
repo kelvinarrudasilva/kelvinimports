@@ -35,7 +35,7 @@ st.markdown(
 )
 
 st.markdown("<div class='title'>📊 Painel — Loja Importados</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>Tema: Preto & Dourado (alto contraste) • Abas: Visão Geral / Estoque / Vendas</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Tema: Preto & Dourado (alto contraste) • Abas: Visão Geral / Estoque</div>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ======================
@@ -197,7 +197,7 @@ period_options = ["Geral"] + [k for k in period_map.keys() if k != "Geral"]
 # ======================
 # Tabs
 # ======================
-tab1, tab2, tab3 = st.tabs(["📈 Visão Geral", "📦 Estoque Atual", "🛒 Vendas Detalhadas"])
+tab1, tab2 = st.tabs(["📈 Visão Geral", "📦 Estoque Atual"])
 
 # ---- Tab 1: Visão Geral (KPIs + Top10 + Últimas Vendas + Evolução) ----
 with tab1:
@@ -249,8 +249,8 @@ with tab1:
 
     st.markdown("---")
 
-    # Últimas vendas
-    st.subheader("🕒 Últimas Vendas")
+    # Últimas vendas filtradas
+    st.subheader("🕒 Últimas Vendas (mês selecionado)")
     if not vendas_period.empty:
         ult = vendas_period.sort_values(v_data, ascending=False).head(10)
         ult[v_data] = ult[v_data].dt.strftime("%d/%m/%Y")
@@ -271,34 +271,3 @@ with tab2:
         st.dataframe(est[["PRODUTO","QTD","PRECO VENDA","PRECO CUSTO"]].reset_index(drop=True))
     else:
         st.info("Estoque vazio ou coluna de produto não encontrada.")
-
-# ---- Tab 3: Vendas Detalhadas ----
-with tab3:
-    st.subheader("🛒 Vendas Detalhadas")
-    # botão de período também aqui
-    periodo_sel2 = st.selectbox("Selecione o período", period_options, index=0, key="vendas_det_period")
-    periodo_val2 = period_map.get(periodo_sel2)
-    if periodo_val2 is None:
-        vendas_det = vendas.copy()
-    else:
-        vendas_det = vendas[vendas["_PERIODO"] == periodo_val2].copy()
-
-    # Evolução de vendas na aba de vendas detalhadas
-    st.subheader("📊 Evolução de Vendas por Mês")
-    if not vendas.empty:
-        evo = vendas.groupby("_PERIODO").agg(Total_Venda=("_VAL_TOTAL","sum")).reset_index()
-        evo["PERIODO_FMT"] = pd.to_datetime(evo["_PERIODO"] + "-01").dt.strftime("%b %Y")
-        evo_fig = px.line(evo, x="PERIODO_FMT", y="Total_Venda", markers=True)
-        evo_fig.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFD700",
-                              xaxis_title=None, yaxis_title="Valor R$",
-                              margin=dict(l=20,r=20,t=30,b=40))
-        st.plotly_chart(evo_fig, use_container_width=True)
-
-    # tabela detalhada
-    if not vendas_det.empty:
-        det = vendas_det.copy()
-        det[v_data] = det[v_data].dt.strftime("%d/%m/%Y")
-        det["_VAL_TOTAL"] = det["_VAL_TOTAL"].apply(fmt_brl)
-        det["_LUCRO"] = det["_LUCRO"].apply(fmt_brl)
-        det = det.rename(columns={v_data:"Data", v_prod:"Produto","_QTD":"Qtd","_VAL_TOTAL":"Valor","_LUCRO":"Lucro"})
-        st.dataframe(det.reset_index(drop=True))
