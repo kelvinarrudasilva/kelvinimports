@@ -4,6 +4,7 @@ import os
 
 # Nome do arquivo
 arquivo = "LOJA IMPORTADOS.xlsx"
+%matplotlib inline
 
 # Verifica se o arquivo existe
 if not os.path.exists(arquivo):
@@ -54,3 +55,4 @@ if 'produto' in df.columns and 'vendas' in df.columns:
     plt.show()
 
 print("Gráficos gerados: 'estoque_por_produto.png' e 'vendas_por_produto.png'.")
+
