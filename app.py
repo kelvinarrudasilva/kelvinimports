@@ -16,47 +16,19 @@ st.markdown(
     """
     <style>
       :root { --gold:#FFD700; --bg:#000000; --card:#0f0f0f; --muted:#bbbbbb; --white:#FFFFFF; }
-
       .stApp { background-color: var(--bg); color: var(--gold); }
-
       .title { color: var(--gold); font-weight:700; font-size:22px; }
       .subtitle { color: var(--muted); font-size:12px; margin-bottom:12px; }
-
-      /* KPIs */
       .kpi { background: linear-gradient(90deg, #111111, #0b0b0b); padding:12px; border-radius:10px; text-align:center; }
       .kpi-value { color: var(--gold); font-size:22px; font-weight:700; }
       .kpi-label { color:var(--muted); font-size:13px; }
-
-      /* Tabelas */
       .stDataFrame table { background-color:#050505; color:var(--white); }
-
-      /* Texto refinado */
-      .stMarkdown, .stMarkdown p, .stDataFrame table td, .stDataFrame table th {
-          color: #e6e6e6 !important;
-          font-size: 14px !important;
-          line-height: 1.35em !important;
-      }
-
-      /* ===== Selectbox Slim Deluxe ===== */
-      div[data-baseweb="select"] > div {
-          background-color: #0d0d0d !important;
-          border: 1px solid rgba(255,215,0,0.35) !important;
-          border-radius: 6px !important;
-          padding: 2px 8px !important;
-          min-height: 30px !important;
-      }
-
-      div[data-baseweb="select"] * {
-          color: #FFD700 !important;
-          font-size: 13px !important;
-      }
-
-      label {
-          font-size: 13px !important;
-          color: #e3e3e3 !important;
-          font-weight: 600;
-      }
-
+      .small { color: var(--muted); font-size:12px; }
+      .table-card { background: linear-gradient(90deg,#0b0b0b,#111111); border: 1px solid rgba(255,215,0,0.08); padding:12px; border-radius:10px; }
+      .table-card h4 { color: var(--gold); margin:0 0 8px 0; }
+      .table-card .big { font-size:15px; color:var(--white); }
+      .small-select .stSelectbox>div>div { font-size:14px; }
+      .summary-table .dataframe td, .summary-table .dataframe th { font-size:13px !important; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -140,13 +112,16 @@ def load_and_clean(name):
     df = clean_df(df)
     return df
 
-estoque = load_and_clean("ESTTOQUE")
+estoque = load_and_clean("ESTOQUE")
 vendas = load_and_clean("VENDAS")
 compras = load_and_clean("COMPRAS")
 
-if vendas is None: vendas = pd.DataFrame()
-if estoque is None: estoque = pd.DataFrame()
-if compras is None: compras = pd.DataFrame()
+if vendas is None:
+    vendas = pd.DataFrame()
+if estoque is None:
+    estoque = pd.DataFrame()
+if compras is None:
+    compras = pd.DataFrame()
 
 # ======================
 # Map columns
@@ -170,16 +145,16 @@ if not vendas.empty:
     if v_data and v_data in vendas.columns:
         vendas[v_data] = pd.to_datetime(vendas[v_data], errors="coerce")
     vendas["_QTD"] = to_num(vendas[v_qtd]) if v_qtd in vendas.columns else 0
-
     if v_val_total and v_val_total in vendas.columns:
         vendas["_VAL_TOTAL"] = to_num(vendas[v_val_total])
     elif v_val_unit and v_val_unit in vendas.columns:
         vendas["_VAL_TOTAL"] = to_num(vendas[v_val_unit]) * vendas["_QTD"]
     else:
         vendas["_VAL_TOTAL"] = 0
-
-    vendas["_LUCRO"] = to_num(vendas[v_lucro]) if v_lucro in vendas.columns else 0
-
+    if v_lucro and v_lucro in vendas.columns:
+        vendas["_LUCRO"] = to_num(vendas[v_lucro])
+    else:
+        vendas["_LUCRO"] = 0
 else:
     vendas["_QTD"] = pd.Series(dtype=float)
     vendas["_VAL_TOTAL"] = pd.Series(dtype=float)
@@ -191,9 +166,15 @@ if not estoque.empty:
     estoque["_VAL_CUSTO_UNIT"] = to_num(estoque[e_val_custo]) if e_val_custo in estoque.columns else 0
     estoque["_VAL_TOTAL_VENDA"] = estoque["_QTD"] * estoque["_VAL_VENDA_UNIT"]
     estoque["_VAL_TOTAL_CUSTO"] = estoque["_QTD"] * estoque["_VAL_CUSTO_UNIT"]
+else:
+    estoque["_QTD"] = pd.Series(dtype=float)
+    estoque["_VAL_VENDA_UNIT"] = pd.Series(dtype=float)
+    estoque["_VAL_CUSTO_UNIT"] = pd.Series(dtype=float)
+    estoque["_VAL_TOTAL_VENDA"] = pd.Series(dtype=float)
+    estoque["_VAL_TOTAL_CUSTO"] = pd.Series(dtype=float)
 
 # ======================
-# Períodos
+# Periodos (meses)
 # ======================
 if not vendas.empty and "_VAL_TOTAL" in vendas.columns and v_data in vendas.columns:
     vendas["_PERIODO"] = vendas[v_data].dt.to_period("M").astype(str)
@@ -215,16 +196,14 @@ period_options = ["Geral"] + [k for k in period_map.keys() if k != "Geral"]
 # ======================
 tab1, tab2 = st.tabs(["📈 Visão Geral", "📦 Estoque Atual"])
 
-# ---- TAB 1 ----
+# ---- Tab 1: Visão Geral ----
 with tab1:
-
-    # --- Seletor flutuante ao lado dos KPIs ---
-    kcol1, kcol2, kcol3, kcol4, kcol5 = st.columns([1,1,1,1,1.2])
-    with kcol5:
-        periodo_sel = st.selectbox("Período", period_options, index=0)
-
+    periodo_sel = st.selectbox("Selecione o período", period_options, index=0)
     periodo_val = period_map.get(periodo_sel)
-    vendas_period = vendas if periodo_val is None else vendas[vendas["_PERIODO"] == periodo_val]
+    if periodo_val is None:
+        vendas_period = vendas.copy()
+    else:
+        vendas_period = vendas[vendas["_PERIODO"] == periodo_val].copy()
 
     # KPIs
     total_vendido = vendas_period["_VAL_TOTAL"].sum() if not vendas_period.empty else 0
@@ -232,57 +211,41 @@ with tab1:
     lucro_period = vendas_period["_LUCRO"].sum() if not vendas_period.empty else 0
     valor_estoque_venda = estoque["_VAL_TOTAL_VENDA"].sum() if not estoque.empty else 0
 
-    with kcol1: st.metric("💰 Vendido", fmt_brl(total_vendido))
-    with kcol2: st.metric("📈 Qtde Vendida", f"{int(total_qtd)}")
-    with kcol3: st.metric("💸 Lucro", fmt_brl(lucro_period))
-    with kcol4: st.metric("📦 Estoque (Venda)", fmt_brl(valor_estoque_venda))
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("💰 Vendido", fmt_brl(total_vendido))
+    c2.metric("📈 Qtde Vendida", f"{int(total_qtd)}")
+    c3.metric("💸 Lucro do Período", fmt_brl(lucro_period))
+    c4.metric("📦 Valor Estoque (Venda)", fmt_brl(valor_estoque_venda))
 
     st.markdown("---")
 
-    # Top10
+    # Top10 produtos
     st.subheader("🏆 Top 10 — Produtos Mais Vendidos")
     if not vendas_period.empty and v_prod in vendas_period.columns:
-        grp = vendas_period.groupby(v_prod).agg(
-            QTDE_SOMADA=("_QTD", "sum"),
-            VAL_TOTAL=("_VAL_TOTAL","sum")
-        ).reset_index()
+        grp = vendas_period.groupby(v_prod).agg(QTDE_SOMADA=("_QTD", "sum"), VAL_TOTAL=("_VAL_TOTAL","sum")).reset_index()
         grp = grp.sort_values("VAL_TOTAL", ascending=False).head(10)
-
-        fig_top = px.bar(
-            grp, x="VAL_TOTAL", y=v_prod,
-            orientation="h",
-            text="QTDE_SOMADA",
-            color="VAL_TOTAL",
-            color_continuous_scale=["#FFD700","#B8860B"]
-        )
+        fig_top = px.bar(grp, x="VAL_TOTAL", y=v_prod, orientation="h", text="QTDE_SOMADA",
+                         color="VAL_TOTAL", color_continuous_scale=["#FFD700","#B8860B"])
         fig_top.update_traces(texttemplate='%{text:.0f} un', textposition='outside')
-        fig_top.update_layout(
-            plot_bgcolor="#000000",
-            paper_bgcolor="#000000",
-            font_color="#FFD700",
-            yaxis={'categoryorder':'total ascending'},
-            margin=dict(l=10, r=10, t=40, b=10)
-        )
+        fig_top.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFD700",
+                              yaxis={'categoryorder':'total ascending'}, margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig_top, use_container_width=True)
 
     st.markdown("---")
 
-    # Vendas tabela
+    # Vendas do período
     st.subheader("📋 Vendas do Período")
     if not vendas_period.empty:
         vendas_disp = vendas_period.copy()
         vendas_disp[v_data] = vendas_disp[v_data].dt.strftime("%d/%m/%Y")
         vendas_disp["_VAL_TOTAL"] = vendas_disp["_VAL_TOTAL"].apply(fmt_brl)
         vendas_disp["_LUCRO"] = vendas_disp["_LUCRO"].apply(fmt_brl)
-        vendas_disp = vendas_disp.rename(columns={
-            v_data:"Data", v_prod:"Produto", "_QTD":"Quantidade",
-            "_VAL_TOTAL":"Valor", "_LUCRO":"Lucro"
-        })
+        vendas_disp = vendas_disp.rename(columns={v_data:"Data", v_prod:"Produto","_QTD":"Quantidade","_VAL_TOTAL":"Valor","_LUCRO":"Lucro"})
         st.dataframe(vendas_disp.reset_index(drop=True))
     else:
         st.info("Nenhuma venda registrada para o período selecionado.")
 
-# ---- TAB 2 ----
+# ---- Tab 2: Estoque Atual ----
 with tab2:
     st.subheader("📦 Estoque Atual (consulta)")
     if not estoque.empty and e_prod in estoque.columns:
