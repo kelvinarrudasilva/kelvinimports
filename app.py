@@ -86,10 +86,21 @@ def limpar_aba(df, nome_aba):
 def validar(df, esperado, nome_aba):
     st.subheader(f"📌 Validação da aba {nome_aba}")
 
-    col_df = [c.strip() for c in df.columns]
+    # converter qualquer valor de coluna para string
+    col_df = [str(c).strip() for c in df.columns]
+
+    # atualizar nomes da coluna no DataFrame
+    df.columns = col_df
+
+    # remover colunas vazias, NaN e "Unnamed"
+    df = df.loc[:, ~df.columns.str.contains("Unnamed", case=False)]
+    df = df.loc[:, df.columns != ""]
+    df = df.loc[:, df.columns != "nan"]
+
+    col_df = df.columns.tolist()
 
     faltando = [c for c in esperado if c not in col_df]
-    extras = [c for c in col_df if c not in esperado]
+    extras  = [c for c in col_df if c not in esperado]
 
     if faltando:
         st.error("❌ COLUNAS FALTANDO:")
@@ -101,10 +112,10 @@ def validar(df, esperado, nome_aba):
         st.warning("⚠ COLUNAS EXTRAS:")
         st.write(extras)
 
+    st.subheader("📄 Pré-visualização (limpo):")
     st.dataframe(df)
 
     return df
-
 
 # ============================================================
 # CONVERSÃO DE VALORES MONETÁRIOS
@@ -161,3 +172,4 @@ for aba in colunas_esperadas.keys():
     dfs[aba] = validado
 
 st.success("🎉 Processamento concluído. Se tudo estiver verde, já podemos montar o dashboard!")
+
