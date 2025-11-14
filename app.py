@@ -20,27 +20,27 @@ st.markdown(
     """
     <style>
         :root {
-            --verde:#0e8c4a;
-            --verde-escuro:#0a5e34;
-            --verde-claro:#17d976;
+            --primary:#1aa3ff; /* azul claro vibrante */
+            --primary-dark:#0066cc;
+            --primary-light:#66c7ff;
         }
         body, .stApp {
-            background-color:#f2f2f2 !important;
+            background-color:#ffffff !important; /* fundo branco total */
             color:#222 !important;
             font-family: 'Segoe UI', sans-serif !important;
         }
         h1,h2,h3,h4 {
-            color: var(--verde-escuro) !important;
+            color: var(--primary-dark) !important;
             font-weight: 700 !important;
         }
-        .stMetric label { color:#333 !important; font-weight:600 !important; }
-        .stMetric div { color: var(--verde) !important; font-weight:800 !important; }
+        .stMetric label { color:#444 !important; font-weight:600 !important; }
+        .stMetric div { color: var(--primary) !important; font-weight:800 !important; }
         .stTabs [data-baseweb="tab"] {
-            color: var(--verde-escuro) !important;
+            color: var(--primary-dark) !important;
             font-weight: 600 !important;
         }
         .stTabs [data-baseweb="tab"]:hover {
-            color: var(--verde) !important;
+            color: var(--primary) !important;
         }
     </style>
     """,
