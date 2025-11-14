@@ -2,3 +2,7 @@ streamlit
 pandas
 matplotlib
 openpyxl
+plotly
+requests
+pandas
+openpyxl
