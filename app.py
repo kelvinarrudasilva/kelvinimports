@@ -1,113 +1,109 @@
-# app.py completo com Dashboard integrado
+# app.py final — Dashboard Loja Importados
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import re
 from io import BytesIO
-import requests
 
 # =============================================================================
-# CONFIGURAÇÃO VISUAL
+# CONFIG VISUAL
 # =============================================================================
 st.set_page_config(page_title="Painel - Loja Importados", layout="wide")
 
 st.markdown(
     """
     <style>
-      :root {
-        --gold:#FFD700;
-      }
-      body {
-        background-color: #111 !important;
-        color: white !important;
-      }
-      .stTabs [data-baseweb="tab"] {
-        background: #222;
-        color: white;
-        border-radius: 5px;
-        margin-right: 5px;
-        padding: 8px;
-        border: 1px solid #444;
-      }
-      .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background: var(--gold);
-        color: black !important;
-        font-weight: bold;
-      }
+      :root { --gold:#FFD700; }
+      body, .stApp { background-color:#111 !important; color:white !important; }
+      h1, h2, h3, h4 { color: var(--gold) !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # =============================================================================
-# FUNÇÃO: CARREGAR PLANILHA direto do Google Sheets
+# 🔥 CARREGAR PLANILHA GOOGLE (CORRIGIDO)
 # =============================================================================
 def carregar_planilha(link):
     try:
+        # Converter link Google Sheets para CSV direto
         if "edit" in link:
             link = link.replace("/edit", "/export?format=csv")
         elif "view" in link:
             link = link.replace("/view", "/export?format=csv")
 
-        # Tentativa com UTF-8, fallback para Latin-1
-try:
-        df = pd.read_csv(link, encoding="utf-8", sep=",", engine="python", on_bad_lines="skip")
-    except Exception:
-        df = pd.read_csv(link, encoding="latin1", sep=",", engine="python", on_bad_lines="skip")
-        return df
+        # ----- 1ª tentativa UTF-8
+        try:
+            return pd.read_csv(link, encoding="utf-8", sep=",")
+        except:
+            pass
+
+        # ----- 2ª tentativa Latin-1
+        try:
+            return pd.read_csv(link, encoding="latin1", sep=",")
+        except:
+            pass
+
+        # ----- 3ª tentativa: separador automático
+        try:
+            return pd.read_csv(link, sep=None, engine="python")
+        except:
+            pass
+
+        st.error("❌ Não foi possível carregar o arquivo. Verifique o link.")
+        return None
+
     except Exception as e:
         st.error(f"Erro ao carregar planilha: {e}")
         return None
 
 # =============================================================================
-# PADRONIZAÇÃO DE COLUNAS
+# PADRONIZAR COLUNAS
 # =============================================================================
 def padrao(col):
     col = col.strip()
-    col = col.replace(" ", " ")
-    col = re.sub(r" +", " ", col)
+    col = re.sub(r"\s+", " ", col)
     return col.upper()
 
 # =============================================================================
-# CORREÇÃO AUTOMÁTICA DE COLUNAS
+# CORRIGIR NOME DAS COLUNAS
 # =============================================================================
 def corrigir_colunas(df, esperadas):
     df_corr = df.copy()
     df_corr.columns = [padrao(c) for c in df_corr.columns]
 
-    esperadas_upper = [padrao(c) for c in esperadas]
-    mapa = {}
+    esperadas_up = [padrao(c) for c in esperadas]
 
+    mapa = {}
     for col in df_corr.columns:
         melhor = None
         score_melhor = 0
-        for esp in esperadas_upper:
+
+        for esp in esperadas_up:
             iguais = sum(1 for a, b in zip(col, esp) if a == b)
             score = iguais / max(len(col), len(esp))
             if score > score_melhor:
                 score_melhor = score
                 melhor = esp
+
         if melhor:
             mapa[col] = melhor
 
     df_corr.rename(columns=mapa, inplace=True)
 
-    colunas_faltando = [c for c in esperadas_upper if c not in df_corr.columns]
-    colunas_extras = [c for c in df_corr.columns if c not in esperadas_upper]
+    faltando = [c for c in esperadas_up if c not in df_corr.columns]
+    extras = [c for c in df_corr.columns if c not in esperadas_up]
 
-    return df_corr, colunas_faltando, colunas_extras
+    return df_corr, faltando, extras
 
 # =============================================================================
-# INTERFACE – INPUT PLANILHA
+# INTERFACE — LINK FIXO
 # =============================================================================
 st.title("📊 Dashboard Geral – Gestão Loja Importados")
 
-# Link fixo da planilha Google Drive
-URL_PLANILHA = "https://drive.google.com/uc?export=download&id=1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b"
-
-df = carregar_planilha(URL_PLANILHA)
-if df is None:
-    st.stop()
+# 👉 link fixo do Google Sheets
+link = st.text_input("Cole o link da planilha ou use o padrão:", 
+                     "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/edit?usp=sharing")
 
 df = carregar_planilha(link)
 if df is None:
@@ -117,30 +113,17 @@ if df is None:
 # COLUNAS ESPERADAS
 # =============================================================================
 colunas_estoque = [
-    "PRODUTO",
-    "EM ESTOQUE",
-    "COMPRAS",
-    "MEDIA C. UNITARIO",
-    "VALOR VENDA SUGERIDO",
-    "VENDAS",
+    "PRODUTO", "EM ESTOQUE", "COMPRAS",
+    "MEDIA C. UNITARIO", "VALOR VENDA SUGERIDO", "VENDAS"
 ]
 
 colunas_vendas = [
-    "DATA",
-    "PRODUTO",
-    "QTD",
-    "VALOR VENDA",
-    "VALOR TOTAL",
-    "MEDIA CUSTO UNITARIO",
-    "LUCRO UNITARIO",
-    "MAKEUP",
-    "% DE LUCRO SOBRE CUSTO",
-    "STATUS",
-    "CLIENTE",
-    "OBS",
+    "DATA", "PRODUTO", "QTD", "VALOR VENDA", "VALOR TOTAL",
+    "MEDIA CUSTO UNITARIO", "LUCRO UNITARIO", "MAKEUP",
+    "% DE LUCRO SOBRE CUSTO", "STATUS", "CLIENTE", "OBS"
 ]
 
-# Detectar automaticamente aba
+# Detectar tipo automaticamente
 if "EM ESTOQUE" in df.columns or "ESTOQUE" in df.columns:
     tipo = "ESTOQUE"
     esperadas = colunas_estoque
@@ -148,91 +131,82 @@ else:
     tipo = "VENDAS"
     esperadas = colunas_vendas
 
-st.subheader(f"🔍 Identificada aba: **{tipo}**")
+st.subheader(f"Aba detectada: **{tipo}**")
 
-# Corrigir colunas
-corrigido, faltando, extras = corrigir_colunas(df, esperadas)
+df_corr, faltando, extras = corrigir_colunas(df, esperadas)
 
 if faltando:
-    st.warning("⚠️ Colunas faltando:")
-    st.write(faltando)
+    st.warning("⚠️ Colunas faltando: " + str(faltando))
 if extras:
-    st.info("ℹ️ Colunas extras detectadas:")
-    st.write(extras)
+    st.info("ℹ️ Colunas extras detectadas: " + str(extras))
 
 st.success("✔️ Colunas ajustadas automaticamente!")
-st.dataframe(corrigido)
+st.dataframe(df_corr, use_container_width=True)
 
-# =============================================================================
-# DASHBOARD
-# Link fixo da planilha Google Drive
-URL_PLANILHA = "https://drive.google.com/uc?export=download&id=1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b"
-
-# =============================================================================
-st.header("📈 Dashboard Analítico")
-
-# Garantir colunas numéricas
-for c in corrigido.columns:
+# Garantir conversões numéricas
+for c in df_corr.columns:
     try:
-        corrigido[c] = pd.to_numeric(corrigido[c], errors="ignore")
+        df_corr[c] = pd.to_numeric(df_corr[c], errors="ignore")
     except:
         pass
 
-# ==========================
-# DASHBOARD ESTOQUE
-# ==========================
+# =============================================================================
+# DASHBOARD
+# =============================================================================
+st.header("📈 Dashboard Analítico")
+
+# ----- ESTOQUE -----
 if tipo == "ESTOQUE":
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        total_estoque = corrigido["EM ESTOQUE"].sum()
-        st.metric("📦 Total em Estoque", total_estoque)
+        st.metric("📦 Total em Estoque", df_corr["EM ESTOQUE"].sum())
 
     with col2:
-        total_vendas = corrigido["VENDAS"].sum()
-        st.metric("🛒 Total Vendido (Qtde)", total_vendas)
+        st.metric("🛒 Total Vendido", df_corr["VENDAS"].sum())
 
     with col3:
-        ticket = corrigido["VALOR VENDA SUGERIDO"].mean()
-        st.metric("💰 Preço Médio Sugerido", f"R$ {ticket:,.2f}")
+        st.metric("💰 Preço Médio Sugerido",
+                  f"R$ {df_corr['VALOR VENDA SUGERIDO'].mean():,.2f}")
 
     fig = px.bar(
-        corrigido.sort_values("VENDAS", ascending=False).head(15),
-        x="PRODUTO", y="VENDAS", title="TOP 15 Produtos Mais Vendidos",
+        df_corr.sort_values("VENDAS", ascending=False).head(15),
+        x="PRODUTO", y="VENDAS",
+        title="TOP 15 Produtos Mais Vendidos"
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ==========================
-# DASHBOARD VENDAS
-# ==========================
+# ----- VENDAS -----
 else:
-    corrigido["DATA"] = pd.to_datetime(corrigido["DATA"], errors="coerce")
+    df_corr["DATA"] = pd.to_datetime(df_corr["DATA"], errors="coerce")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        total_faturado = corrigido["VALOR TOTAL"].sum()
-        st.metric("💵 Faturamento Total", f"R$ {total_faturado:,.2f}")
+        st.metric("💵 Faturamento Total",
+                  f"R$ {df_corr['VALOR TOTAL'].sum():,.2f}")
 
     with col2:
-        lucro_total = corrigido["LUCRO UNITARIO"].sum()
-        st.metric("💰 Lucro Total", f"R$ {lucro_total:,.2f}")
+        st.metric("💰 Lucro Total",
+                  f"R$ {df_corr['LUCRO UNITARIO'].sum():,.2f}")
 
     with col3:
-        qtd_total = corrigido["QTD"].sum()
-        st.metric("🛒 Quantidade Vendida", int(qtd_total))
+        st.metric("🛒 Quantidade Vendida",
+                  int(df_corr["QTD"].sum()))
 
     fig = px.line(
-        corrigido.groupby("DATA")["VALOR TOTAL"].sum().reset_index(),
-        x="DATA", y="VALOR TOTAL", title="📅 Faturamento Diário",
+        df_corr.groupby("DATA")["VALOR TOTAL"].sum().reset_index(),
+        x="DATA", y="VALOR TOTAL",
+        title="Faturamento Diário"
     )
     st.plotly_chart(fig, use_container_width=True)
 
     fig2 = px.bar(
-        corrigido.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(20),
-        x="PRODUTO", y="QTD", title="🏆 TOP 20 Produtos Vendidos",
+        df_corr.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(20),
+        x="PRODUTO", y="QTD",
+        title="TOP 20 Produtos Vendidos"
     )
     st.plotly_chart(fig2, use_container_width=True)
 
-
 st.success("✅ Dashboard carregado com sucesso!")
+
