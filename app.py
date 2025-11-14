@@ -197,8 +197,16 @@ estoque_df = dfs.get("ESTOQUE", pd.DataFrame())
 # ----------------------------
 # KPIs
 # ----------------------------
-total_vendido = (vendas_filtradas["VALOR TOTAL"].fillna(0) if "VALOR TOTAL" in vendas_filtradas.columns else vendas_filtradas["VALOR VENDA"].fillna(0)*vendas_filtradas["QTD"].fillna(0)).sum()
-total_lucro = (vendas_filtradas["LUCRO UNITARIO"].fillna(0)*vendas_filtradas["QTD"].fillna(0)).sum() if "LUCRO UNITARIO" in vendas_filtradas.columns else 0
+total_vendido = (
+    vendas_filtradas["VALOR TOTAL"].fillna(0)
+    if "VALOR TOTAL" in vendas_filtradas.columns
+    else vendas_filtradas["VALOR VENDA"].fillna(0) * vendas_filtradas["QTD"].fillna(0)
+).sum()
+
+total_lucro = (
+    vendas_filtradas["LUCRO UNITARIO"].fillna(0) * vendas_filtradas["QTD"].fillna(0)
+).sum() if "LUCRO UNITARIO" in vendas_filtradas.columns else 0
+
 total_compras = compras_filtradas["CUSTO TOTAL (RECALC)"].sum() if not compras_filtradas.empty else 0
 
 k1, k2, k3 = st.columns(3)
@@ -227,6 +235,47 @@ with tabs[0]:
         st.info("Sem dados de vendas para o período selecionado.")
     else:
         st.dataframe(preparar_tabela_vendas(vendas_filtradas), use_container_width=True)
+
+        # ----------------------------
+        # GRÁFICO NOVO (pedido final)
+        # ----------------------------
+        st.markdown("### 📊 Faturamento & Quantidade por Dia")
+
+        df_plot = vendas_filtradas.copy()
+
+        if "VALOR TOTAL" not in df_plot.columns:
+            df_plot["VALOR TOTAL"] = df_plot["VALOR VENDA"].fillna(0) * df_plot["QTD"].fillna(0)
+
+        vendas_por_dia = df_plot.groupby("DATA").agg(
+            TOTAL_VENDIDO=("VALOR TOTAL", "sum"),
+            QTD_TOTAL=("QTD", "sum")
+        ).reset_index()
+
+        fig = px.bar(
+            vendas_por_dia,
+            x="DATA",
+            y="TOTAL_VENDIDO",
+            labels={"TOTAL_VENDIDO": "Total Vendido (R$)", "DATA": "Data"},
+            title="Vendas diárias — faturamento e quantidade"
+        )
+
+        fig.add_scatter(
+            x=vendas_por_dia["DATA"],
+            y=vendas_por_dia["QTD_TOTAL"],
+            mode="lines+markers",
+            name="Quantidade Vendida",
+            line=dict(width=3),
+            marker=dict(size=8)
+        )
+
+        fig.update_layout(
+            hovermode="x unified",
+            xaxis_title="",
+            yaxis_title="",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
 
 # ----------------------------
 # Aba TOP10 VALOR
@@ -282,7 +331,6 @@ with tabs[3]:
             LUCRO_TOTAL=("LUCRO_TOTAL","sum"),
             QTD_TOTAL=("QTD","sum")
         ).reset_index().sort_values("LUCRO_TOTAL", ascending=False).head(10)
-        # formatar coluna para exibição no gráfico e na tabela
         top_lucro["LUCRO_LABEL"] = top_lucro["LUCRO_TOTAL"].map(lambda x: f"R$ {x:,.2f}")
         fig3 = px.bar(
             top_lucro,
