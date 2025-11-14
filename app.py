@@ -1,146 +1,138 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import requests
-from io import BytesIO
 
-st.set_page_config(page_title="Dashboard Importados", layout="wide")
+# =========================================
+# CONFIGURAÇÕES BÁSICAS
+# =========================================
+st.set_page_config(page_title="Teste de Importação", layout="wide")
 
-# =====================================================
-# FUNÇÃO PARA CARREGAR ARQUIVO DO GOOGLE DRIVE
-# =====================================================
+st.title("🔍 Teste de Carregamento da Planilha")
 
-URL_DRIVE = "https://drive.google.com/uc?export=download&id=1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b"
+URL_PLANILHA = "https://drive.google.com/uc?export=download&id=1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b"
 
+# =========================================
+# FUNÇÃO PARA CARREGAR COM TRATAMENTO DE ERROS
+# =========================================
 @st.cache_data
-def load_excel_from_drive():
+def carregar_planilha(url):
     try:
-        resp = requests.get(URL_DRIVE)
-        resp.raise_for_status()
-        file_bytes = BytesIO(resp.content)
-        return pd.read_excel(file_bytes, sheet_name=None)
+        df = pd.read_excel(url)
+        return df, None
     except Exception as e:
-        st.error("❌ Erro ao carregar arquivo do Google Drive.")
-        st.stop()
+        return None, str(e)
 
-sheets = load_excel_from_drive()
+df, erro = carregar_planilha(URL_PLANILHA)
 
-# =====================================================
-# VERIFICAÇÃO DAS ABAS REAIS
-# =====================================================
-valid_tabs = list(sheets.keys())
-
-aba_estoque = next((k for k in valid_tabs if "ESTOQUE" in k.upper()), None)
-aba_vendas  = next((k for k in valid_tabs if "VENDAS" in k.upper()), None)
-aba_compras = next((k for k in valid_tabs if "COMPRAS" in k.upper()), None)
-
-if not aba_estoque or not aba_vendas or not aba_compras:
-    st.error("❌ As abas ESTOQUE, VENDAS e COMPRAS precisam existir no arquivo!")
-    st.write("Abas encontradas:", valid_tabs)
+if erro:
+    st.error("❌ ERRO AO CARREGAR A PLANILHA")
+    st.code(erro)
     st.stop()
 
-estoque = sheets[aba_estoque].copy()
-vendas  = sheets[aba_vendas].copy()
-compras = sheets[aba_compras].copy()
+st.success("✅ Planilha carregada com sucesso!")
 
-# =====================================================
-# NORMALIZAÇÕES — GARANTE QUE AS COLUNAS EXISTEM
-# =====================================================
+# =========================================
+# VERIFICAR SE ABA EXISTE
+# =========================================
+abas_necessarias = ["ESTOQUE", "VENDAS", "COMPRAS"]
+carregadas = {}
 
-# --- VENDAS REAL ---
-expected_cols = [
-    "DATA", "PRODUTO", "QTD", "VALOR VENDA", "VALOR TOTAL",
-    "MEDIA CUSTO UNITARIO", "LUCRO UNITARIO", "MAKEUP",
-    "% DE LUCRO SOBRE CUSTO", "STATUS", "CLIENTE", "OBS."
-]
+try:
+    xls = pd.ExcelFile(URL_PLANILHA)
+    abas = xls.sheet_names
+    st.write("📄 **Abas encontradas:**", abas)
 
-for col in expected_cols:
-    if col not in vendas.columns:
-        vendas[col] = None
+    for aba in abas_necessarias:
+        if aba in abas:
+            loaded_df = pd.read_excel(URL_PLANILHA, sheet_name=aba)
+            carregadas[aba] = loaded_df
+        else:
+            st.error(f"❌ A aba **{aba}** não foi encontrada na planilha!")
 
-# Criar coluna período yyyy-mm
-vendas["_PERIODO"] = pd.to_datetime(vendas["DATA"], errors="coerce").dt.to_period("M").astype(str)
+except Exception as e:
+    st.error("❌ Erro ao abrir as abas:")
+    st.code(str(e))
+    st.stop()
 
-# Garantir QTD como número
-vendas["QTD"] = pd.to_numeric(vendas["QTD"], errors="coerce").fillna(0).astype(int)
+# =========================================
+# FUNÇÃO PARA VALIDAR COLUNAS
+# =========================================
+def validar_colunas(nome_aba, df, colunas_esperadas):
+    colunas_encontradas = df.columns.tolist()
 
-# =====================================================
-# SIDEBAR
-# =====================================================
-st.sidebar.title("Filtros")
+    st.subheader(f"📌 Verificando aba: **{nome_aba}**")
 
-todos_periodos = sorted(vendas["_PERIODO"].unique())
-periodo_select = st.sidebar.selectbox("Período", ["Geral"] + todos_periodos)
+    faltando = [c for c in colunas_esperadas if c not in colunas_encontradas]
+    extras = [c for c in colunas_encontradas if c not in colunas_esperadas]
 
-if periodo_select != "Geral":
-    vendas_filtrado = vendas[vendas["_PERIODO"] == periodo_select]
-else:
-    vendas_filtrado = vendas.copy()
+    if faltando:
+        st.error(f"❌ Colunas faltando em **{nome_aba}**:")
+        st.write(faltando)
+    else:
+        st.success(f"✅ Todas as colunas esperadas estão presentes em **{nome_aba}**")
 
-# =====================================================
-# DASH PRINCIPAL
-# =====================================================
+    if extras:
+        st.warning(f"⚠️ Colunas extras encontradas em **{nome_aba}**:")
+        st.write(extras)
 
-st.title("📊 Dashboard — Loja de Importados")
+    st.dataframe(df)
 
-st.subheader("📦 Visão Geral do Estoque")
-col1, col2 = st.columns(2)
+# =========================================
+# VALIDAR CADA ABA
+# =========================================
+validar_colunas(
+    "ESTOQUE",
+    carregadas.get("ESTOQUE", pd.DataFrame()),
+    ["PRODUTO", "EM ESTOQUE", "COMPRAS", "Media C. UNITARIO",
+     "Valor Venda Sugerido", "VENDAS"]
+)
 
-with col1:
-    st.metric("Total de Produtos no Estoque", len(estoque))
+validar_colunas(
+    "VENDAS",
+    carregadas.get("VENDAS", pd.DataFrame()),
+    ["DATA", "PRODUTO", "QTD", "VALOR VENDA", "VALOR TOTAL",
+     "MEDIA CUSTO UNITARIO", "LUCRO UNITARIO", "MAKEUP",
+     "% DE LUCRO SOBRE CUSTO", "STATUS", "CLIENTE", "OBS"]
+)
 
-with col2:
-    soma_estoque = 0
-    # Tenta pegar qualquer coluna de quantidade válida
-    for col in estoque.columns:
-        if "QTD" in col.upper() or "QUANT" in col.upper():
-            soma_estoque = estoque[col].fillna(0).sum()
-            break
-    st.metric("Quantidade Total", int(soma_estoque))
+validar_colunas(
+    "COMPRAS",
+    carregadas.get("COMPRAS", pd.DataFrame()),
+    ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO", "CUSTO TOTAL"]
+)
 
-# =====================================================
-# RESUMO DE VENDAS
-# =====================================================
+# =========================================
+# FORMATAR VALORES MONETÁRIOS
+# =========================================
+def formatar_moeda(df, colunas):
+    for col in colunas:
+        if col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+            except:
+                st.error(f"Erro ao converter coluna monetária: {col}")
+    return df
 
-st.subheader("💸 Resumo das Vendas")
+if "VENDAS" in carregadas:
+    carregadas["VENDAS"] = formatar_moeda(
+        carregadas["VENDAS"],
+        ["VALOR VENDA", "VALOR TOTAL", "MEDIA CUSTO UNITARIO", "LUCRO UNITARIO"]
+    )
 
-colA, colB, colC = st.columns(3)
+if "COMPRAS" in carregadas:
+    carregadas["COMPRAS"] = formatar_moeda(
+        carregadas["COMPRAS"],
+        ["CUSTO UNITÁRIO", "CUSTO TOTAL"]
+    )
 
-total_qtd = vendas_filtrado["QTD"].sum()
-total_valor = vendas_filtrado["VALOR TOTAL"].fillna(0).sum()
-ticket_medio = total_valor / total_qtd if total_qtd > 0 else 0
+if "ESTOQUE" in carregadas:
+    carregadas["ESTOQUE"] = formatar_moeda(
+        carregadas["ESTOQUE"],
+        ["Media C. UNITARIO", "Valor Venda Sugerido"]
+    )
 
-with colA:
-    st.metric("Itens vendidos", int(total_qtd))
+st.success("💰 Conversão de valores monetários concluída!")
 
-with colB:
-    st.metric("Faturamento (R$)", f"{total_valor:,.2f}".replace(",", "."))
-
-with colC:
-    st.metric("Ticket Médio", f"{ticket_medio:,.2f}".replace(",", "."))
-
-# =====================================================
-# GRÁFICO DE PRODUTOS MAIS VENDIDOS — Roxo
-# =====================================================
-
-st.subheader("🏆 Produtos Mais Vendidos")
-
-top = vendas_filtrado.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False)
-
-fig = px.bar(top, x="PRODUTO", y="QTD", title="Ranking de Vendas", color_discrete_sequence=["purple"])
-st.plotly_chart(fig, use_container_width=True)
-
-# =====================================================
-# RELATÓRIO DE VENDAS
-# =====================================================
-
-st.subheader("📑 Relatório de Vendas (Completo)")
-
-st.dataframe(vendas_filtrado[expected_cols], use_container_width=True)
-
-# =====================================================
-# LISTA DE COMPRAS
-# =====================================================
-
-st.subheader("🧾 Compras Recentes")
-st.dataframe(compras, use_container_width=True)
+# Mostrar dataframes formatados
+for nome, tabela in carregadas.items():
+    st.subheader(f"📄 Dados formatados: {nome}")
+    st.dataframe(tabela)
