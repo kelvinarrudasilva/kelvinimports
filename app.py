@@ -1,4 +1,4 @@
-# app.py — Dashboard Loja Importados final + hover detalhado + estoque ordenado + pesquisa
+# app.py — Dashboard Loja Importados final + hover detalhado + estoque ordenado + pesquisa produto
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -216,6 +216,7 @@ k3.markdown(f'<div class="kpi-compras"><h3>💸 Total Compras</h3><span>{formata
 
 # ----------------------------
 # ABAS
+# ----------------------------
 tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QUANTIDADE)","💰 TOP10 LUCRO","📦 CONSULTAR ESTOQUE","🔍 PESQUISAR PRODUTO"])
 
 def preparar_tabela_vendas(df):
@@ -246,10 +247,15 @@ with tabs[1]:
             VALOR_TOTAL=("VALOR TOTAL","sum"),
             QTD_TOTAL=("QTD","sum")
         ).reset_index().sort_values("VALOR_TOTAL", ascending=False).head(10)
-        fig = px.bar(top_val, x="PRODUTO", y="VALOR_TOTAL", text="VALOR_TOTAL",
-                     hover_data={"QTD_TOTAL": True, "VALOR_TOTAL":":.2f"})
-        fig.update_traces(textposition="inside")
-        fig.update_yaxes(tickprefix="R$ ", separatorthousands=True)
+        fig = px.bar(
+            top_val,
+            x="PRODUTO",
+            y="VALOR_TOTAL",
+            text="VALOR_TOTAL",
+            hover_data={"QTD_TOTAL": True, "VALOR_TOTAL":":.2f"}
+        )
+        fig.update_traces(texttemplate="%{text:,.2f}")
+        fig.update_yaxes(tickprefix="R$ ", separatethousands=True)
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(formatar_valor_reais(top_val, ["VALOR_TOTAL"]), use_container_width=True)
     else:
@@ -282,10 +288,15 @@ with tabs[3]:
             LUCRO_TOTAL=("LUCRO_TOTAL","sum"),
             QTD_TOTAL=("QTD","sum")
         ).reset_index().sort_values("LUCRO_TOTAL", ascending=False).head(10)
-        fig3 = px.bar(top_lucro, x="PRODUTO", y="LUCRO_TOTAL", text="LUCRO_TOTAL",
-                      hover_data={"QTD_TOTAL": True, "LUCRO_TOTAL":":.2f"})
-        fig3.update_traces(textposition="inside")
-        fig3.update_yaxes(tickprefix="R$ ", separatorthousands=True)
+        fig3 = px.bar(
+            top_lucro,
+            x="PRODUTO",
+            y="LUCRO_TOTAL",
+            text="LUCRO_TOTAL",
+            hover_data={"QTD_TOTAL": True, "LUCRO_TOTAL":":.2f"}
+        )
+        fig3.update_traces(texttemplate="%{text:,.2f}")
+        fig3.update_yaxes(tickprefix="R$ ", separatethousands=True)
         st.plotly_chart(fig3, use_container_width=True)
         st.dataframe(formatar_valor_reais(top_lucro, ["LUCRO_TOTAL"]), use_container_width=True)
     else:
@@ -308,22 +319,17 @@ with tabs[4]:
 # ----------------------------
 # Aba PESQUISAR PRODUTO
 with tabs[5]:
-    st.subheader("Pesquisar Produto no Estoque")
-    if estoque_df.empty:
-        st.info("Aba ESTOQUE não encontrada ou vazia.")
-    else:
-        produto_busca = st.text_input("Digite o nome do produto:")
-        if produto_busca:
-            df_e = estoque_df.copy()
-            df_e = df_e.dropna(axis=1, how='all')
-            df_e = formatar_valor_reais(df_e, ["Media C. UNITARIO","Valor Venda Sugerido"])
-            resultados = df_e[df_e["PRODUTO"].str.contains(produto_busca, case=False, na=False)]
-            if not resultados.empty:
-                if "EM ESTOQUE" in resultados.columns:
-                    resultados["EM ESTOQUE"] = resultados["EM ESTOQUE"].astype(int)
-                    resultados = resultados.sort_values("EM ESTOQUE", ascending=False)
-                st.dataframe(resultados.reset_index(drop=True), use_container_width=True)
+    st.subheader("🔍 Pesquisar produto pelo nome")
+    busca_produto = st.text_input("Digite o nome ou parte do produto:")
+    if busca_produto:
+        if not estoque_df.empty:
+            df_busca = estoque_df[estoque_df["PRODUTO"].str.contains(busca_produto, case=False, na=False)].copy()
+            if not df_busca.empty:
+                df_busca = formatar_valor_reais(df_busca, ["Media C. UNITARIO","Valor Venda Sugerido"])
+                st.dataframe(df_busca.reset_index(drop=True), use_container_width=True)
             else:
-                st.warning("Nenhum produto encontrado com o termo informado.")
+                st.warning("Nenhum produto encontrado.")
+        else:
+            st.warning("A aba ESTOQUE não possui dados.")
 
 st.success("✅ Dashboard carregado com sucesso!")
