@@ -1,4 +1,4 @@
-# app.py — Dashboard Loja Importados final + hover detalhado + estoque ordenado + gráfico evolução vendas
+# app.py — Dashboard Loja Importados final + hover detalhado + estoque ordenado + gráfico prédios
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -223,44 +223,43 @@ def preparar_tabela_vendas(df):
 # Aba VENDAS
 with tabs[0]:
     st.subheader("Vendas (período selecionado)")
-    if vendas_filtradas.empty:
-        st.info("Sem dados de vendas para o período selecionado.")
-    else:
-        st.dataframe(preparar_tabela_vendas(vendas_filtradas), use_container_width=True)
 
     # --- Gráfico evolução vendas (prédios) ---
     if not dfs.get("VENDAS", pd.DataFrame()).empty:
         df_v = dfs["VENDAS"].copy()
-
-        # Agrupar por mês
         df_mes = df_v.groupby("MES_ANO").agg(
             TOTAL_VENDIDO=("VALOR TOTAL", lambda x: x.fillna(0).sum()),
             TOTAL_LUCRO=("LUCRO UNITARIO", lambda x: (x.fillna(0) * df_v.loc[x.index, "QTD"].fillna(0)).sum())
         ).reset_index().sort_values("MES_ANO")
 
-        # Gráfico de barras agrupadas
-        fig_prédio = px.bar(
+        fig_predios = px.bar(
             df_mes,
             x="MES_ANO",
             y=["TOTAL_VENDIDO", "TOTAL_LUCRO"],
             barmode="group",
-            text_auto=".2f",
+            text_auto=False,
             labels={"MES_ANO":"Mês","value":"R$","variable":"Métrica"},
-            title="🏢 Evolução das Vendas e Lucro - Últimos Meses"
+            title="🏢 Evolução das Vendas e Lucro - Últimos Meses",
+            color_discrete_sequence=px.colors.qualitative.Vivid
         )
-
-        fig_prédio.update_traces(
-            texttemplate='%{y:$,.2f}', 
-            textposition='inside'
+        fig_predios.update_traces(
+            texttemplate='%{y:,.2f}',
+            textposition='inside',
+            width=0.3
         )
-        fig_prédio.update_layout(
+        fig_predios.update_layout(
             yaxis_tickprefix="R$ ",
             xaxis_tickangle=-45,
             legend_title_text="Métrica",
-            legend=dict(x=0.8, y=1.1)
+            legend=dict(x=0.8, y=1.1),
+            bargap=0.4
         )
+        st.plotly_chart(fig_predios, use_container_width=True)
 
-        st.plotly_chart(fig_prédio, use_container_width=True)
+    if vendas_filtradas.empty:
+        st.info("Sem dados de vendas para o período selecionado.")
+    else:
+        st.dataframe(preparar_tabela_vendas(vendas_filtradas), use_container_width=True)
 
 # ----------------------------
 # Aba TOP10 VALOR
