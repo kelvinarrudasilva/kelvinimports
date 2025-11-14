@@ -1,8 +1,9 @@
-# app.py — Dashboard Loja Importados completo (corrigido)
+# app.py — Dashboard Loja Importados final
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import re
+from datetime import datetime
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide")
 
@@ -14,16 +15,13 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 # ----------------------------
 # VISUAL
 # ----------------------------
-st.markdown(
-    """
+st.markdown("""
     <style>
       :root { --gold:#FFD700; }
       body, .stApp { background-color:#0b0b0b; color:#EEE; }
       h1,h2,h3,h4 { color: var(--gold); }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 st.title("📊 Loja Importados — Dashboard")
 
 # ----------------------------
@@ -172,31 +170,36 @@ if "COMPRAS" in dfs:
     dfs["COMPRAS"] = df_c
 
 # ----------------------------
-# FILTRO MÊS
+# FILTRO MÊS E ORDENAR
 # ----------------------------
 meses_venda = sorted(dfs["VENDAS"]["MES_ANO"].dropna().unique().tolist(), reverse=True) if "VENDAS" in dfs else []
 mes_opcoes = ["Todos"] + meses_venda
-mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", mes_opcoes, index=0)
+mes_atual = datetime.now().strftime("%Y-%m")
+index_padrao = mes_opcoes.index(mes_atual) if mes_atual in mes_opcoes else 0
+mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", mes_opcoes, index=index_padrao)
 
 def filtrar_mes(df, mes):
-    if df is None or df.empty:
-        return pd.DataFrame()
+    if df.empty:
+        return df
     if mes == "Todos":
         return df
     return df[df["MES_ANO"] == mes].copy() if "MES_ANO" in df.columns else df
 
-vendas_filtradas = filtrar_mes(dfs.get("VENDAS", pd.DataFrame()), mes_selecionado)
-compras_filtradas = filtrar_mes(dfs.get("COMPRAS", pd.DataFrame()), mes_selecionado)
+def ordenar_data(df):
+    if df.empty or "DATA" not in df.columns:
+        return df
+    return df.sort_values("DATA", ascending=False)
+
+vendas_filtradas = ordenar_data(filtrar_mes(dfs.get("VENDAS", pd.DataFrame()), mes_selecionado))
+compras_filtradas = ordenar_data(filtrar_mes(dfs.get("COMPRAS", pd.DataFrame()), mes_selecionado))
 estoque_df = dfs.get("ESTOQUE", pd.DataFrame())
 
 # ----------------------------
 # KPIs
 # ----------------------------
-total_vendido = (vendas_filtradas["VALOR TOTAL"].fillna(0) if "VALOR TOTAL" in vendas_filtradas.columns
-                 else vendas_filtradas["VALOR VENDA"].fillna(0)*vendas_filtradas["QTD"].fillna(0)).sum()
-total_lucro = (vendas_filtradas["LUCRO UNITARIO"].fillna(0)*vendas_filtradas["QTD"].fillna(0)).sum() \
-               if "LUCRO UNITARIO" in vendas_filtradas.columns else 0.0
-total_compras = compras_filtradas["CUSTO TOTAL (RECALC)"].sum() if not compras_filtradas.empty else 0.0
+total_vendido = (vendas_filtradas["VALOR TOTAL"].fillna(0) if "VALOR TOTAL" in vendas_filtradas.columns else vendas_filtradas["VALOR VENDA"].fillna(0)*vendas_filtradas["QTD"].fillna(0)).sum()
+total_lucro = (vendas_filtradas["LUCRO UNITARIO"].fillna(0)*vendas_filtradas["QTD"].fillna(0)).sum() if "LUCRO UNITARIO" in vendas_filtradas.columns else 0
+total_compras = compras_filtradas["CUSTO TOTAL (RECALC)"].sum() if not compras_filtradas.empty else 0
 
 k1, k2, k3 = st.columns(3)
 k1.metric("💵 Total Vendido (R$)", f"R$ {total_vendido:,.2f}")
@@ -206,16 +209,9 @@ k3.metric("💸 Total Compras (R$)", f"R$ {total_compras:,.2f}")
 # ----------------------------
 # ABAS
 # ----------------------------
-tabs = st.tabs([
-    "🛒 VENDAS",
-    "🏆 TOP10 (VALOR)",
-    "🏅 TOP10 (QUANTIDADE)",
-    "💰 TOP10 LUCRO",
-    "📦 CONSULTAR ESTOQUE"
-])
+tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QUANTIDADE)","💰 TOP10 LUCRO","📦 CONSULTAR ESTOQUE"])
 
-# ----------------------------
-# Funções utilitárias
+# Função para preparar vendas
 def preparar_tabela_vendas(df):
     df_show = df.dropna(axis=1, how='all')
     if "DATA" in df_show.columns:
@@ -236,85 +232,62 @@ with tabs[0]:
 # Aba TOP10 VALOR
 with tabs[1]:
     st.subheader("Top 10 — por VALOR (R$)")
-    if not vendas_filtradas.empty:
+    if vendas_filtradas.empty:
+        st.info("Sem dados de vendas para o período selecionado.")
+    else:
         dfv = vendas_filtradas.copy()
         if "VALOR TOTAL" not in dfv.columns:
             dfv["VALOR TOTAL"] = dfv["VALOR VENDA"].fillna(0)*dfv["QTD"].fillna(0)
-        top_val = dfv.groupby("PRODUTO").agg(
-            VALOR_TOTAL=("VALOR TOTAL","sum"),
-            QTD_TOTAL=("QTD","sum")
-        ).reset_index().sort_values("VALOR_TOTAL", ascending=False).head(10)
-        fig = px.bar(
-            top_val,
-            x="PRODUTO",
-            y="VALOR_TOTAL",
-            text=top_val["VALOR_TOTAL"].map(lambda x: f"R$ {x:,.2f}"),
-            hover_data={"VALOR_TOTAL": False, "QTD_TOTAL": True,
-                        "Valor Formatado": top_val["VALOR_TOTAL"].map(lambda x: f"R$ {x:,.2f}")}
-        )
+        top_val = dfv.groupby("PRODUTO").agg(VALOR_TOTAL=("VALOR TOTAL","sum"), QTD_TOTAL=("QTD","sum")).reset_index()
+        top_val = top_val.sort_values("VALOR_TOTAL", ascending=False).head(10)
+        fig = px.bar(top_val, x="PRODUTO", y="VALOR_TOTAL", text="VALOR_TOTAL")
         fig.update_traces(textposition="inside")
         st.plotly_chart(fig, use_container_width=True)
-        top_val_fmt = top_val.copy()
-        top_val_fmt = formatar_valor_reais(top_val_fmt, ["VALOR_TOTAL"])
-        st.dataframe(top_val_fmt, use_container_width=True)
-    else:
-        st.info("Sem dados de vendas para o período selecionado.")
+        st.dataframe(formatar_valor_reais(top_val, ["VALOR_TOTAL"]), use_container_width=True)
 
 # ----------------------------
 # Aba TOP10 QUANTIDADE
 with tabs[2]:
     st.subheader("Top 10 — por QUANTIDADE")
-    if not vendas_filtradas.empty:
+    if vendas_filtradas.empty:
+        st.info("Sem dados de vendas para o período selecionado.")
+    else:
         dfv = vendas_filtradas.copy()
         if "QTD" not in dfv.columns and "QUANTIDADE" in dfv.columns:
             dfv["QTD"] = dfv["QUANTIDADE"]
         top_q = dfv.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(10)
-        fig2 = px.bar(top_q, x="PRODUTO", y="QTD", text=top_q["QTD"])
+        fig2 = px.bar(top_q, x="PRODUTO", y="QTD", text="QTD")
         fig2.update_traces(textposition="inside")
         st.plotly_chart(fig2, use_container_width=True)
         st.dataframe(top_q, use_container_width=True)
-    else:
-        st.info("Sem dados de vendas para o período selecionado.")
 
 # ----------------------------
 # Aba TOP10 LUCRO
 with tabs[3]:
     st.subheader("Top 10 — por LUCRO (R$)")
-    if not vendas_filtradas.empty:
+    if vendas_filtradas.empty:
+        st.info("Sem dados de vendas para o período selecionado.")
+    else:
         dfv = vendas_filtradas.copy()
         dfv["LUCRO_TOTAL"] = dfv["LUCRO UNITARIO"].fillna(0)*dfv["QTD"].fillna(0)
-        top_lucro = dfv.groupby("PRODUTO").agg(
-            LUCRO_TOTAL=("LUCRO_TOTAL","sum"),
-            QTD_TOTAL=("QTD","sum")
-        ).reset_index().sort_values("LUCRO_TOTAL", ascending=False).head(10)
-        fig3 = px.bar(
-            top_lucro,
-            x="PRODUTO",
-            y="LUCRO_TOTAL",
-            text=top_lucro["LUCRO_TOTAL"].map(lambda x: f"R$ {x:,.2f}"),
-            hover_data={"LUCRO_TOTAL": False, "QTD_TOTAL": True,
-                        "Valor Formatado": top_lucro["LUCRO_TOTAL"].map(lambda x: f"R$ {x:,.2f}")}
-        )
+        top_lucro = dfv.groupby("PRODUTO").agg(LUCRO_TOTAL=("LUCRO_TOTAL","sum"), QTD_TOTAL=("QTD","sum")).reset_index()
+        top_lucro = top_lucro.sort_values("LUCRO_TOTAL", ascending=False).head(10)
+        fig3 = px.bar(top_lucro, x="PRODUTO", y="LUCRO_TOTAL", text="LUCRO_TOTAL")
         fig3.update_traces(textposition="inside")
         st.plotly_chart(fig3, use_container_width=True)
-        top_lucro_fmt = top_lucro.copy()
-        top_lucro_fmt = formatar_valor_reais(top_lucro_fmt, ["LUCRO_TOTAL"])
-        st.dataframe(top_lucro_fmt, use_container_width=True)
-    else:
-        st.info("Sem dados de vendas para o período selecionado.")
+        st.dataframe(formatar_valor_reais(top_lucro, ["LUCRO_TOTAL"]), use_container_width=True)
 
 # ----------------------------
 # Aba CONSULTAR ESTOQUE
 with tabs[4]:
     st.subheader("Consulta completa do Estoque")
-    if not estoque_df.empty:
-        df_e = estoque_df.copy()
-        df_e = df_e.dropna(axis=1, how='all')
+    if estoque_df.empty:
+        st.info("Aba ESTOQUE não encontrada ou vazia.")
+    else:
+        df_e = estoque_df.copy().dropna(axis=1, how='all')
         df_e = formatar_valor_reais(df_e, ["Media C. UNITARIO","Valor Venda Sugerido"])
         if "EM ESTOQUE" in df_e.columns:
             df_e["EM ESTOQUE"] = df_e["EM ESTOQUE"].astype(int)
         st.dataframe(df_e.sort_values("PRODUTO").reset_index(drop=True), use_container_width=True)
-    else:
-        st.info("Aba ESTOQUE não encontrada ou vazia.")
 
 st.success("✅ Dashboard carregado com sucesso!")
