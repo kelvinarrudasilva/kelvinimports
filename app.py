@@ -16,29 +16,20 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 # VISUAL
 # ----------------------------
 st.markdown("""
-<style>
-:root { --accent:#1aa3ff; --accent-dark:#0066cc; }
-body, .stApp { background-color:#ffffff; color:#111; }
-h1,h2,h3,h4 { color: var(--accent-dark); }
-.stDataFrame thead th { background-color:#f0f8ff;}
-.kpi-vendas { background-color:#9b59b6; padding:15px; border-radius:10px; text-align:center; color:white; }
-.kpi-lucro { background-color:#27ae60; padding:15px; border-radius:10px; text-align:center; color:white; }
-.kpi-compras { background-color:#f1c40f; padding:15px; border-radius:10px; text-align:center; color:white; }
-.kpi-vendas h3, .kpi-lucro h3, .kpi-compras h3 { margin:0; font-size:20px; }
-.kpi-vendas span, .kpi-lucro span, .kpi-compras span { font-size:24px; font-weight:700; }
-
-/* Aba ativa e inativa com fundo colorido */
-div[role="tab"] {
-    background-color: #e0e0e0 !important;
-    color: #111 !important;
-    border-radius: 8px 8px 0 0;
-    padding: 5px 15px;
-    margin-right: 5px;
-    font-weight: 600;
-}
-div[role="tab"]:hover { background-color: #c0c0c0 !important; }
-div[role="tab"][data-selected="true"] { background-color: #1aa3ff !important; color: white !important; }
-</style>
+    <style>
+      :root { --accent:#1aa3ff; --accent-dark:#0066cc; }
+      body, .stApp { background-color:#ffffff; color:#111; }
+      h1,h2,h3,h4 { color: var(--accent-dark); }
+      .stDataFrame thead th { background-color:#f0f8ff;}
+      .kpi-vendas { background-color:#9b59b6; padding:15px; border-radius:10px; text-align:center; color:white; }
+      .kpi-lucro { background-color:#27ae60; padding:15px; border-radius:10px; text-align:center; color:white; }
+      .kpi-compras { background-color:#f1c40f; padding:15px; border-radius:10px; text-align:center; color:white; }
+      .kpi-vendas h3, .kpi-lucro h3, .kpi-compras h3 { margin:0; font-size:20px; }
+      .kpi-vendas span, .kpi-lucro span, .kpi-compras span { font-size:24px; font-weight:700; }
+      /* Contraste nos botões das abas */
+      .stTabs [role="tab"] { background-color:#f0f0f0; border-radius:5px; margin-right:5px; }
+      .stTabs [role="tab"][aria-selected="true"] { background-color:#d0d0d0; font-weight:bold; }
+    </style>
 """, unsafe_allow_html=True)
 
 st.title("📊 Loja Importados — Dashboard")
@@ -96,7 +87,6 @@ def formatar_valor_reais(df, colunas):
     return df
 
 def formatar_reais(valor):
-    """Formata float em reais: R$ 1.299,00"""
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ----------------------------
@@ -338,4 +328,8 @@ with tabs[5]:
         df_search = df_search[df_search["PRODUTO"].str.contains(nome_produto, case=False, na=False)]
         if not df_search.empty:
             df_search = formatar_valor_reais(df_search, ["Media C. UNITARIO","Valor Venda Sugerido"])
-            st.dataframe(df_search.reset_index(drop=True
+            st.dataframe(df_search.reset_index(drop=True), use_container_width=True)
+        else:
+            st.info("Nenhum produto encontrado com esse nome.")
+
+st.success("✅ Dashboard carregado com sucesso!")
