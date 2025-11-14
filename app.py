@@ -1,257 +1,288 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import requests
-import io
-from pathlib import Path
 import re
-import unicodedata
-
-st.set_page_config(page_title="Dashboard Loja", layout="wide")
+from datetime import datetime
+import requests
+from io import BytesIO
 
 # ======================
-# ESTILO GLOBAL
+# Config visual (Alto contraste: Preto + Dourado)
 # ======================
+st.set_page_config(page_title="Painel - Loja Importados", layout="wide")
+
 st.markdown(
     """
     <style>
-        .metric-card {
-            background-color: #111;
-            border-radius: 12px;
-            padding: 20px;
-            color: white;
-            text-align: center;
-            border: 1px solid #333;
-        }
-        .subtitle {
-            font-size: 14px;
-            color: #ccc;
-            margin-top: -10px;
-            margin-bottom: 20px;
-        }
-        h2, h3 {
-            color: #FFD700;
-        }
-        .small-selectbox label { font-size:13px !important; color:#FFD700 !important; }
-        .small-selectbox div[data-baseweb="select"] div { font-size:12px !important; }
+      :root { --gold:#FFD700; --bg:#000000; --card:#0f0f0f; --muted:#bbbbbb; --white:#FFFFFF; }
+      .stApp { background-color: var(--bg); color: var(--gold); }
+      .title { color: var(--gold); font-weight:700; font-size:22px; }
+      .subtitle { color: var(--muted); font-size:12px; margin-bottom:12px; }
+      .kpi { background: linear-gradient(90deg, #111111, #0b0b0b); padding:12px; border-radius:10px; text-align:center; }
+      .kpi-value { color: var(--gold); font-size:22px; font-weight:700; }
+      .kpi-label { color:var(--muted); font-size:13px; }
+      .stDataFrame table { background-color:#050505; color:var(--white); }
+      .small { color: var(--muted); font-size:12px; }
+      .table-card { background: linear-gradient(90deg,#0b0b0b,#111111); border: 1px solid rgba(255,215,0,0.08); padding:12px; border-radius:10px; }
+      .table-card h4 { color: var(--gold); margin:0 0 8px 0; }
+      .table-card .big { font-size:15px; color:var(--white); }
+      .small-select .stSelectbox>div>div { font-size:14px; }
+      .summary-table .dataframe td, .summary-table .dataframe th { font-size:13px !important; }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
+st.markdown("<div class='title'>📊 Painel — Loja Importados</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Tema: Preto & Dourado (alto contraste) • Abas: Visão Geral / Estoque</div>", unsafe_allow_html=True)
+st.markdown("---")
+
 # ======================
-# FUNÇÕES
+# Helpers
 # ======================
+def detect_header(path_or_buffer, sheet_name, look_for="PRODUTO"):
+    try:
+        raw = pd.read_excel(path_or_buffer, sheet_name=sheet_name, header=None)
+    except Exception:
+        return None, None
+    header_row = None
+    for i in range(min(len(raw), 12)):
+        row = raw.iloc[i].astype(str).str.upper().fillna("")
+        if any(look_for.upper() in v for v in row):
+            header_row = i
+            break
+    if header_row is None:
+        header_row = 0
+    try:
+        df = pd.read_excel(path_or_buffer, sheet_name=sheet_name, header=header_row)
+        return df, header_row
+    except Exception:
+        return None, None
 
-def normalize(s):
-    if not isinstance(s, str):
-        return ""
-    s2 = unicodedata.normalize("NFKD", s)
-    s2 = "".join([c for c in s2 if not unicodedata.combining(c)])
-    return s2.strip().upper()
-
-
-def detect_header(df):
-    for i in range(min(10, len(df))):
-        row = df.iloc[i].astype(str).str.upper()
-        score = sum(
-            [
-                ("DATA" in str(x)) or
-                ("PROD" in str(x)) or
-                ("QTD" in str(x)) or
-                ("VAL" in str(x))
-                for x in row
-            ]
-        )
-        if score >= 2:
-            new_df = df.iloc[i:].reset_index(drop=True)
-            new_df.columns = df.iloc[i].astype(str).tolist()
-            return new_df
+def clean_df(df):
+    if df is None:
+        return None
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
+    df = df.dropna(axis=1, how="all")
+    df = df.dropna(axis=0, how="all").reset_index(drop=True)
     return df
 
+def find_col(df, *candidates):
+    if df is None:
+        return None
+    for cand in candidates:
+        if cand is None:
+            continue
+        pat = re.sub(r"\s+", " ", str(cand)).strip().upper()
+        for c in df.columns:
+            if pat in str(c).upper():
+                return c
+    return None
 
-def load_excel_from_onedrive(url):
+def to_num(s):
+    return pd.to_numeric(s, errors="coerce").fillna(0)
+
+def fmt_brl(x):
     try:
-        if "download=1" not in url:
-            if "?" in url:
-                url = url + "&download=1"
-            else:
-                url = url + "?download=1"
-
-        r = requests.get(url)
-        r.raise_for_status()
-        bytes_data = io.BytesIO(r.content)
-        xls = pd.ExcelFile(bytes_data)
-
-        sheet_map = {normalize(s): s for s in xls.sheet_names}
-        st.write("SHEETS (originais):", xls.sheet_names)
-        st.write("SHEET MAP (UPPER->original):", sheet_map)
-
-        return xls, sheet_map
-    except Exception as e:
-        st.error(f"Erro ao baixar arquivo: {str(e)}")
-        return None, {}
-
-
-def map_vendas_columns(df):
-    cols = {normalize(c): c for c in df.columns}
-    st.write("VENDAS columns:", df.columns.tolist())
-
-    m = {}
-    m["DATA"] = cols.get("DATA")
-    m["PRODUTO"] = cols.get("PRODUTO") or cols.get("_PROD_NORM")
-    m["QTD"] = cols.get("QTD") or cols.get("_QTD")
-    m["VALOR VENDA"] = cols.get("VALOR VENDA")
-    m["VALOR TOTAL"] = cols.get("VALOR TOTAL")
-    m["LUCRO"] = cols.get("_LUCRO")
-
-    st.write("Mapeamento tentado para VENDAS:", m)
-    return m
-
-
-def map_estoque_columns(df):
-    cols = {normalize(c): c for c in df.columns}
-    st.write("ESTOQUE columns:", df.columns.tolist())
-    m = {}
-    m["PRODUTO"] = cols.get("PRODUTO")
-    m["ESTOQUE_QTD"] = cols.get("_QTD")
-    m["VAL_VENDA_UNIT"] = cols.get("_VAL_VENDA_UNIT")
-    return m
-
+        return f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "R$ 0,00"
 
 # ======================
-# LAYOUT SUPERIOR
+# Load Excel from Google Drive
 # ======================
+GDRIVE_URL = "https://drive.google.com/uc?id=1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b"
 
-st.title("📊 Dashboard - Loja de Importados")
+try:
+    res = requests.get(GDRIVE_URL)
+    res.raise_for_status()
+    excel_buffer = BytesIO(res.content)
+    xls = pd.ExcelFile(excel_buffer)
+    available_sheets = [s.upper() for s in xls.sheet_names]
+except Exception as e:
+    st.error(f"Erro ao acessar planilha do Google Drive: {e}")
+    st.stop()
 
-url = st.text_input(
-    "Cole aqui o link público do OneDrive (Excel)", 
-    value="https://1drv.ms/x/c/bc81746c0a7c734e/IQDHyRSnkqqEQZT1Vg9e3VJwARLyccQhj9JG3uL2lBdduGg"
+def load_and_clean(name):
+    if name not in available_sheets:
+        return None
+    df, hdr = detect_header(excel_buffer, name)
+    df = clean_df(df)
+    return df
+
+estoque = load_and_clean("ESTTOQUE".replace("TT","T"))  # failsafe
+estoque = load_and_clean("ESTOQUE")
+vendas = load_and_clean("VENDAS")
+compras = load_and_clean("COMPRAS")
+
+if vendas is None:
+    vendas = pd.DataFrame()
+if estoque is None:
+    estoque = pd.DataFrame()
+if compras is None:
+    compras = pd.DataFrame()
+
+# ======================
+# Map columns
+# ======================
+e_prod = find_col(estoque, "PRODUTO")
+e_qtd = find_col(estoque, "EM ESTOQUE", "QTD", "QUANTIDADE", "QUANT")
+e_val_venda = find_col(estoque, "VALOR VENDA", "VALOR VENDA SUGERIDO")
+e_val_custo = find_col(estoque, "MEDIA CUSTO UNITARIO", "CUSTO UNITARIO", "CUSTO")
+
+v_data = find_col(vendas, "DATA")
+v_prod = find_col(vendas, "PRODUTO")
+v_qtd = find_col(vendas, "QTD", "QUANTIDADE")
+v_val_unit = find_col(vendas, "VALOR VENDA")
+v_val_total = find_col(vendas, "VALOR TOTAL")
+
+# CORREÇÃO IMPORTANTE
+v_lucro = find_col(
+    vendas,
+    "LUCRO UNITARIO",
+    "LUCRO",
+    "LUCRO UNIT",
+    "LUCRO_UN",
+    "LUCROUNITARIO"
 )
 
-if url:
-    xls, sheet_map = load_excel_from_onedrive(url)
+# ======================
+# Prepare numeric columns
+# ======================
+if not vendas.empty:
+    if v_data and v_data in vendas.columns:
+        vendas[v_data] = pd.to_datetime(vendas[v_data], errors="coerce")
 
-    if xls:
-        # ======================
-        # CARREGAR PLANILHAS
-        # ======================
-        vendas_sheet = sheet_map.get("VENDAS")
-        estoque_sheet = sheet_map.get("ESTOQUE")
+    vendas["_QTD"] = to_num(vendas[v_qtd]) if v_qtd in vendas.columns else 0
 
-        if not vendas_sheet:
-            st.error("Aba 'VENDAS' não encontrada.")
-            st.stop()
+    if v_val_total and v_val_total in vendas.columns:
+        vendas["_VAL_TOTAL"] = to_num(vendas[v_val_total])
+    else:
+        vendas["_VAL_TOTAL"] = to_num(vendas[v_val_unit]) * vendas["_QTD"]
 
-        if not estoque_sheet:
-            st.error("Aba 'ESTOQUE' não encontrada.")
-            st.stop()
+    vendas["_LUCRO"] = to_num(vendas[v_lucro]) if v_lucro in vendas.columns else 0
 
-        vendas_raw = pd.read_excel(xls, vendas_sheet)
-        estoque_raw = pd.read_excel(xls, estoque_sheet)
+else:
+    vendas["_QTD"] = pd.Series(dtype=float)
+    vendas["_VAL_TOTAL"] = pd.Series(dtype=float)
+    vendas["_LUCRO"] = pd.Series(dtype=float)
 
-        vendas = detect_header(vendas_raw)
-        estoque = detect_header(estoque_raw)
+# PERÍODO
+if v_data and v_data in vendas.columns:
+    vendas["_PERIODO"] = vendas[v_data].dt.to_period("M").astype(str)
+else:
+    vendas["_PERIODO"] = None
 
-        map_v = map_vendas_columns(vendas)
-        map_e = map_estoque_columns(estoque)
+# ======================
+# Estoque
+# ======================
+if not estoque.empty:
+    estoque["_QTD"] = to_num(estoque[e_qtd]) if e_qtd in estoque.columns else 0
+    estoque["_VAL_VENDA_UNIT"] = to_num(estoque[e_val_venda]) if e_val_venda in estoque.columns else 0
+    estoque["_VAL_CUSTO_UNIT"] = to_num(estoque[e_val_custo]) if e_val_custo in estoque.columns else 0
+    estoque["_VAL_TOTAL_VENDA"] = estoque["_QTD"] * estoque["_VAL_VENDA_UNIT"]
+    estoque["_VAL_TOTAL_CUSTO"] = estoque["_QTD"] * estoque["_VAL_CUSTO_UNIT"]
 
-        # Normalizações
-        if map_v["PRODUTO"]:
-            vendas["_PROD"] = vendas[map_v["PRODUTO"]].astype(str)
-        else:
-            vendas["_PROD"] = ""
+# ======================
+# Periodos
+# ======================
+if "_PERIODO" not in vendas.columns:
+    st.error("Coluna de DATA não encontrada. Verifique a planilha VENDAS.")
+    st.stop()
 
-        if map_v["QTD"]:
-            vendas["_QTD2"] = pd.to_numeric(vendas[map_v["QTD"]], errors="coerce")
-        else:
-            vendas["_QTD2"] = 0
+periodos = sorted([p for p in vendas["_PERIODO"].dropna().unique()], reverse=True)
+period_options = ["Geral"] + periodos
 
-        if map_v["VALOR TOTAL"]:
-            vendas["_VALT"] = pd.to_numeric(vendas[map_v["VALOR TOTAL"]], errors="coerce")
-        else:
-            vendas["_VALT"] = 0
+# ======================
+# Tabs
+# ======================
+tab1, tab2 = st.tabs(["📈 Visão Geral", "📦 Estoque Atual"])
 
-        # Período
-        if map_v["DATA"]:
-            vendas["_DATA2"] = pd.to_datetime(vendas[map_v["DATA"]], errors="coerce")
-            vendas["_PERIODO"] = vendas["_DATA2"].dt.strftime("%Y-%m")
-        else:
-            vendas["_DATA2"] = pd.NaT
-            vendas["_PERIODO"] = "SEM_DATA"
+# ---- Tab 1 ----
+with tab1:
+    periodo_sel = st.selectbox("Selecione o período", period_options)
 
-        period_options = ["Geral"] + sorted(vendas["_PERIODO"].unique())
-        period_map = {p: None if p == "Geral" else p for p in period_options}
+    if periodo_sel == "Geral":
+        vendas_period = vendas.copy()
+    else:
+        vendas_period = vendas[vendas["_PERIODO"] == periodo_sel]
 
-        # ======================
-        # TABS
-        # ======================
-        tab1, tab2 = st.tabs(["📈 Visão Geral", "📦 Estoque"])
+    total_vendido = vendas_period["_VAL_TOTAL"].sum()
+    total_qtd = vendas_period["_QTD"].sum()
+    lucro_period = vendas_period["_LUCRO"].sum()
+    valor_estoque_venda = estoque["_VAL_TOTAL_VENDA"].sum()
 
-        # ======================
-        # TAB 1 - VISÃO GERAL
-        # ======================
-        with tab1:
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("💰 Vendido", fmt_brl(total_vendido))
+    c2.metric("📈 Qtde Vendida", f"{int(total_qtd)}")
+    c3.metric("💸 Lucro do Período", fmt_brl(lucro_period))
+    c4.metric("📦 Valor Estoque (Venda)", fmt_brl(valor_estoque_venda))
 
-            # 🔥 PERÍODO MENOR E BONITO
-            with st.container():
-                st.markdown("<div class='small-selectbox'>", unsafe_allow_html=True)
-                periodo_sel = st.selectbox("📅 Período", period_options)
-                st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("---")
 
-            periodo_val = period_map.get(periodo_sel)
+    st.subheader("🏆 Top 10 — Produtos Mais Vendidos")
+    if not vendas_period.empty:
+        grp = vendas_period.groupby(v_prod).agg(
+            QTDE_SOMADA=("_QTD","sum"),
+            VAL_TOTAL=("_VAL_TOTAL","sum")
+        ).reset_index()
 
-            if periodo_val is None:
-                vendas_period = vendas.copy()
-            else:
-                vendas_period = vendas[vendas["_PERIODO"] == periodo_val].copy()
+        grp = grp.sort_values("VAL_TOTAL", ascending=False).head(10)
 
-            st.markdown(
-                f"<div class='subtitle'>Mostrando resultados para: <b>{periodo_sel}</b></div>",
-                unsafe_allow_html=True
-            )
+        fig_top = px.bar(
+            grp,
+            x="VAL_TOTAL",
+            y=v_prod,
+            text="QTDE_SOMADA",
+            orientation="h",
+            color="VAL_TOTAL",
+            color_continuous_scale=["#FFD700","#B8860B"]
+        )
 
-            total_vendido = vendas_period["_VALT"].sum()
-            total_qtd = vendas_period["_QTD2"].sum()
+        fig_top.update_traces(textposition="outside")
+        fig_top.update_layout(
+            plot_bgcolor="#000",
+            paper_bgcolor="#000",
+            font_color="#FFD700",
+            yaxis={'categoryorder': 'total ascending'}
+        )
 
-            c1, c2, c3, c4 = st.columns(4)
+        st.plotly_chart(fig_top, use_container_width=True)
 
-            with c1:
-                st.markdown("<div class='metric-card'>💰 Vendido<br>"
-                    f"<h2>R$ {total_vendido:,.2f}</h2></div>", unsafe_allow_html=True)
+    st.markdown("---")
 
-            with c2:
-                st.markdown("<div class='metric-card'>📦 Quantidade<br>"
-                    f"<h2>{int(total_qtd)}</h2></div>", unsafe_allow_html=True)
+    st.subheader("📋 Vendas do Período")
+    if not vendas_period.empty:
+        dfv = vendas_period.copy()
+        dfv[v_data] = dfv[v_data].dt.strftime("%d/%m/%Y")
+        dfv["_VAL_TOTAL"] = dfv["_VAL_TOTAL"].apply(fmt_brl)
+        dfv["_LUCRO"] = dfv["_LUCRO"].apply(fmt_brl)
 
-            with c3:
-                st.markdown("<div class='metric-card'>💸 Lucro<br><h2>R$ 0,00</h2></div>", unsafe_allow_html=True)
+        dfv = dfv.rename(columns={
+            v_data:"Data",
+            v_prod:"Produto",
+            "_QTD":"Quantidade",
+            "_VAL_TOTAL":"Valor",
+            "_LUCRO":"Lucro"
+        })
 
-            with c4:
-                st.markdown("<div class='metric-card'>📦 Valor do Estoque<br><h2>R$ 0,00</h2></div>", unsafe_allow_html=True)
+        st.dataframe(dfv.reset_index(drop=True))
+    else:
+        st.info("Nenhuma venda registrada para o período.")
 
-            st.subheader("🏆 Top Produtos")
-            vendas_group = vendas_period.groupby("_PROD")["_QTD2"].sum().sort_values(ascending=False).head(10)
+# ---- Tab 2 ----
+with tab2:
+    st.subheader("📦 Estoque Atual (consulta)")
 
-            if len(vendas_group) > 0:
-                fig = px.bar(vendas_group, title="Produtos Mais Vendidos")
-                fig.update_layout(height=380)
-                st.plotly_chart(fig, use_container_width=True)
+    if not estoque.empty:
+        est = estoque.copy()
+        est["PRODUTO"] = est[e_prod].astype(str)
+        est["QTD"] = est["_QTD"].astype(int)
+        est["PRECO VENDA"] = est["_VAL_VENDA_UNIT"].apply(fmt_brl)
+        est["PRECO CUSTO"] = est["_VAL_CUSTO_UNIT"].apply(fmt_brl)
 
-            st.subheader("📋 Vendas do Período")
-            st.dataframe(vendas_period, use_container_width=True, height=400)
-
-        # ======================
-        # TAB 2 - ESTOQUE
-        # ======================
-        with tab2:
-            st.subheader("📦 Estoque Atual")
-
-            if map_e["PRODUTO"] and map_e["ESTOQUE_QTD"]:
-                st.dataframe(
-                    estoque[[map_e["PRODUTO"], map_e["ESTOQUE_QTD"]]],
-                    use_container_width=True
-                )
-            else:
-                st.error("Estoque vazio ou colunas não encontradas.")
+        st.dataframe(est[["PRODUTO","QTD","PRECO VENDA","PRECO CUSTO"]])
+    else:
+        st.info("Estoque vazio ou coluna de produto não encontrada.")
