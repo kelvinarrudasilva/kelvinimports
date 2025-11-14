@@ -196,7 +196,7 @@ period_options = ["Geral"] + [k for k in period_map.keys() if k != "Geral"]
 # ======================
 tab1, tab2 = st.tabs(["📈 Visão Geral", "📦 Estoque Atual"])
 
-# ---- Tab 1: Visão Geral (KPIs + Top10 + Últimas Vendas + Evolução) ----
+# ---- Tab 1: Visão Geral ----
 with tab1:
     periodo_sel = st.selectbox("Selecione o período", period_options, index=0)
     periodo_val = period_map.get(periodo_sel)
@@ -219,20 +219,7 @@ with tab1:
 
     st.markdown("---")
 
-    # Evolução de vendas (somente período selecionado)
-    st.subheader("📊 Evolução de Vendas")
-    if not vendas_period.empty:
-        evo = vendas_period.groupby("_PERIODO").agg(Total_Venda=("_VAL_TOTAL","sum")).reset_index()
-        evo["PERIODO_FMT"] = pd.to_datetime(evo["_PERIODO"] + "-01").dt.strftime("%b %Y")
-        evo_fig = px.line(evo, x="PERIODO_FMT", y="Total_Venda", markers=True)
-        evo_fig.update_layout(plot_bgcolor="#000000", paper_bgcolor="#000000", font_color="#FFD700",
-                              xaxis_title=None, yaxis_title="Valor R$",
-                              margin=dict(l=20,r=20,t=30,b=40))
-        st.plotly_chart(evo_fig, use_container_width=True)
-
-    st.markdown("---")
-
-    # Top10 produtos (somente período selecionado)
+    # Top10 produtos
     st.subheader("🏆 Top 10 — Produtos Mais Vendidos")
     if not vendas_period.empty and v_prod in vendas_period.columns:
         grp = vendas_period.groupby(v_prod).agg(QTDE_SOMADA=("_QTD", "sum"), VAL_TOTAL=("_VAL_TOTAL","sum")).reset_index()
@@ -246,15 +233,17 @@ with tab1:
 
     st.markdown("---")
 
-    # Últimas vendas filtradas
-    st.subheader("🕒 Últimas Vendas (mês selecionado)")
+    # Vendas do período
+    st.subheader("📋 Vendas do Período")
     if not vendas_period.empty:
-        ult = vendas_period.sort_values(v_data, ascending=False).head(10)
-        ult[v_data] = ult[v_data].dt.strftime("%d/%m/%Y")
-        ult["_VAL_TOTAL"] = ult["_VAL_TOTAL"].apply(fmt_brl)
-        ult["_LUCRO"] = ult["_LUCRO"].apply(fmt_brl)
-        ult = ult.rename(columns={v_data:"Data", v_prod:"Produto","_QTD":"Qtd","_VAL_TOTAL":"Valor","_LUCRO":"Lucro"})
-        st.dataframe(ult.reset_index(drop=True))
+        vendas_disp = vendas_period.copy()
+        vendas_disp[v_data] = vendas_disp[v_data].dt.strftime("%d/%m/%Y")
+        vendas_disp["_VAL_TOTAL"] = vendas_disp["_VAL_TOTAL"].apply(fmt_brl)
+        vendas_disp["_LUCRO"] = vendas_disp["_LUCRO"].apply(fmt_brl)
+        vendas_disp = vendas_disp.rename(columns={v_data:"Data", v_prod:"Produto","_QTD":"Quantidade","_VAL_TOTAL":"Valor","_LUCRO":"Lucro"})
+        st.dataframe(vendas_disp.reset_index(drop=True))
+    else:
+        st.info("Nenhuma venda registrada para o período selecionado.")
 
 # ---- Tab 2: Estoque Atual ----
 with tab2:
