@@ -49,7 +49,7 @@ def carregar_planilha(link):
         elif "view" in link:
             link = link.replace("/view", "/export?format=csv")
 
-        df = pd.read_csv(link, encoding="utf-8")
+        df = pd.read_csv(link, encoding="utf-8", sep=",", engine="python", on_bad_lines="skip")
         return df
     except Exception as e:
         st.error(f"Erro ao carregar planilha: {e}")
