@@ -26,9 +26,7 @@ st.markdown("""
       .kpi-compras { background-color:#f1c40f; padding:15px; border-radius:10px; text-align:center; color:white; }
       .kpi-vendas h3, .kpi-lucro h3, .kpi-compras h3 { margin:0; font-size:20px; }
       .kpi-vendas span, .kpi-lucro span, .kpi-compras span { font-size:24px; font-weight:700; }
-      /* Contraste nos botões das abas */
-      .stTabs [role="tab"] { background-color:#f0f0f0; border-radius:5px; margin-right:5px; }
-      .stTabs [role="tab"][aria-selected="true"] { background-color:#d0d0d0; font-weight:bold; }
+      .stTabs button { background-color: #e0e0e0; border-radius:5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -256,8 +254,8 @@ with tabs[1]:
             text="VALOR_TOTAL",
             hover_data={"QTD_TOTAL": True, "VALOR_TOTAL":":.2f"}
         )
-        fig.update_traces(textposition="inside")
-        fig.update_yaxes(tickprefix="R$ ", separatorthousands=True)
+        fig.update_traces(texttemplate='%{text:.2f}', textposition="inside")
+        fig.update_yaxes(tickprefix="R$ ", tickformat=", .2f")
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(formatar_valor_reais(top_val, ["VALOR_TOTAL"]), use_container_width=True)
     else:
@@ -297,8 +295,8 @@ with tabs[3]:
             text="LUCRO_TOTAL",
             hover_data={"QTD_TOTAL": True, "LUCRO_TOTAL":":.2f"}
         )
-        fig3.update_traces(textposition="inside")
-        fig3.update_yaxes(tickprefix="R$ ", separatorthousands=True)
+        fig3.update_traces(texttemplate='%{text:.2f}', textposition="inside")
+        fig3.update_yaxes(tickprefix="R$ ", tickformat=", .2f")
         st.plotly_chart(fig3, use_container_width=True)
         st.dataframe(formatar_valor_reais(top_lucro, ["LUCRO_TOTAL"]), use_container_width=True)
     else:
@@ -321,15 +319,14 @@ with tabs[4]:
 # ----------------------------
 # Aba PESQUISAR PRODUTO
 with tabs[5]:
-    st.subheader("🔍 Pesquisar Produto no Estoque")
-    nome_produto = st.text_input("Digite o nome do produto:")
-    if nome_produto.strip() != "":
-        df_search = estoque_df.copy()
-        df_search = df_search[df_search["PRODUTO"].str.contains(nome_produto, case=False, na=False)]
+    st.subheader("Pesquisar Produto no Estoque")
+    produto_input = st.text_input("Digite o nome do produto:")
+    if produto_input:
+        df_search = estoque_df[estoque_df["PRODUTO"].str.contains(produto_input, case=False, na=False)]
         if not df_search.empty:
             df_search = formatar_valor_reais(df_search, ["Media C. UNITARIO","Valor Venda Sugerido"])
             st.dataframe(df_search.reset_index(drop=True), use_container_width=True)
         else:
-            st.info("Nenhum produto encontrado com esse nome.")
+            st.info("Nenhum produto encontrado.")
 
 st.success("✅ Dashboard carregado com sucesso!")
