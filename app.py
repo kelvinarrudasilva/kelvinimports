@@ -1,4 +1,4 @@
-# app.py — Dashboard Loja Importados final + hover detalhado + estoque ordenado
+# app.py — Dashboard Loja Importados final + hover detalhado + estoque ordenado + gráfico evolução vendas
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -211,6 +211,7 @@ k3.metric("💸 Total Compras (R$)", f"R$ {total_compras:,.2f}")
 # ----------------------------
 tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QUANTIDADE)","💰 TOP10 LUCRO","📦 CONSULTAR ESTOQUE"])
 
+# Função para preparar vendas
 def preparar_tabela_vendas(df):
     df_show = df.dropna(axis=1, how='all')
     if "DATA" in df_show.columns:
@@ -219,46 +220,47 @@ def preparar_tabela_vendas(df):
     return df_show
 
 # ----------------------------
-# Aba VENDAS com gráfico "prédios"
+# Aba VENDAS
 with tabs[0]:
     st.subheader("Vendas (período selecionado)")
-    
-    # --- GRÁFICO ESTILO "PRÉDIOS" ---
-    if not vendas_filtradas.empty:
-        df_6meses = vendas_filtradas.groupby("MES_ANO").agg(
-            TOTAL_VENDIDO=("VALOR TOTAL", lambda x: x.fillna(0).sum()),
-            TOTAL_LUCRO=("LUCRO UNITARIO", lambda x: (x.fillna(0) * vendas_filtradas.loc[x.index, "QTD"].fillna(0)).sum())
-        ).reset_index().sort_values("MES_ANO", ascending=False).head(6)
-        df_6meses = df_6meses.sort_values("MES_ANO")
-        
-        fig_predios = px.bar(
-            df_6meses,
-            x="MES_ANO",
-            y="TOTAL_VENDIDO",
-            text=df_6meses["TOTAL_LUCRO"].map(lambda x: f"R$ {x:,.2f}"),
-            labels={"TOTAL_VENDIDO": "Valor Vendido (R$)", "MES_ANO": "Mês"},
-            color_discrete_sequence=["#1aa3ff"],
-        )
-        fig_predios.update_traces(
-            textposition="inside",
-            marker_line_width=1.5,
-            marker_line_color="black"
-        )
-        fig_predios.update_layout(
-            yaxis_tickprefix="R$ ",
-            xaxis_tickangle=-45,
-            bargap=0.4,
-            title_font_size=16,
-            uniformtext_minsize=12,
-            uniformtext_mode='hide',
-        )
-        st.plotly_chart(fig_predios, use_container_width=True)
-
-    # --- TABELA DE VENDAS ---
     if vendas_filtradas.empty:
         st.info("Sem dados de vendas para o período selecionado.")
     else:
         st.dataframe(preparar_tabela_vendas(vendas_filtradas), use_container_width=True)
+
+    # --- Gráfico evolução vendas (prédios) ---
+    if not dfs.get("VENDAS", pd.DataFrame()).empty:
+        df_v = dfs["VENDAS"].copy()
+
+        # Agrupar por mês
+        df_mes = df_v.groupby("MES_ANO").agg(
+            TOTAL_VENDIDO=("VALOR TOTAL", lambda x: x.fillna(0).sum()),
+            TOTAL_LUCRO=("LUCRO UNITARIO", lambda x: (x.fillna(0) * df_v.loc[x.index, "QTD"].fillna(0)).sum())
+        ).reset_index().sort_values("MES_ANO")
+
+        # Gráfico de barras agrupadas
+        fig_prédio = px.bar(
+            df_mes,
+            x="MES_ANO",
+            y=["TOTAL_VENDIDO", "TOTAL_LUCRO"],
+            barmode="group",
+            text_auto=".2f",
+            labels={"MES_ANO":"Mês","value":"R$","variable":"Métrica"},
+            title="🏢 Evolução das Vendas e Lucro - Últimos Meses"
+        )
+
+        fig_prédio.update_traces(
+            texttemplate='%{y:$,.2f}', 
+            textposition='inside'
+        )
+        fig_prédio.update_layout(
+            yaxis_tickprefix="R$ ",
+            xaxis_tickangle=-45,
+            legend_title_text="Métrica",
+            legend=dict(x=0.8, y=1.1)
+        )
+
+        st.plotly_chart(fig_prédio, use_container_width=True)
 
 # ----------------------------
 # Aba TOP10 VALOR
