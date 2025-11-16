@@ -293,4 +293,51 @@ with tabs[1]:
     else:
         dfv=vendas_filtradas.copy()
         if "VALOR TOTAL" not in dfv and "VALOR VENDA" in dfv: dfv["VALOR TOTAL"]=dfv["VALOR VENDA"].fillna(0)*dfv.get("QTD",0).fillna(0)
-        top_val=dfv.groupby("PRODUTO", dropna=False).agg(VALOR_TOTAL=("VALOR TOTAL","sum"), QTD_TOTAL=("QTD","sum")).reset_index().
+        top_val=dfv.groupby("PRODUTO", dropna=False).agg(VALOR_TOTAL=("VALOR TOTAL","sum"), QTD_TOTAL=("QTD","sum")).reset_index().sort_values("VALOR_TOTAL", ascending=False).head(10)
+        top_val["LABEL"]=top_val["VALOR_TOTAL"].apply(formatar_reais_sem_centavos)
+        fig_val=px.bar(top_val, x="PRODUTO", y="VALOR_TOTAL", text="LABEL", color_discrete_sequence=["#8b5cf6"])
+        fig_val.update_traces(textposition="inside", textfont_size=14)
+        fig_val.update_layout(margin=dict(t=30,b=30,l=10,r=10), xaxis_title="Produto", yaxis_title="Faturamento (R$)")
+        st.plotly_chart(fig_val, use_container_width=True)
+        st.markdown("### 📄 Tabela TOP10 Valor")
+        st.dataframe(formatar_colunas_moeda(top_val[["PRODUTO","VALOR_TOTAL","QTD_TOTAL"]], ["VALOR_TOTAL"]), use_container_width=True)
+
+# ------------------- TOP10 QTD -------------------
+with tabs[2]:
+    st.subheader("Top 10 — por QUANTIDADE")
+    if vendas_filtradas.empty:
+        st.info("Sem dados.")
+    else:
+        dfq=vendas_filtradas.copy()
+        top_qtd=dfq.groupby("PRODUTO", dropna=False).agg(QTD_TOTAL=("QTD","sum"), VALOR_TOTAL=("VALOR TOTAL","sum")).reset_index().sort_values("QTD_TOTAL", ascending=False).head(10)
+        top_qtd["LABEL"]=top_qtd["QTD_TOTAL"].astype(str)
+        fig_qtd=px.bar(top_qtd, x="PRODUTO", y="QTD_TOTAL", text="LABEL", color_discrete_sequence=["#8b5cf6"])
+        fig_qtd.update_traces(textposition="inside", textfont_size=14)
+        fig_qtd.update_layout(margin=dict(t=30,b=30,l=10,r=10), xaxis_title="Produto", yaxis_title="Quantidade Vendida")
+        st.plotly_chart(fig_qtd, use_container_width=True)
+        st.markdown("### 📄 Tabela TOP10 Qtd")
+        st.dataframe(top_qtd[["PRODUTO","QTD_TOTAL","VALOR_TOTAL"]], use_container_width=True)
+
+# ------------------- ESTOQUE -------------------
+with tabs[3]:
+    st.subheader("Estoque — período selecionado")
+    if estoque_df.empty:
+        st.info("Sem dados de estoque.")
+    else:
+        df_est=estoque_df.copy()
+        df_est["LABEL"]=df_est.get("EM ESTOQUE",0).astype(str)
+        fig_est=px.bar(df_est, x="PRODUTO", y="EM ESTOQUE", text="LABEL", color_discrete_sequence=["#8b5cf6"])
+        fig_est.update_traces(textposition="inside", textfont_size=14)
+        fig_est.update_layout(margin=dict(t=30,b=30,l=10,r=10), xaxis_title="Produto", yaxis_title="Quantidade em Estoque")
+        st.plotly_chart(fig_est, use_container_width=True)
+        st.markdown("### 📄 Tabela Estoque")
+        st.dataframe(df_est, use_container_width=True)
+
+# ------------------- PESQUISAR -------------------
+with tabs[4]:
+    st.subheader("Pesquisar vendas / produtos")
+    st.info("Use filtros para localizar registros.")
+    df_search=vendas_filtradas.copy()
+    st.dataframe(preparar_tabela_vendas(df_search), use_container_width=True)
+
+st.success("✅ Dashboard carregado com sucesso!")
