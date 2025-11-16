@@ -47,19 +47,10 @@ st.markdown(
     .kpi h3 { margin:0; font-size:12px; color:var(--accent-2); font-weight:800; letter-spacing:0.2px; }
     .kpi .value { margin-top:6px; font-size:20px; font-weight:900; color:#111; white-space:nowrap; }
 
-    /* ensure no line-break inside KPI container */
     .kpi, .kpi .value { white-space:nowrap; }
-
-    /* Tabs: white style, spaced */
     .stTabs button { background: white !important; border:1px solid #f0eaff !important; border-radius:12px !important; padding:8px 14px !important; margin-right:8px !important; margin-bottom:8px !important; font-weight:700 !important; color:var(--accent-2) !important; box-shadow:0 3px 10px rgba(0,0,0,0.04) !important; }
-
-    /* DataFrame header slight */
     .stDataFrame thead th { background:#fbf7ff !important; font-weight:700 !important; }
-
-    /* make table font slightly smaller to fit mobile */
     .stDataFrame, .element-container { font-size:13px; }
-
-    /* responsiveness */
     @media (max-width: 720px) {
       .kpi { min-width: 120px; padding:10px; }
       .title { font-size:18px; }
@@ -79,11 +70,10 @@ st.markdown(
     """
     <div class="topbar">
       <div class="logo-wrap">
-        <!-- simple shopping/bolt icon SVG -->
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
           <rect x="3" y="3" width="18" height="18" rx="4" fill="white" fill-opacity="0.06"/>
-          <path d="M7 9h10l-1 6H8L7 9z" stroke="white" stroke-opacity="0.95" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M9 6l2-2 2 2" stroke="white" stroke-opacity="0.95" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M7 9h10l-1 6H8L7 9z" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
+          <path d="M9 6l2-2 2 2" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
         </svg>
       </div>
       <div>
@@ -107,9 +97,7 @@ def parse_money_value(x):
     s = str(x).strip()
     if s == "" or s.lower() in ("nan","none","-"):
         return float("nan")
-    # keep digits, comma, dot, minus
     s = re.sub(r"[^\d\.,\-]", "", s)
-    # handle Brazilian formatting heuristics
     if "." in s and "," in s:
         s = s.replace(".", "").replace(",", ".")
     else:
@@ -200,7 +188,6 @@ def limpar_aba_raw(df_raw, nome_aba):
     df_tmp.columns = df_tmp.iloc[linha]
     df = df_tmp.iloc[linha+1:].copy()
     df.columns = [str(c).strip() for c in df.columns]
-    # drop empty-name cols
     drop_cols = [c for c in df.columns if str(c).strip().lower() in ("nan","none","")]
     df = df.drop(columns=drop_cols, errors="ignore")
     df = df.loc[:, ~df.isna().all()]
@@ -236,12 +223,11 @@ if "ESTOQUE" in dfs:
 if "VENDAS" in dfs:
     df_v = dfs["VENDAS"].copy()
     df_v.columns = [str(c).strip() for c in df_v.columns]
-    # normalize names: some sheets use slight variations; keep original names but try to detect alternatives
-    # parse money columns if present
+    
     money_candidates = {
         "VALOR VENDA": ["VALOR VENDA", "VALOR_VENDA", "VALORVENDA"],
         "VALOR TOTAL": ["VALOR TOTAL","VALOR_TOTAL","VALORTOTAL"],
-        "MEDIA CUSTO UNITARIO": ["MEDIA C. UNITARIO","MEDIA CUSTO UNITARIO","MEDIA_CUSTO_UNITARIO","MEDIA CUSTO UNITARIO"],
+        "MEDIA CUSTO UNITARIO": ["MEDIA C. UNITARIO","MEDIA CUSTO UNITARIO"],
         "LUCRO UNITARIO": ["LUCRO UNITARIO","LUCRO_UNITARIO"]
     }
     for target, variants in money_candidates.items():
@@ -250,58 +236,57 @@ if "VENDAS" in dfs:
                 df_v[target] = parse_money_series(df_v[v])
                 break
 
-    # ensure QTD
     possible_qtd = [c for c in df_v.columns if c.upper() in ("QTD","QUANTIDADE","QTY")]
     if possible_qtd:
         df_v["QTD"] = parse_int_series(df_v[possible_qtd[0]]).fillna(0)
-    # dates
+
     if "DATA" in df_v.columns:
         df_v["DATA"] = pd.to_datetime(df_v["DATA"], errors="coerce")
         df_v["MES_ANO"] = df_v["DATA"].dt.strftime("%Y-%m")
     else:
         df_v["MES_ANO"] = pd.NA
 
-    # derive VALOR TOTAL if missing
     if "VALOR TOTAL" not in df_v.columns and "VALOR VENDA" in df_v.columns:
         df_v["VALOR TOTAL"] = df_v["VALOR VENDA"].fillna(0) * df_v.get("QTD", 0).fillna(0)
-    # derive LUCRO UNITARIO if missing
+
     if "LUCRO UNITARIO" not in df_v.columns and ("VALOR VENDA" in df_v.columns and "MEDIA CUSTO UNITARIO" in df_v.columns):
         df_v["LUCRO UNITARIO"] = df_v["VALOR VENDA"].fillna(0) - df_v["MEDIA CUSTO UNITARIO"].fillna(0)
 
-    # if % DE LUCRO SOBRE CUSTO exists in sheet, we'll parse it later (string with emoji etc)
     dfs["VENDAS"] = df_v
 
 if "COMPRAS" in dfs:
     df_c = dfs["COMPRAS"]
-    # try standard column names for parsing
     qty_cols = [c for c in df_c.columns if "QUANT" in str(c).upper()]
     if qty_cols:
         df_c["QUANTIDADE"] = parse_int_series(df_c[qty_cols[0]]).fillna(0)
+
     cost_cols = [c for c in df_c.columns if any(k in str(c).upper() for k in ("CUSTO","UNIT"))]
     if cost_cols:
         df_c["CUSTO UNITÁRIO"] = parse_money_series(df_c[cost_cols[0]]).fillna(0)
+
     df_c["CUSTO TOTAL (RECALC)"] = df_c.get("QUANTIDADE",0).fillna(0) * df_c.get("CUSTO UNITÁRIO",0).fillna(0)
+
     if "DATA" in df_c.columns:
         df_c["DATA"] = pd.to_datetime(df_c["DATA"], errors="coerce")
         df_c["MES_ANO"] = df_c["DATA"].dt.strftime("%Y-%m")
+    
     dfs["COMPRAS"] = df_c
 
 # =============================
-# filtro por mês UI
+# filtro por mês
 # =============================
 meses = []
 if "VENDAS" in dfs:
     meses = sorted(dfs["VENDAS"]["MES_ANO"].dropna().unique().tolist(), reverse=True)
+
 mes_opcoes = ["Todos"] + meses
 mes_atual = datetime.now().strftime("%Y-%m")
 index_padrao = mes_opcoes.index(mes_atual) if mes_atual in mes_opcoes else 0
 
-# controls row: month filter + KPIs
 col_filter, col_kpis = st.columns([1,2], gap="small")
 with col_filter:
     mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", mes_opcoes, index=index_padrao)
 
-# helper to filter month
 def filtrar_mes_df(df, mes):
     if df is None or df.empty:
         return df
@@ -315,10 +300,9 @@ vendas_filtradas = filtrar_mes_df(dfs.get("VENDAS", pd.DataFrame()), mes_selecio
 compras_filtradas = filtrar_mes_df(dfs.get("COMPRAS", pd.DataFrame()), mes_selecionado)
 estoque_df = dfs.get("ESTOQUE", pd.DataFrame())
 
-# compute KPIs (compact, right after filter)
-total_vendido = vendas_filtradas["VALOR TOTAL"].fillna(0).sum() if vendas_filtradas is not None and "VALOR TOTAL" in vendas_filtradas else 0
-total_lucro = (vendas_filtradas["LUCRO UNITARIO"].fillna(0) * vendas_filtradas["QTD"].fillna(0)).sum() if vendas_filtradas is not None and "LUCRO UNITARIO" in vendas_filtradas else 0
-total_compras = compras_filtradas["CUSTO TOTAL (RECALC)"].fillna(0).sum() if compras_filtradas is not None and "CUSTO TOTAL (RECALC)" in compras_filtradas else 0
+total_vendido = vendas_filtradas["VALOR TOTAL"].fillna(0).sum() if "VALOR TOTAL" in vendas_filtradas else 0
+total_lucro = (vendas_filtradas["LUCRO UNITARIO"].fillna(0) * vendas_filtradas["QTD"].fillna(0)).sum() if "LUCRO UNITARIO" in vendas_filtradas else 0
+total_compras = compras_filtradas["CUSTO TOTAL (RECALC)"].fillna(0).sum() if "CUSTO TOTAL (RECALC)" in compras_filtradas else 0
 
 with col_kpis:
     st.markdown(
@@ -333,57 +317,76 @@ with col_kpis:
     )
 
 # =============================
-# preparar exibição das tabelas
+# preparar exibição da tabela VENDAS
 # =============================
 def preparar_tabela_vendas(df):
     if df is None or df.empty:
         return pd.DataFrame()
     df_show = df.copy()
 
-    # format date
     if "DATA" in df_show.columns:
         df_show["DATA"] = df_show["DATA"].dt.strftime("%d/%m/%Y")
 
-    # ensure common columns exist (avoid KeyError later)
     for col in ["VALOR VENDA","VALOR TOTAL","MEDIA CUSTO UNITARIO","LUCRO UNITARIO","% DE LUCRO SOBRE CUSTO","QTD"]:
         if col not in df_show.columns:
             df_show[col] = 0
 
-    # format monetary columns (safe)
     df_show = formatar_colunas_moeda(df_show, ["VALOR VENDA","VALOR TOTAL","MEDIA CUSTO UNITARIO","LUCRO UNITARIO"])
 
-    # parse "% DE LUCRO SOBRE CUSTO" — this column can contain "294% ✅" or "0"
     if "% DE LUCRO SOBRE CUSTO" in df_show.columns:
         raw = df_show["% DE LUCRO SOBRE CUSTO"].astype(str)
-        # remove emojis and any non numeric / comma / dot / minus characters
-        cleaned = (
-            raw
-            .str.replace(r"[^0-9,.\-]", "", regex=True)   # keep digits, comma, dot, minus
-            .str.replace(",", ".", regex=False)
-            .str.strip()
-        )
-        pct = pd.to_numeric(cleaned, errors="coerce").fillna(0)  # now numeric, e.g. 294 -> 294.0
-        # format with two decimals and percent sign (as user requested "0.00%")
+        cleaned = raw.str.replace(r"[^0-9,.\-]", "", regex=True).str.replace(",", ".", regex=False).str.strip()
+        pct = pd.to_numeric(cleaned, errors="coerce").fillna(0)
         df_show["% DE LUCRO SOBRE CUSTO"] = pct.map(lambda x: f"{float(x):.2f}%")
 
-    # remove any 'Unnamed' or fully-empty columns just in case
     df_show = df_show.loc[:, ~df_show.columns.astype(str).str.contains("^Unnamed")]
     df_show = df_show.loc[:, ~df_show.columns.isnull()]
 
     return df_show
 
 # =============================
-# Tabs and content
+# Tabs
 # =============================
 tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QTD)","📦 ESTOQUE","🔍 PESQUISAR"])
 
+# ========================================
+# 🛒 TAB VENDAS — com gráfico NOVO
+# ========================================
 with tabs[0]:
     st.subheader("Vendas — período selecionado")
+
     if vendas_filtradas is None or vendas_filtradas.empty:
         st.info("Sem dados de vendas para o período selecionado.")
     else:
+        # tabela
         st.dataframe(preparar_tabela_vendas(vendas_filtradas), use_container_width=True)
 
+        # ----------------------------
+        # NOVO GRÁFICO DE BARRAS
+        # ----------------------------
+        df_graph = vendas_filtradas.copy()
+        df_graph = df_graph.groupby("PRODUTO", dropna=False)["VALOR TOTAL"].sum().reset_index()
+        df_graph = df_graph.sort_values("VALOR TOTAL", ascending=False)
+
+        df_graph["VALOR_LABEL"] = df_graph["VALOR TOTAL"].apply(formatar_reais_sem_centavos)
+
+        st.markdown("### 📊 Gráfico — Valor total vendido por produto")
+
+        fig_vendas = px.bar(
+            df_graph,
+            x="PRODUTO",
+            y="VALOR TOTAL",
+            text="VALOR_LABEL",
+            color_discrete_sequence=["#8b5cf6"],
+        )
+        fig_vendas.update_traces(textposition="inside")
+        fig_vendas.update_layout(margin=dict(t=30,b=30,l=10,r=10), xaxis_tickangle=-45)
+
+        st.plotly_chart(fig_vendas, use_container_width=True)
+
+# ========================================
+# 🏆 TOP VALOR
+# ========================================
 with tabs[1]:
     st.subheader("Top 10 — por VALOR (R$)")
     if vendas_filtradas is None or vendas_filtradas.empty:
@@ -392,16 +395,28 @@ with tabs[1]:
         dfv = vendas_filtradas.copy()
         if "VALOR TOTAL" not in dfv.columns and "VALOR VENDA" in dfv.columns:
             dfv["VALOR TOTAL"] = dfv["VALOR VENDA"].fillna(0) * dfv.get("QTD",0).fillna(0)
-        top_val = dfv.groupby("PRODUTO", dropna=False).agg(VALOR_TOTAL=("VALOR TOTAL","sum"), QTD_TOTAL=("QTD","sum")).reset_index().sort_values("VALOR_TOTAL", ascending=False).head(10)
+        top_val = dfv.groupby("PRODUTO", dropna=False).agg(
+            VALOR_TOTAL=("VALOR TOTAL","sum"),
+            QTD_TOTAL=("QTD","sum")
+        ).reset_index().sort_values("VALOR_TOTAL", ascending=False).head(10)
+
         top_val["VALOR_TOTAL_LABEL"] = top_val["VALOR_TOTAL"].apply(formatar_reais_sem_centavos)
-        fig = px.bar(top_val, x="PRODUTO", y="VALOR_TOTAL", text="VALOR_TOTAL_LABEL", hover_data=["QTD_TOTAL"], color_discrete_sequence=["#8b5cf6"])
+
+        fig = px.bar(top_val, x="PRODUTO", y="VALOR_TOTAL",
+                     text="VALOR_TOTAL_LABEL", hover_data=["QTD_TOTAL"],
+                     color_discrete_sequence=["#8b5cf6"])
+
         fig.update_traces(textposition="inside")
         fig.update_layout(margin=dict(t=30,b=30,l=10,r=10), xaxis_tickangle=-45)
         st.plotly_chart(fig, use_container_width=True)
+
         display_top = top_val.copy()
-        display_top["VALOR_TOTAL"] = display_top["VALOR_TOTAL"].map(formatar_reais_sem_centavos)
+        display_top["VALOR TOTAL"] = display_top["VALOR_TOTAL"].map(formatar_reais_sem_centavos)
         st.dataframe(display_top.drop(columns=["VALOR_TOTAL_LABEL"]), use_container_width=True)
 
+# ========================================
+# 🏅 TOP QTD
+# ========================================
 with tabs[2]:
     st.subheader("Top 10 — por QUANTIDADE")
     if vendas_filtradas is None or vendas_filtradas.empty:
@@ -410,13 +425,20 @@ with tabs[2]:
         dfq = vendas_filtradas.copy()
         if "QTD" not in dfq.columns:
             dfq["QTD"] = 0
+
         top_q = dfq.groupby("PRODUTO", dropna=False)["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(10)
-        fig2 = px.bar(top_q, x="PRODUTO", y="QTD", text="QTD", color_discrete_sequence=["#6d28d9"])
+
+        fig2 = px.bar(top_q, x="PRODUTO", y="QTD", text="QTD",
+                      color_discrete_sequence=["#6d28d9"])
         fig2.update_traces(textposition="inside")
         fig2.update_layout(margin=dict(t=30,b=30,l=10,r=10), xaxis_tickangle=-45)
+
         st.plotly_chart(fig2, use_container_width=True)
         st.dataframe(top_q, use_container_width=True)
 
+# ========================================
+# 📦 ESTOQUE
+# ========================================
 with tabs[3]:
     st.subheader("Consulta do Estoque")
     if estoque_df is None or estoque_df.empty:
@@ -426,12 +448,18 @@ with tabs[3]:
         if "EM ESTOQUE" in df_e.columns:
             df_e["EM ESTOQUE"] = pd.to_numeric(df_e["EM ESTOQUE"], errors="coerce").fillna(0).astype(int)
             df_e = df_e.sort_values("EM ESTOQUE", ascending=False)
+
         df_e = formatar_colunas_moeda(df_e, ["Media C. UNITARIO","Valor Venda Sugerido"])
+
         st.dataframe(df_e.reset_index(drop=True), use_container_width=True)
 
+# ========================================
+# 🔍 PESQUISAR
+# ========================================
 with tabs[4]:
     st.subheader("Pesquisar produto no Estoque")
     termo = st.text_input("Digite o nome do produto (busca em ESTOQUE):")
+    
     if termo:
         if estoque_df is None or estoque_df.empty:
             st.info("Aba Estoque vazia ou não existe.")
