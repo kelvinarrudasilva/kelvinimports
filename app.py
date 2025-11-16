@@ -1,11 +1,5 @@
-# app.py final (Dashboard Loja Importados — Minimalista Roxo)
+# app.py — Dashboard Loja Importados — Minimalista Roxo
 # ---------------------------------------------------------
-# Melhorias:
-# - Abas não sobrepõem KPIs (espaçamento corrigido)
-# - Gráfico semanal MAIS CLARO (agrupado por semana + data inicial/final de cada semana)
-# - Label dentro das barras, maior e limpo
-# - Tabela de vendas sem MES_ANO e sem índice extra
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -17,69 +11,50 @@ from io import BytesIO
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 # ----------------------------
-# Config / Link fixo
+# Link planilha
 # ----------------------------
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # =============================
 # CSS
 # =============================
-st.markdown(
-    """
-    <style>
-    :root{
-      --bg: #ffffff;
-      --accent: #8b5cf6;
-      --accent-2: #6d28d9;
-      --muted: #666666;
-      --card-bg: #ffffff;
-    }
-    body, .stApp { background: var(--bg) !important; color: #111; font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
-
-    .topbar { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
-    .logo-wrap { width:44px; height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background: linear-gradient(135deg,var(--accent),var(--accent-2)); box-shadow: 0 6px 18px rgba(109,40,217,0.12); }
-    .logo-wrap svg { width:26px; height:26px; }
-    .title { font-size:20px; font-weight:800; color:var(--accent-2); margin:0; line-height:1; }
-    .subtitle { margin:0; font-size:12px; color:var(--muted); margin-top:2px; }
-
-    .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
-    .kpi-row { display:flex; gap:10px; align-items:center; margin-bottom:20px; }
-    .kpi { background:var(--card-bg); border-radius:10px; padding:10px 14px; box-shadow:0 6px 16px rgba(13,12,20,0.04); border-left:6px solid var(--accent); min-width:160px; display:flex; flex-direction:column; justify-content:center; }
-    .kpi h3 { margin:0; font-size:12px; color:var(--accent-2); font-weight:800; letter-spacing:0.2px; }
-    .kpi .value { margin-top:6px; font-size:20px; font-weight:900; color:#111; white-space:nowrap; }
-
-    .stTabs { margin-top: 20px !important; } /* afastar abas das KPIs */
-    .stTabs button { background: white !important; border:1px solid #f0eaff !important; border-radius:12px !important; padding:8px 14px !important; margin-right:8px !important; margin-bottom:8px !important; font-weight:700 !important; color:var(--accent-2) !important; box-shadow:0 3px 10px rgba(0,0,0,0.04) !important; }
-
-    .stDataFrame thead th { background:#fbf7ff !important; font-weight:700 !important; }
-    .stDataFrame, .element-container { font-size:13px; }
-
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<style>
+body, .stApp { background:#fff; color:#111; font-family: Inter, system-ui; }
+.topbar { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.logo-wrap { width:44px; height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background: linear-gradient(135deg,#8b5cf6,#6d28d9); box-shadow:0 6px 18px rgba(109,40,217,0.12); }
+.logo-wrap svg { width:26px; height:26px; }
+.title { font-size:20px; font-weight:800; color:#6d28d9; margin:0; line-height:1; }
+.subtitle { margin:0; font-size:12px; color:#666; margin-top:2px; }
+.kpi-row { display:flex; gap:10px; align-items:center; margin-bottom:20px; }
+.kpi { background:#fff; border-radius:10px; padding:10px 14px; box-shadow:0 6px 16px rgba(13,12,20,0.04); border-left:6px solid #8b5cf6; min-width:160px; display:flex; flex-direction:column; justify-content:center; }
+.kpi h3 { margin:0; font-size:12px; color:#6d28d9; font-weight:800; letter-spacing:0.2px; }
+.kpi .value { margin-top:6px; font-size:20px; font-weight:900; color:#111; white-space:nowrap; }
+.stTabs { margin-top:20px !important; }
+.stTabs button { background:white !important; border:1px solid #f0eaff !important; border-radius:12px !important; padding:8px 14px !important; margin-right:8px !important; margin-bottom:8px !important; font-weight:700 !important; color:#6d28d9 !important; box-shadow:0 3px 10px rgba(0,0,0,0.04) !important; }
+.stDataFrame thead th { background:#fbf7ff !important; font-weight:700 !important; }
+.stDataFrame, .element-container { font-size:13px; }
+</style>
+""", unsafe_allow_html=True)
 
 # =============================
 # Top Bar
 # =============================
-st.markdown(
-    """
-    <div class="topbar">
-      <div class="logo-wrap">
-        <svg viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="4" fill="white" fill-opacity="0.06"/>
-          <path d="M7 9h10l-1 6H8L7 9z" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
-          <path d="M9 6l2-2 2 2" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
-        </svg>
-      </div>
-      <div>
-        <div class="title">Loja Importados — Dashboard</div>
-        <div class="subtitle">Visão rápida de vendas e estoque</div>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<div class="topbar">
+  <div class="logo-wrap">
+    <svg viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="3" width="18" height="18" rx="4" fill="white" fill-opacity="0.06"/>
+      <path d="M7 9h10l-1 6H8L7 9z" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
+      <path d="M9 6l2-2 2 2" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
+    </svg>
+  </div>
+  <div>
+    <div class="title">Loja Importados — Dashboard</div>
+    <div class="subtitle">Visão rápida de vendas e estoque</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # =============================
 # HELPERS
@@ -92,13 +67,10 @@ def parse_money_value(x):
     if s == "" or s.lower() in ("nan","none","-"):
         return float("nan")
     s = re.sub(r"[^\d\.,\-]", "", s)
-    if "." in s and "," in s:
-        s = s.replace(".", "").replace(",", ".")
+    if "." in s and "," in s: s = s.replace(".", "").replace(",", ".")
     else:
-        if "," in s and "." not in s:
-            s = s.replace(",", ".")
-        if s.count(".") > 1:
-            s = s.replace(".", "")
+        if "," in s and "." not in s: s = s.replace(",", ".")
+        if s.count(".") > 1: s = s.replace(".", "")
     s = re.sub(r"[^\d\.\-]", "", s)
     try: return float(s)
     except: return float("nan")
@@ -136,19 +108,13 @@ def carregar_xlsx_from_url(url):
 def detectar_linha_cabecalho(df_raw, keywords):
     for i in range(min(len(df_raw), 12)):
         linha = " ".join(df_raw.iloc[i].astype(str).str.upper().tolist())
-        if any(kw.upper() in linha for kw in keywords):
-            return i
+        if any(kw.upper() in linha for kw in keywords): return i
     return None
 
 def limpar_aba_raw(df_raw, nome):
-    busca = {
-        "ESTOQUE": ["PRODUTO", "EM ESTOQUE"],
-        "VENDAS": ["DATA", "PRODUTO"],
-        "COMPRAS": ["DATA", "CUSTO"],
-    }.get(nome, ["PRODUTO"])
+    busca = {"ESTOQUE":["PRODUTO","EM ESTOQUE"], "VENDAS":["DATA","PRODUTO"], "COMPRAS":["DATA","CUSTO"]}.get(nome, ["PRODUTO"])
     linha = detectar_linha_cabecalho(df_raw, busca)
-    if linha is None:
-        return None
+    if linha is None: return None
     df_tmp = df_raw.copy()
     df_tmp.columns = df_tmp.iloc[linha]
     df = df_tmp.iloc[linha+1:].copy()
@@ -157,129 +123,169 @@ def limpar_aba_raw(df_raw, nome):
     df = df.loc[:, ~df.isna().all()]
     return df.reset_index(drop=True)
 
-def filtrar_mes_df(df, mes):
-    if df is None or df.empty: return df
-    if mes == "Todos": return df
-    return df[df["MES_ANO"] == mes].copy() if "MES_ANO" in df.columns else df
-
 def preparar_tabela_vendas(df):
     if df is None or df.empty: return pd.DataFrame()
     d = df.copy()
-    if "DATA" in d.columns:
-        d["DATA"] = d["DATA"].dt.strftime("%d/%m/%Y")
+    if "DATA" in d.columns: d["DATA"] = d["DATA"].dt.strftime("%d/%m/%Y")
     for c in ["VALOR VENDA","VALOR TOTAL","MEDIA CUSTO UNITARIO","LUCRO UNITARIO","QTD"]:
-        if c not in d.columns: d[c] = 0
+        if c not in d.columns: d[c]=0
     d = formatar_colunas_moeda(d, ["VALOR VENDA","VALOR TOTAL","MEDIA CUSTO UNITARIO","LUCRO UNITARIO"])
-    d = d.loc[:, ~d.columns.astype(str).str.contains("^Unnamed|MES_ANO")]  # remove MES_ANO e índice estranho
+    # remover MES_ANO e índice padrão
+    d = d.loc[:, [col for col in d.columns if col!="MES_ANO"]]
     return d.reset_index(drop=True)
 
 # =============================
-# Carregar planilha
+# Carregar abas
 # =============================
 try:
     xls = carregar_xlsx_from_url(URL_PLANILHA)
 except Exception as e:
     st.error("Erro ao abrir a planilha.")
-    st.exception(e)
     st.stop()
 
 abas_all = xls.sheet_names
-colunas_esperadas = ["ESTOQUE","VENDAS","COMPRAS"]
 dfs = {}
-
-for aba in colunas_esperadas:
+for aba in ["ESTOQUE","VENDAS","COMPRAS"]:
     if aba in abas_all:
         raw = pd.read_excel(URL_PLANILHA, sheet_name=aba, header=None)
         cleaned = limpar_aba_raw(raw, aba)
-        if cleaned is not None:
-            dfs[aba] = cleaned
-
-# Conversores e filtros (igual ao código anterior)...
+        if cleaned is not None: dfs[aba]=cleaned
 
 # =============================
-# Filtro por mês
+# Conversores
 # =============================
-meses = []
+if "ESTOQUE" in dfs:
+    df_e = dfs["ESTOQUE"]
+    for c in ["Media C. UNITARIO","Valor Venda Sugerido"]: 
+        if c in df_e.columns: df_e[c] = parse_money_series(df_e[c])
+    for c in ["EM ESTOQUE","VENDAS"]: 
+        if c in df_e.columns: df_e[c] = parse_int_series(df_e[c]).fillna(0)
+    dfs["ESTOQUE"]=df_e
+
 if "VENDAS" in dfs:
-    dfs["VENDAS"]["DATA"] = pd.to_datetime(dfs["VENDAS"]["DATA"], errors="coerce")
-    dfs["VENDAS"]["MES_ANO"] = dfs["VENDAS"]["DATA"].dt.strftime("%Y-%m")
-    meses = sorted(dfs["VENDAS"]["MES_ANO"].dropna().unique().tolist(), reverse=True)
+    df_v = dfs["VENDAS"]
+    for col in df_v.columns:
+        if any(k in col.upper() for k in ["VALOR","TOTAL"]): df_v[col]=parse_money_series(df_v[col])
+    if "QTD" in df_v.columns: df_v["QTD"]=parse_int_series(df_v["QTD"]).fillna(0)
+    if "DATA" in df_v.columns: df_v["DATA"]=pd.to_datetime(df_v["DATA"], errors="coerce"); df_v["MES_ANO"]=df_v["DATA"].dt.strftime("%Y-%m")
+    dfs["VENDAS"]=df_v
 
-mes_opcoes = ["Todos"] + meses
+if "COMPRAS" in dfs:
+    df_c = dfs["COMPRAS"]
+    if any("QUANT" in c.upper() for c in df_c.columns): df_c["QUANTIDADE"]=parse_int_series(df_c[[c for c in df_c.columns if "QUANT" in c.upper()][0]]).fillna(0)
+    if any("CUSTO" in c.upper() or "UNIT" in c.upper() for c in df_c.columns): df_c["CUSTO UNITÁRIO"]=parse_money_series(df_c[[c for c in df_c.columns if "CUSTO" in c.upper() or "UNIT" in c.upper()][0]]).fillna(0)
+    df_c["CUSTO TOTAL (RECALC)"]=df_c.get("QUANTIDADE",0)*df_c.get("CUSTO UNITÁRIO",0)
+    if "DATA" in df_c.columns: df_c["DATA"]=pd.to_datetime(df_c["DATA"], errors="coerce"); df_c["MES_ANO"]=df_c["DATA"].dt.strftime("%Y-%m")
+    dfs["COMPRAS"]=df_c
+
+# =============================
+# Filtrar mês
+# =============================
+meses = sorted(dfs.get("VENDAS",pd.DataFrame()).get("MES_ANO",pd.Series()).dropna().unique().tolist(), reverse=True)
+mes_opcoes=["Todos"]+meses
 mes_atual = datetime.now().strftime("%Y-%m")
-index_padrao = mes_opcoes.index(mes_atual) if mes_atual in mes_opcoes else 0
-
+index_padrao=mes_opcoes.index(mes_atual) if mes_atual in mes_opcoes else 0
 col_filter, col_kpis = st.columns([1,2])
 with col_filter:
     mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", mes_opcoes, index=index_padrao)
 
-vendas_filtradas = filtrar_mes_df(dfs.get("VENDAS", pd.DataFrame()), mes_selecionado)
+def filtrar_mes_df(df, mes):
+    if df is None or df.empty: return df
+    if mes=="Todos": return df
+    return df[df.get("MES_ANO",None)==mes].copy()
+
+vendas_filtradas = filtrar_mes_df(dfs.get("VENDAS",pd.DataFrame()), mes_selecionado)
+compras_filtradas = filtrar_mes_df(dfs.get("COMPRAS",pd.DataFrame()), mes_selecionado)
 estoque_df = dfs.get("ESTOQUE", pd.DataFrame())
 
 # =============================
 # KPIs
 # =============================
-total_vendido = vendas_filtradas.get("VALOR TOTAL", pd.Series()).fillna(0).sum()
-total_lucro = (vendas_filtradas.get("LUCRO UNITARIO",0).fillna(0) * vendas_filtradas.get("QTD",0).fillna(0)).sum()
+total_vendido = vendas_filtradas.get("VALOR TOTAL",pd.Series()).fillna(0).sum()
+total_lucro = (vendas_filtradas.get("LUCRO UNITARIO",0).fillna(0)*vendas_filtradas.get("QTD",0).fillna(0)).sum()
+total_compras = compras_filtradas.get("CUSTO TOTAL (RECALC)",pd.Series()).fillna(0).sum()
 
 with col_kpis:
     st.markdown(f"""
-        <div class="kpi-row">
-          <div class="kpi"><h3>💵 Total Vendido</h3><div class="value">{formatar_reais_sem_centavos(total_vendido)}</div></div>
-          <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Total Lucro</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
-        </div>
+    <div class="kpi-row">
+      <div class="kpi"><h3>💵 Total Vendido</h3><div class="value">{formatar_reais_sem_centavos(total_vendido)}</div></div>
+      <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Total Lucro</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
+      <div class="kpi" style="border-left-color:#f59e0b;"><h3>💸 Total Compras</h3><div class="value">{formatar_reais_sem_centavos(total_compras)}</div></div>
+    </div>
     """, unsafe_allow_html=True)
 
 # =============================
 # Tabs
 # =============================
-tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QTD)","📦 ESTOQUE","🔍 PESQUISAR"])
+tabs=st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QTD)","📦 ESTOQUE","🔍 PESQUISAR"])
 
-# ----------------------------
-# Gráfico semanal VENDAS
-# ----------------------------
+# -------------------- VENDAS --------------------
 with tabs[0]:
     st.subheader("Vendas — período selecionado")
-    if vendas_filtradas.empty:
-        st.info("Sem dados de vendas.")
+    if vendas_filtradas.empty: st.info("Sem dados de vendas.")
     else:
-        df_sem = vendas_filtradas.copy()
-        df_sem["SEMANA"] = df_sem["DATA"].dt.isocalendar().week
-        df_sem["ANO"] = df_sem["DATA"].dt.year
+        df_sem=vendas_filtradas.copy()
+        df_sem["SEMANA"]=df_sem["DATA"].dt.isocalendar().week
+        df_sem["ANO"]=df_sem["DATA"].dt.year
 
-        def semana_intervalo(row):
-            ano = int(row["ANO"])
-            semana = int(row["SEMANA"])
-            inicio = datetime.fromisocalendar(ano, semana, 1)
-            fim = inicio + timedelta(days=6)
+        def intervalo(row):
+            inicio=datetime.fromisocalendar(row["ANO"], row["SEMANA"], 1)
+            fim=inicio+timedelta(days=6)
             return f"{inicio.strftime('%d/%m')} → {fim.strftime('%d/%m')}"
-
-        df_sem_group = df_sem.groupby(["ANO","SEMANA"], dropna=False)["VALOR TOTAL"].sum().reset_index()
-        df_sem_group["INTERVALO"] = df_sem_group.apply(semana_intervalo, axis=1)
-        df_sem_group["LABEL"] = df_sem_group["VALOR TOTAL"].apply(formatar_reais_sem_centavos)
+        df_sem_group=df_sem.groupby(["ANO","SEMANA"],dropna=False)["VALOR TOTAL"].sum().reset_index()
+        df_sem_group["INTERVALO"]=df_sem_group.apply(intervalo,axis=1)
+        df_sem_group["LABEL"]=df_sem_group["VALOR TOTAL"].apply(formatar_reais_sem_centavos)
 
         st.markdown("### 📊 Faturamento Semanal do Mês")
-
-        fig_sem = px.bar(
-            df_sem_group,
-            x="INTERVALO",
-            y="VALOR TOTAL",
-            text="LABEL",
-            color_discrete_sequence=["#8b5cf6"],
-        )
+        fig_sem=px.bar(df_sem_group,x="INTERVALO",y="VALOR TOTAL",text="LABEL",color_discrete_sequence=["#8b5cf6"])
         fig_sem.update_traces(textposition="inside", textfont_size=14)
-        fig_sem.update_layout(
-            margin=dict(t=30,b=30,l=10,r=10),
-            xaxis_title="Intervalo da Semana",
-            yaxis_title="Faturamento (R$)",
-        )
-        st.plotly_chart(fig_sem, use_container_width=True)
+        fig_sem.update_layout(margin=dict(t=30,b=30,l=10,r=10),xaxis_title="Intervalo da Semana",yaxis_title="Faturamento (R$)")
+        st.plotly_chart(fig_sem,use_container_width=True)
 
         st.markdown("### 📄 Tabela de Vendas")
         st.dataframe(preparar_tabela_vendas(vendas_filtradas), use_container_width=True)
 
-# ----------------------------
-# O RESTO (TOP10, ESTOQUE, PESQUISA) segue igual...
-# ----------------------------
+# -------------------- TOP10 VALOR --------------------
+with tabs[1]:
+    st.subheader("Top 10 — por VALOR (R$)")
+    if vendas_filtradas.empty: st.info("Sem dados.")
+    else:
+        dfv=vendas_filtradas.copy()
+        top_val=dfv.groupby("PRODUTO",dropna=False).agg(VALOR_TOTAL=("VALOR TOTAL","sum"),QTD_TOTAL=("QTD","sum")).reset_index().sort_values("VALOR_TOTAL",ascending=False).head(10)
+        top_val["VALOR_TOTAL_LABEL"]=top_val["VALOR_TOTAL"].apply(formatar_reais_sem_centavos)
+        fig=px.bar(top_val,x="PRODUTO",y="VALOR_TOTAL",text="VALOR_TOTAL_LABEL",hover_data=["QTD_TOTAL"],color_discrete_sequence=["#8b5cf6"])
+        fig.update_traces(textposition="inside")
+        fig.update_layout(margin=dict(t=30,b=30,l=10,r=10),xaxis_tickangle=-45)
+        st.plotly_chart(fig,use_container_width=True)
+        disp=top_val.copy(); disp["VALOR TOTAL"]=disp["VALOR_TOTAL"].map(formatar_reais_sem_centavos)
+        st.dataframe(disp.drop(columns=["VALOR_TOTAL_LABEL","VALOR_TOTAL"]),use_container_width=True)
 
-st.success("✅ Dashboard carregado com sucesso!")
+# -------------------- TOP10 QTD --------------------
+with tabs[2]:
+    st.subheader("Top 10 — por QUANTIDADE")
+    if vendas_filtradas.empty: st.info("Sem dados.")
+    else:
+        dfq=vendas_filtradas.copy()
+        if "QTD" not in dfq: dfq["QTD"]=0
+        top_q=dfq.groupby("PRODUTO",dropna=False)["QTD"].sum().reset_index().sort_values("QTD",ascending=False).head(10)
+        fig2=px.bar(top_q,x="PRODUTO",y="QTD",text="QTD",color_discrete_sequence=["#6d28d9"])
+        fig2.update_traces(textposition="inside")
+        fig2.update_layout(margin=dict(t=30,b=30,l=10,r=10),xaxis_tickangle=-45)
+        st.plotly_chart(fig2,use_container_width=True)
+        st.dataframe(top_q,use_container_width=True)
+
+# -------------------- ESTOQUE --------------------
+with tabs[3]:
+    st.subheader("Consulta do Estoque")
+    if estoque_df.empty: st.info("Aba ESTOQUE não encontrada.")
+    else:
+        d=estoque_df.copy()
+        if "EM ESTOQUE" in d.columns:
+            d["EM ESTOQUE"]=pd.to_numeric(d["EM ESTOQUE"],errors="coerce").fillna(0).astype(int)
+            d=d.sort_values("EM ESTOQUE",ascending=False)
+        d=formatar_colunas_moeda(d,["Media C. UNITARIO","Valor Venda Sugerido"])
+        st.dataframe(d.reset_index(drop=True),use_container_width=True)
+
+# -------------------- PESQUISAR --------------------
+with tabs[4]:
+   
