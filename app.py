@@ -18,8 +18,7 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 # =============================
 # CSS
 # =============================
-st.markdown("""
-<style>
+st.markdown("""<style>
 :root{
   --bg: #ffffff;
   --accent: #8b5cf6;
@@ -41,14 +40,12 @@ body, .stApp { background: var(--bg) !important; color: #111; font-family: Inter
 .stTabs button { background: white !important; border:1px solid #f0eaff !important; border-radius:12px !important; padding:8px 14px !important; margin-right:8px !important; margin-bottom:8px !important; font-weight:700 !important; color:var(--accent-2) !important; box-shadow:0 3px 10px rgba(0,0,0,0.04) !important; }
 .stDataFrame thead th { background:#fbf7ff !important; font-weight:700 !important; }
 .stDataFrame, .element-container { font-size:13px; }
-</style>
-""", unsafe_allow_html=True)
+</style>""", unsafe_allow_html=True)
 
 # =============================
 # Top Bar
 # =============================
-st.markdown("""
-<div class="topbar">
+st.markdown("""<div class="topbar">
   <div class="logo-wrap">
     <svg viewBox="0 0 24 24" fill="none">
       <rect x="3" y="3" width="18" height="18" rx="4" fill="white" fill-opacity="0.06"/>
@@ -60,8 +57,7 @@ st.markdown("""
     <div class="title">Loja Importados — Dashboard</div>
     <div class="subtitle">Visão rápida de vendas e estoque</div>
   </div>
-</div>
-""", unsafe_allow_html=True)
+</div>""", unsafe_allow_html=True)
 
 # =============================
 # HELPERS
@@ -322,6 +318,9 @@ with tabs[1]:
         fig_top_val.update_traces(textposition="inside", textfont_size=14)
         st.plotly_chart(fig_top_val, use_container_width=True)
 
+        st.markdown("### 📄 Tabela Top 10 por VALOR")
+        st.dataframe(top_val[["PRODUTO","VALOR_TOTAL","QTD_TOTAL"]], use_container_width=True)
+
 # ---------------------------- TOP10 QTD ----------------------------
 with tabs[2]:
     st.subheader("Top 10 — por QUANTIDADE")
@@ -336,6 +335,9 @@ with tabs[2]:
         fig_top_qtd = px.bar(top_qtd, x="PRODUTO", y="QTD_TOTAL", text="QTD_TOTAL", color_discrete_sequence=["#8b5cf6"])
         fig_top_qtd.update_traces(textposition="inside", textfont_size=14)
         st.plotly_chart(fig_top_qtd, use_container_width=True)
+
+        st.markdown("### 📄 Tabela Top 10 por QUANTIDADE")
+        st.dataframe(top_qtd[["PRODUTO","QTD_TOTAL","VALOR_TOTAL"]], use_container_width=True)
 
 # ---------------------------- ESTOQUE ----------------------------
 with tabs[3]:
