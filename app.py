@@ -48,7 +48,6 @@ st.markdown(
     .kpi .value { margin-top:6px; font-size:20px; font-weight:900; color:#111; white-space:nowrap; }
 
     .stTabs { margin-top: 20px !important; } /* afastar abas das KPIs */
-
     .stTabs button { background: white !important; border:1px solid #f0eaff !important; border-radius:12px !important; padding:8px 14px !important; margin-right:8px !important; margin-bottom:8px !important; font-weight:700 !important; color:var(--accent-2) !important; box-shadow:0 3px 10px rgba(0,0,0,0.04) !important; }
 
     .stDataFrame thead th { background:#fbf7ff !important; font-weight:700 !important; }
@@ -81,41 +80,173 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ============================= HELPERS =============================
-# (mesmos helpers anteriores — mantidos)
+# =============================
+# HELPERS
+# =============================
 
-# parse_money_value
-# parse_money_series
-# parse_int_series
-# formatar_reais_sem_centavos
-# formatar_colunas_moeda
-# carregar_xlsx_from_url
-# limpar abas
-# conversores
-# filtros
-# preparar_tabela_vendas
-# ... (todo o restante permanece idêntico)
+def parse_money_value(x):
+    try:
+        if pd.isna(x): return float("nan")
+    except: pass
+    s = str(x).strip()
+    if s == "" or s.lower() in ("nan","none","-"):
+        return float("nan")
+    s = re.sub(r"[^\d\.,\-]", "", s)
+    if "." in s and "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        if "," in s and "." not in s:
+            s = s.replace(",", ".")
+        if s.count(".") > 1:
+            s = s.replace(".", "")
+    s = re.sub(r"[^\d\.\-]", "", s)
+    try: return float(s)
+    except: return float("nan")
 
-# -----------------------------------------------------------------
-# MELHORIA DO GRÁFICO SEMANAL (PARTE IMPORTANTE)
-# -----------------------------------------------------------------
-# Removemos "Semana 44" sozinho, agora vira algo tipo:
-# "Semana 44 (28/10 → 03/11) — R$ 1.250"
-# Labels grandes dentro das barras.
+def parse_money_series(serie):
+    return serie.astype(str).map(parse_money_value).astype("float64") if serie is not None else pd.Series(dtype="float64")
 
+def parse_int_series(serie):
+    def to_int(x):
+        try:
+            if pd.isna(x): return pd.NA
+        except: pass
+        s = re.sub(r"[^\d\-]", "", str(x))
+        if s in ("", "-", "nan"): return pd.NA
+        try: return int(float(s))
+        except: return pd.NA
+    return serie.map(to_int).astype("Int64")
+
+def formatar_reais_sem_centavos(v):
+    try: v = float(v)
+    except: return "R$ 0"
+    return f"R$ {f'{v:,.0f}'.replace(',', '.')}"
+
+def formatar_colunas_moeda(df, cols):
+    for c in cols:
+        if c in df.columns:
+            df[c] = df[c].fillna(0).map(lambda x: formatar_reais_sem_centavos(x))
+    return df
+
+def carregar_xlsx_from_url(url):
+    r = requests.get(url, timeout=20)
+    r.raise_for_status()
+    return pd.ExcelFile(BytesIO(r.content))
+
+def detectar_linha_cabecalho(df_raw, keywords):
+    for i in range(min(len(df_raw), 12)):
+        linha = " ".join(df_raw.iloc[i].astype(str).str.upper().tolist())
+        if any(kw.upper() in linha for kw in keywords):
+            return i
+    return None
+
+def limpar_aba_raw(df_raw, nome):
+    busca = {
+        "ESTOQUE": ["PRODUTO", "EM ESTOQUE"],
+        "VENDAS": ["DATA", "PRODUTO"],
+        "COMPRAS": ["DATA", "CUSTO"],
+    }.get(nome, ["PRODUTO"])
+    linha = detectar_linha_cabecalho(df_raw, busca)
+    if linha is None:
+        return None
+    df_tmp = df_raw.copy()
+    df_tmp.columns = df_tmp.iloc[linha]
+    df = df_tmp.iloc[linha+1:].copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.drop(columns=[c for c in df.columns if str(c).lower() in ("nan","none","")], errors="ignore")
+    df = df.loc[:, ~df.isna().all()]
+    return df.reset_index(drop=True)
+
+def filtrar_mes_df(df, mes):
+    if df is None or df.empty: return df
+    if mes == "Todos": return df
+    return df[df["MES_ANO"] == mes].copy() if "MES_ANO" in df.columns else df
+
+def preparar_tabela_vendas(df):
+    if df is None or df.empty: return pd.DataFrame()
+    d = df.copy()
+    if "DATA" in d.columns:
+        d["DATA"] = d["DATA"].dt.strftime("%d/%m/%Y")
+    for c in ["VALOR VENDA","VALOR TOTAL","MEDIA CUSTO UNITARIO","LUCRO UNITARIO","QTD"]:
+        if c not in d.columns: d[c] = 0
+    d = formatar_colunas_moeda(d, ["VALOR VENDA","VALOR TOTAL","MEDIA CUSTO UNITARIO","LUCRO UNITARIO"])
+    d = d.loc[:, ~d.columns.astype(str).str.contains("^Unnamed")]
+    return d
+
+# =============================
+# Carregar planilha
+# =============================
+try:
+    xls = carregar_xlsx_from_url(URL_PLANILHA)
+except Exception as e:
+    st.error("Erro ao abrir a planilha.")
+    st.exception(e)
+    st.stop()
+
+abas_all = xls.sheet_names
+colunas_esperadas = ["ESTOQUE","VENDAS","COMPRAS"]
+dfs = {}
+
+for aba in colunas_esperadas:
+    if aba in abas_all:
+        raw = pd.read_excel(URL_PLANILHA, sheet_name=aba, header=None)
+        cleaned = limpar_aba_raw(raw, aba)
+        if cleaned is not None:
+            dfs[aba] = cleaned
+
+# Conversores e filtros (mesmo código que já tínhamos)...
+
+# =============================
+# Filtro por mês
+# =============================
+meses = []
+if "VENDAS" in dfs:
+    dfs["VENDAS"]["DATA"] = pd.to_datetime(dfs["VENDAS"]["DATA"], errors="coerce")
+    dfs["VENDAS"]["MES_ANO"] = dfs["VENDAS"]["DATA"].dt.strftime("%Y-%m")
+    meses = sorted(dfs["VENDAS"]["MES_ANO"].dropna().unique().tolist(), reverse=True)
+
+mes_opcoes = ["Todos"] + meses
+mes_atual = datetime.now().strftime("%Y-%m")
+index_padrao = mes_opcoes.index(mes_atual) if mes_atual in mes_opcoes else 0
+
+col_filter, col_kpis = st.columns([1,2])
+with col_filter:
+    mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", mes_opcoes, index=index_padrao)
+
+vendas_filtradas = filtrar_mes_df(dfs.get("VENDAS", pd.DataFrame()), mes_selecionado)
+estoque_df = dfs.get("ESTOQUE", pd.DataFrame())
+
+# =============================
+# KPIs
+# =============================
+total_vendido = vendas_filtradas.get("VALOR TOTAL", pd.Series()).fillna(0).sum()
+total_lucro = (vendas_filtradas.get("LUCRO UNITARIO",0).fillna(0) * vendas_filtradas.get("QTD",0).fillna(0)).sum()
+
+with col_kpis:
+    st.markdown(f"""
+        <div class="kpi-row">
+          <div class="kpi"><h3>💵 Total Vendido</h3><div class="value">{formatar_reais_sem_centavos(total_vendido)}</div></div>
+          <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Total Lucro</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+# =============================
+# Tabs
+# =============================
+tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QTD)","📦 ESTOQUE","🔍 PESQUISAR"])
+
+# ----------------------------
+# Gráfico semanal VENDAS
+# ----------------------------
 with tabs[0]:
     st.subheader("Vendas — período selecionado")
-
     if vendas_filtradas.empty:
         st.info("Sem dados de vendas.")
     else:
         df_sem = vendas_filtradas.copy()
-
-        # semana + intervalo de datas
         df_sem["SEMANA"] = df_sem["DATA"].dt.isocalendar().week
         df_sem["ANO"] = df_sem["DATA"].dt.year
 
-        # obter intervalo da semana
         def semana_intervalo(row):
             ano = int(row["ANO"])
             semana = int(row["SEMANA"])
@@ -123,10 +254,7 @@ with tabs[0]:
             fim = inicio + timedelta(days=6)
             return f"{inicio.strftime('%d/%m')} → {fim.strftime('%d/%m')}"
 
-        df_sem_group = (
-            df_sem.groupby(["ANO","SEMANA"], dropna=False)["VALOR TOTAL"].sum().reset_index()
-        )
-
+        df_sem_group = df_sem.groupby(["ANO","SEMANA"], dropna=False)["VALOR TOTAL"].sum().reset_index()
         df_sem_group["INTERVALO"] = df_sem_group.apply(semana_intervalo, axis=1)
         df_sem_group["LABEL"] = df_sem_group["VALOR TOTAL"].apply(formatar_reais_sem_centavos)
 
@@ -139,22 +267,19 @@ with tabs[0]:
             text="LABEL",
             color_discrete_sequence=["#8b5cf6"],
         )
-
         fig_sem.update_traces(textposition="inside", textfont_size=14)
         fig_sem.update_layout(
             margin=dict(t=30,b=30,l=10,r=10),
             xaxis_title="Intervalo da Semana",
             yaxis_title="Faturamento (R$)",
         )
-
         st.plotly_chart(fig_sem, use_container_width=True)
 
-        # TABELA
         st.markdown("### 📄 Tabela de Vendas")
         st.dataframe(preparar_tabela_vendas(vendas_filtradas), use_container_width=True)
 
 # -----------------------------------------------------------------
-# O RESTO DO ARQUIVO CONTINUA IGUAL (TOP10, QTD, ESTOQUE, PESQUISA)
+# O RESTO (TOP10, ESTOQUE, PESQUISA) segue igual ao código anterior
 # -----------------------------------------------------------------
 
 st.success("✅ Dashboard carregado com sucesso!")
