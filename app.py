@@ -346,7 +346,7 @@ with col_kpis:
 # =============================
 # TABS
 # =============================
-tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 (VALOR)","🏅 TOP10 (QTD)","📦 ESTOQUE","🔍 PESQUISAR"])
+tabs = st.tabs(["🛒 VENDAS","🏆 TOP10 VENDAS (VALOR)","🏅 TOP10 VENDAS (QTD)","📦 ESTOQUE","🔍 PESQUISAR"])
 
 # =============================
 # VENDAS
@@ -516,5 +516,6 @@ st.markdown("""
   <em>Nota:</em> Valores de estoque (custo & venda) são calculados a partir das colunas <strong>Media C. UNITARIO</strong>, <strong>Valor Venda Sugerido</strong> e <strong>EM ESTOQUE</strong> — estes indicadores não são afetados pelo filtro de mês.
 </div>
 """, unsafe_allow_html=True)
+
 
 
