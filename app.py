@@ -190,16 +190,12 @@ meses += sorted(vendas["MES_ANO"].dropna().unique().tolist(), reverse=True) if n
 mes_atual = datetime.now().strftime("%Y-%m")
 idx_padrao = meses.index(mes_atual) if mes_atual in meses else 0
 
-mes escolhido = st.selectbox("Filtrar por mês (YYYY-MM):", meses, index=idx_padrao)
+mes_escolhido = st.selectbox("Filtrar por mês (YYYY-MM):", meses, index=idx_padrao)
 
 def filtrar(df):
     if df.empty: return df
     if mes_escolhido == "Todos": return df
     return df[df["MES_ANO"] == mes_escolhido]
-
-
-vendas_f = filtrar(vendas)
-compras_f = filtrar(compras)
 
 
 # ==========================================
@@ -318,3 +314,4 @@ with aba4:
             st.warning("Nenhum produto encontrado.")
         else:
             st.dataframe(df.reset_index(drop=True), use_container_width=True)
+
