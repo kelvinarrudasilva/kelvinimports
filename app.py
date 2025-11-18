@@ -490,23 +490,55 @@ with tabs[3]:
 # =============================
 # PESQUISAR
 # =============================
+import unicodedata
+from rapidfuzz import fuzz, process
+
+def normalizar(texto):
+    if not isinstance(texto, str):
+        return ""
+    # remove acentos e deixa tudo minúsculo
+    texto = unicodedata.normalize("NFD", texto)
+    texto = texto.encode("ascii", "ignore").decode("utf-8")
+    return texto.lower()
+
 with tabs[4]:
     st.subheader("Pesquisar produtos")
-    termo = st.text_input("Digite parte do nome do produto")
+
+    termo = st.text_input("Digite parte do nome do produto", placeholder="Ex: cabo usb, fonte, fan, headset...")
+
     if termo.strip():
         if estoque_df.empty:
             st.warning("Nenhum dado de estoque disponível para busca.")
         else:
-            df_search = estoque_df[estoque_df["PRODUTO"].str.contains(termo,case=False,na=False)]
-            if df_search.empty:
+            termo_norm = normalizar(termo)
+
+            # cria coluna normalizada temporária
+            estoque_df["_search"] = estoque_df["PRODUTO"].apply(normalizar)
+
+            # busca aproximada por similaridade
+            resultados = []
+            for i, row in estoque_df.iterrows():
+                score = fuzz.partial_ratio(termo_norm, row["_search"])
+                if score >= 60:   # sensibilidade: quanto menor, mais permissivo
+                    resultados.append((i, score))
+
+            if not resultados:
                 st.warning("Nenhum produto encontrado.")
             else:
-                df_search_display = df_search.copy()
-                if "Media C. UNITARIO" in df_search_display.columns:
-                    df_search_display["Media C. UNITARIO"] = df_search_display["Media C. UNITARIO"].map(formatar_reais_com_centavos)
-                if "Valor Venda Sugerido" in df_search_display.columns:
-                    df_search_display["Valor Venda Sugerido"] = df_search_display["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
-                st.dataframe(df_search_display.reset_index(drop=True), use_container_width=True)
+                # ordena pelos mais parecidos primeiro
+                resultados = sorted(resultados, key=lambda x: x[1], reverse=True)
+                df_search = estoque_df.loc[[i for i, s in resultados]].copy()
+
+                # remove coluna temporária
+                df_search.drop(columns=["_search"], inplace=True)
+
+                # formata valores
+                if "Media C. UNITARIO" in df_search.columns:
+                    df_search["Media C. UNITARIO"] = df_search["Media C. UNITARIO"].map(formatar_reais_com_centavos)
+                if "Valor Venda Sugerido" in df_search.columns:
+                    df_search["Valor Venda Sugerido"] = df_search["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
+
+                st.dataframe(df_search.reset_index(drop=True), use_container_width=True)
 
 # =============================
 # Rodapé simples
@@ -516,6 +548,7 @@ st.markdown("""
   <em>Nota:</em> Valores de estoque (custo & venda) são calculados a partir das colunas <strong>Media C. UNITARIO</strong>, <strong>Valor Venda Sugerido</strong> e <strong>EM ESTOQUE</strong> — estes indicadores não são afetados pelo filtro de mês.
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
