@@ -488,7 +488,7 @@ with tabs[3]:
         st.dataframe(display_df, use_container_width=True)
 
 # =============================
-# PESQUISAR (versão ultra sensível)
+# PESQUISAR (sensível equilibrado)
 # =============================
 import unicodedata
 import difflib
@@ -501,6 +501,8 @@ def normalizar(texto):
     return texto.lower().strip()
 
 def gerar_ngrams(texto, tamanho=3):
+    if len(texto) < tamanho:
+        return [texto]
     return [texto[i:i+tamanho] for i in range(len(texto)-tamanho+1)]
 
 with tabs[4]:
@@ -527,38 +529,33 @@ with tabs[4]:
 
                 score_final = 0
 
-                # 1) CONTÉM DIRETO EM QUALQUER PARTE
+                # 1) CONTÉM DIRETO
                 if termo_norm in nome:
                     score_final = 1.0
 
                 # 2) TODOS OS TOKENS PRESENTES
                 elif all(tok in nome for tok in tokens):
-                    score_final = 0.95
+                    score_final = 0.90
 
-                # 3) ALGUNS TOKENS PRESENTES
+                # 3) PELO MENOS UM TOKEN PRESENTE
                 elif any(tok in nome for tok in tokens):
-                    score_final = 0.80
+                    score_final = 0.70
 
                 else:
-                    # 4) SIMILARIDADE APROXIMADA GLOBAL
+                    # 4) SIMILARIDADE GLOBAL
                     sim_global = difflib.SequenceMatcher(None, termo_norm, nome).ratio()
 
-                    # 5) SIMILARIDADE PARCIAL VIA N-GRAMS
+                    # 5) SIMILARIDADE PARCIAL — um pouco mais rígida agora
                     ngrams_nome = gerar_ngrams(nome)
-                    ngrams_termo = gerar_ngrams(termo_norm)
+                    melhor_parcial = max(
+                        difflib.SequenceMatcher(None, termo_norm, ng).ratio()
+                        for ng in ngrams_nome
+                    )
 
-                    melhor_parcial = 0
-                    for ng1 in ngrams_termo:
-                        for ng2 in ngrams_nome:
-                            parcial = difflib.SequenceMatcher(None, ng1, ng2).ratio()
-                            if parcial > melhor_parcial:
-                                melhor_parcial = parcial
+                    score_final = max(sim_global * 0.8, melhor_parcial * 0.6)
 
-                    # mistura poderosa das duas
-                    score_final = max(sim_global, melhor_parcial * 0.85)
-
-                # LIMIAR MAIS PERMISSIVO
-                if score_final >= 0.32:
+                # LIMIAR MAIS RESTRITO AGORA
+                if score_final >= 0.45:
                     resultados.append((i, score_final))
 
             if not resultados:
@@ -569,14 +566,12 @@ with tabs[4]:
                 df_search = estoque_df.loc[[i for i, s in resultados]].copy()
                 df_search.drop(columns=["_search"], inplace=True)
 
-                # formatação
                 if "Media C. UNITARIO" in df_search.columns:
                     df_search["Media C. UNITARIO"] = df_search["Media C. UNITARIO"].map(formatar_reais_com_centavos)
                 if "Valor Venda Sugerido" in df_search.columns:
                     df_search["Valor Venda Sugerido"] = df_search["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
 
                 st.dataframe(df_search.reset_index(drop=True), use_container_width=True)
-
 
 # =============================
 # Rodapé simples
@@ -586,6 +581,7 @@ st.markdown("""
   <em>Nota:</em> Valores de estoque (custo & venda) são calculados a partir das colunas <strong>Media C. UNITARIO</strong>, <strong>Valor Venda Sugerido</strong> e <strong>EM ESTOQUE</strong> — estes indicadores não são afetados pelo filtro de mês.
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
