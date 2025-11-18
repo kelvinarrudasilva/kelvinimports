@@ -488,7 +488,7 @@ with tabs[3]:
         st.dataframe(display_df, use_container_width=True)
 
 # =============================
-# PESQUISAR
+# PESQUISAR (versão poderosa)
 # =============================
 import unicodedata
 import difflib
@@ -505,7 +505,7 @@ with tabs[4]:
 
     termo = st.text_input(
         "Digite parte do nome do produto",
-        placeholder="Ex: cabo usb, fonte, fan, headset..."
+        placeholder="Ex: cabo usb, fonte, carregador, fan..."
     )
 
     if termo.strip():
@@ -513,35 +513,51 @@ with tabs[4]:
             st.warning("Nenhum dado de estoque disponível para busca.")
         else:
             termo_norm = normalizar(termo)
+            tokens = termo_norm.split()
 
             estoque_df["_search"] = estoque_df["PRODUTO"].apply(normalizar)
 
             resultados = []
+
             for i, row in estoque_df.iterrows():
-                score = difflib.SequenceMatcher(None, termo_norm, row["_search"]).ratio()
-                if score >= 0.45:
+                nome = row["_search"]
+
+                # 1) contém direto
+                if termo_norm in nome:
+                    resultados.append((i, 1.0))
+                    continue
+
+                # 2) todos tokens presentes
+                if all(tok in nome for tok in tokens):
+                    resultados.append((i, 0.95))
+                    continue
+
+                # 3) pelo menos um token presente
+                if any(tok in nome for tok in tokens):
+                    resultados.append((i, 0.75))
+                    continue
+
+                # 4) similaridade aproximada
+                score = difflib.SequenceMatcher(None, termo_norm, nome).ratio()
+                if score >= 0.40:
                     resultados.append((i, score))
+                    continue
 
             if not resultados:
                 st.warning("Nenhum produto encontrado.")
             else:
-                # ordena pelos mais semelhantes
                 resultados = sorted(resultados, key=lambda x: x[1], reverse=True)
 
                 df_search = estoque_df.loc[[i for i, s in resultados]].copy()
                 df_search.drop(columns=["_search"], inplace=True)
 
-                # formatação NÃO pode ficar fora desse bloco
+                # formatação
                 if "Media C. UNITARIO" in df_search.columns:
                     df_search["Media C. UNITARIO"] = df_search["Media C. UNITARIO"].map(formatar_reais_com_centavos)
-
                 if "Valor Venda Sugerido" in df_search.columns:
                     df_search["Valor Venda Sugerido"] = df_search["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
 
                 st.dataframe(df_search.reset_index(drop=True), use_container_width=True)
-
-
-
 
 # =============================
 # Rodapé simples
@@ -551,6 +567,7 @@ st.markdown("""
   <em>Nota:</em> Valores de estoque (custo & venda) são calculados a partir das colunas <strong>Media C. UNITARIO</strong>, <strong>Valor Venda Sugerido</strong> e <strong>EM ESTOQUE</strong> — estes indicadores não são afetados pelo filtro de mês.
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
