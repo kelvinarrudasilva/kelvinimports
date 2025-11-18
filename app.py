@@ -531,9 +531,13 @@ with tabs[4]:
 
                 df_search.drop(columns=["_search"], inplace=True)
 
-                # formata dinheiro caso tenha
-                if "Media C. UNITARIO" in df_search.columns:
-                    df_search["Media C. UNITARIO"] = df_search["Media C. UNITARIO"].m
+           # formata dinheiro caso tenha
+if "Media C. UNITARIO" in df_search.columns:
+    df_search["Media C. UNITARIO"] = df_search["Media C. UNITARIO"].map(formatar_reais_com_centavos)
+
+if "Valor Venda Sugerido" in df_search.columns:
+    df_search["Valor Venda Sugerido"] = df_search["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
+
 
 
 # =============================
@@ -544,6 +548,7 @@ st.markdown("""
   <em>Nota:</em> Valores de estoque (custo & venda) são calculados a partir das colunas <strong>Media C. UNITARIO</strong>, <strong>Valor Venda Sugerido</strong> e <strong>EM ESTOQUE</strong> — estes indicadores não são afetados pelo filtro de mês.
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
