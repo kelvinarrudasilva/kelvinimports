@@ -499,7 +499,6 @@ with tabs[1]:
 # =============================
 # PESQUISAR (MODERNIZADA — FINAL CORRIGIDO)
 # =============================
-with 
 # =============================
 # PESQUISAR — VERSÃO E‑COMMERCE COMPLETA COM AVATAR
 # =============================
