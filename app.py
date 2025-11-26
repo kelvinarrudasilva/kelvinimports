@@ -497,6 +497,7 @@ with tabs[1]:
 
 
 
+
 # =============================
 # PESQUISAR (MODERNIZADA — SEM MARGEM)
 # =============================
@@ -505,6 +506,7 @@ with tabs[2]:
     # CSS exclusivo da aba PESQUISAR
     st.markdown("""
     <style>
+
     .card-grid {
         display:grid;
         grid-template-columns: repeat(2, minmax(320px, 1fr));
@@ -558,7 +560,7 @@ with tabs[2]:
     .hot { background:#2b0030; border-color:#c77dff; }
     .zero { background:#2f2f2f; border-color:#777; }
 
-    /* input e textos brancos */
+    /* textos brancos */
     label, .stTextInput label, .stSelectbox label, .stCheckbox label {
         color:#eaeaea !important;
         font-weight:600;
@@ -585,7 +587,7 @@ with tabs[2]:
     filtro_baixo = f1.checkbox("⚠️ Estoque baixo (≤ 3)")
     filtro_alto = f2.checkbox("📦 Estoque alto (≥ 20)")
     filtro_vendidos = f3.checkbox("🔥 Com vendas")
-    filtro_sem_vendas = f4.checkbox("❄️ Sem vendas")   # NOVO — estilo igual
+    filtro_sem_vendas = f4.checkbox("❄️ Sem vendas")   # NOVO — checkbox corrigido
 
     # Ordenar e paginação
     ordenar = st.selectbox("Ordenar por:", ["Relevância","Nome A–Z","Estoque (maior→menor)","Preço (maior→menor)"])
@@ -624,7 +626,7 @@ with tabs[2]:
         if filtro_vendidos:
             df = df[df["TOTAL_QTD"] > 0]
 
-        if filtro_sem_vendas:      # NOVO — funcionando!
+        if filtro_sem_vendas:      # 100% funcional
             df = df[df["TOTAL_QTD"] == 0]
 
         # Preparar campos
@@ -655,6 +657,7 @@ with tabs[2]:
             st.info("Nenhum produto nesta página.")
         else:
             st.markdown("<div class='card-grid'>", unsafe_allow_html=True)
+
             for _, r in df_page.iterrows():
 
                 nome = r["PRODUTO"]
@@ -663,6 +666,7 @@ with tabs[2]:
                 venda = r["VENDA_FMT"]
                 vendidos = int(r["TOTAL_QTD"])
 
+                # badges corrigidos
                 badges = []
                 if estoque <= 3:
                     badges.append("<span class='badge low'>⚠️ Baixo estoque</span>")
@@ -671,19 +675,25 @@ with tabs[2]:
                 if vendidos == 0:
                     badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
 
-                st.markdown(f"""
-                <div class='search-card'>
-                    <div class='search-title'>{nome}</div>
-                    <div>{" ".join(badges)}</div>
+                badges_html = " ".join(badges)
 
-                    <div class='meta'>
-                        Estoque: <b>{estoque}</b><br>
-                        Preço: <b>{venda}</b><br>
-                        Custo: <b>{custo}</b><br>
-                        Vendidos (total): <b>{vendidos}</b>
+                # CARD HTML corrigido (não mostra mais "<div>")
+                st.markdown(
+                    f"""
+                    <div class='search-card'>
+                        <div class='search-title'>{nome}</div>
+                        <div>{badges_html}</div>
+
+                        <div class='meta'>
+                            Estoque: <b>{estoque}</b><br>
+                            Preço: <b>{venda}</b><br>
+                            Custo: <b>{custo}</b><br>
+                            Vendidos (total): <b>{vendidos}</b>
+                        </div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             st.markdown("</div>", unsafe_allow_html=True)
 
