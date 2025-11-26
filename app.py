@@ -17,7 +17,7 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 st.markdown("""
 <style>
 :root{
---bg:#2a2a2a;
+  --bg:#0b0b0b;
   --accent:#8b5cf6;
   --accent-2:#a78bfa;
   --muted:#bdbdbd;
