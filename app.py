@@ -540,7 +540,6 @@ with tabs[2]:
         limpar = st.button("Limpar")
 
     if limpar:
-        # rerun clean
         st.experimental_set_query_params()
         termo = ""
 
@@ -549,6 +548,11 @@ with tabs[2]:
     filtro_baixo = f1.checkbox("⚠️ Estoque baixo (≤ 3)")
     filtro_alto = f2.checkbox("📦 Estoque alto (≥ 20)")
     filtro_vendidos = f3.checkbox("🔥 Com vendas")
+
+    # -----------------------------------------------------
+    # 🔵 Botão adicional "❄️ Sem vendas" (NOVO)
+    # -----------------------------------------------------
+    botao_sem_vendas = st.button("❄️ Sem vendas")
 
     # Ordenar e paginação
     ordenar = st.selectbox("Ordenar por:", ["Relevância","Nome A–Z","Estoque (maior→menor)","Preço (maior→menor)"])
@@ -583,7 +587,13 @@ with tabs[2]:
         if filtro_vendidos:
             df = df[df["TOTAL_QTD"] > 0]
 
-        # preparar campos para exibição (sem margem)
+        # -----------------------------------------------------
+        # AÇÃO DO BOTÃO "❄️ Sem vendas"
+        # -----------------------------------------------------
+        if botao_sem_vendas:
+            df = df[df["TOTAL_QTD"] == 0]
+
+        # preparar campos para exibição
         df["CUSTO_FMT"] = df["Media C. UNITARIO"].fillna(0).map(formatar_reais_com_centavos)
         df["VENDA_FMT"] = df["Valor Venda Sugerido"].fillna(0).map(formatar_reais_com_centavos)
         df["TOTAL_QTD"] = df["TOTAL_QTD"].fillna(0).astype(int)
@@ -618,7 +628,6 @@ with tabs[2]:
                 venda = r.get("VENDA_FMT","R$ 0,00")
                 vendidos = int(r.get("TOTAL_QTD",0))
 
-                # badges simplificados (sem margem)
                 badges = []
                 if estoque <= 3:
                     badges.append("<span class='badge low'>⚠️ Baixo estoque</span>")
@@ -641,7 +650,6 @@ with tabs[2]:
                 """, unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # exporta apenas colunas relevantes (sem margem)
         csv = df_page[["PRODUTO","EM ESTOQUE","Valor Venda Sugerido","Media C. UNITARIO","TOTAL_QTD"]].rename(columns={
             "Valor Venda Sugerido":"PRECO_VENDA",
             "Media C. UNITARIO":"CUSTO_UNITARIO",
@@ -649,12 +657,3 @@ with tabs[2]:
         }).to_csv(index=False).encode("utf-8")
 
         st.download_button("📥 Exportar esta página (CSV)", data=csv, file_name=f"pesquisa_pagina_{page}.csv", mime="text/csv")
-
-# =============================
-# Rodapé simples
-# =============================
-st.markdown("""
-<div style="margin-top:18px; color:#bdbdbd; font-size:12px;">
-  <em>Nota:</em> Valores de estoque (custo & venda) são calculados a partir das colunas <strong>Media C. UNITARIO</strong>, <strong>Valor Venda Sugerido</strong> e <strong>EM ESTOQUE</strong> — estes indicadores não são afetados pelo filtro de mês.
-</div>
-""", unsafe_allow_html=True)
