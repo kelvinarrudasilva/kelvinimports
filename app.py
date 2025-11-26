@@ -1,5 +1,5 @@
 # ============================================
-#  app.py — Dashboard Loja Importados (Kelvin IA Edition)
+#  app.py — Dashboard Loja Importados (Kelvin IA Edition — Blindado)
 # ============================================
 
 import streamlit as st
@@ -50,29 +50,6 @@ body, .stApp { background: var(--bg) !important; color: #f0f0f0 !important; }
   margin-right:8px !important;
 }
 
-.search-box input {
-    background: rgba(255,255,255,0.06) !important;
-    padding: 12px 14px !important;
-    border-radius: 10px !important;
-    border: 1px solid #333 !important;
-    font-size: 15px !important;
-    color: #fff !important;
-}
-.filter-pill {
-    display:inline-block;
-    padding:6px 14px;
-    background:#1b1b1b;
-    border:1px solid #333;
-    color:#dcdcdc;
-    border-radius:50px;
-    margin-right:6px;
-    font-size:12px;
-    cursor:pointer;
-}
-.filter-pill:hover {
-    background:#262626;
-    border-color:#555;
-}
 .card-grid {
     display:grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -84,12 +61,9 @@ body, .stApp { background: var(--bg) !important; color: #f0f0f0 !important; }
     padding:16px;
     border-radius:14px;
     box-shadow:0 4px 14px rgba(0,0,0,0.55);
-    border:1px solid rgba(255,255,255,0.05);
 }
 .product-title {
-    font-size:16px;
-    font-weight:800;
-    color:#a78bfa;
+    font-size:16px; font-weight:800; color:#a78bfa;
 }
 .card-badge {
     display:inline-block;
@@ -106,6 +80,13 @@ body, .stApp { background: var(--bg) !important; color: #f0f0f0 !important; }
 # -------------------------------------------------
 # FUNÇÕES
 # -------------------------------------------------
+
+def force_series(x):
+    """Garante que qualquer entrada vire uma Series, nunca um número."""
+    if isinstance(x, pd.Series):
+        return x
+    return pd.Series([x])
+
 def parse_money_value(x):
     try:
         if pd.isna(x): 
@@ -124,6 +105,7 @@ def parse_money_value(x):
         return float("nan")
 
 def parse_money_series(s):
+    s = force_series(s)
     return s.astype(str).map(parse_money_value)
 
 def formatar_reais(v):
@@ -158,6 +140,13 @@ def limpar_aba_raw(df_raw, nome):
     df = df.loc[:, ~df.columns.astype(str).str.contains("Unnamed")]
     return df.reset_index(drop=True)
 
+def encontrar(colunas, candidatos):
+    for c in colunas:
+        for padrao in candidatos:
+            if padrao in c.upper():
+                return c
+    return None
+
 
 # -------------------------------------------------
 # CARREGAR PLANILHA
@@ -171,7 +160,6 @@ except:
 abas = xls.sheet_names
 dfs = {}
 
-
 for aba in ["ESTOQUE","VENDAS","COMPRAS"]:
     if aba in abas:
         raw = pd.read_excel(URL_PLANILHA, sheet_name=aba, header=None)
@@ -179,37 +167,27 @@ for aba in ["ESTOQUE","VENDAS","COMPRAS"]:
 
 
 # ==============================================================
-# PROCESSAR ESTOQUE — À PROVA DE ERROS
+# PROCESSAR ESTOQUE — BLINDADO
 # ==============================================================
 if "ESTOQUE" in dfs and dfs["ESTOQUE"] is not None:
     df_e = dfs["ESTOQUE"].copy()
 
-    # detectar colunas AUTOMATICAMENTE
-    def encontrar(colunas, candidatos):
-        for c in colunas:
-            for padrao in candidatos:
-                if padrao in c.upper():
-                    return c
-        return None
+    colunas_upper = df_e.columns.str.upper()
 
-    cols_upper = [c.upper() for c in df_e.columns]
+    col_prod = encontrar(colunas_upper, ["PROD"])
+    col_estoque = encontrar(colunas_upper, ["ESTOQUE","QTD","QUANT"])
+    col_custo = encontrar(colunas_upper, ["CUSTO","MEDIA"])
+    col_venda = encontrar(colunas_upper, ["VENDA","VALOR"])
 
-    col_produto = encontrar(cols_upper, ["PRODUTO"])
-    col_estoque = encontrar(cols_upper, ["ESTOQUE","QTD","QUANT"])
-    col_custo = encontrar(cols_upper, ["CUSTO","MEDIA"])
-    col_venda = encontrar(cols_upper, ["VENDA","VALOR"])
+    if col_prod: df_e.rename(columns={col_prod: "PRODUTO"}, inplace=True)
+    if col_estoque: df_e.rename(columns={col_estoque: "EM ESTOQUE"}, inplace=True)
+    if col_custo: df_e.rename(columns={col_custo: "PRECO_CUSTO"}, inplace=True)
+    if col_venda: df_e.rename(columns={col_venda: "PRECO_VENDA"}, inplace=True)
 
-    if col_produto: df_e.rename(columns={df_e.columns[cols_upper.index(col_produto)]: "PRODUTO"}, inplace=True)
-    if col_estoque: df_e.rename(columns={df_e.columns[cols_upper.index(col_estoque)]: "EM ESTOQUE"}, inplace=True)
-    if col_custo: df_e.rename(columns={df_e.columns[cols_upper.index(col_custo)]: "PRECO_CUSTO"}, inplace=True)
-    if col_venda: df_e.rename(columns={df_e.columns[cols_upper.index(col_venda)]: "PRECO_VENDA"}, inplace=True)
+    df_e["EM ESTOQUE"] = pd.to_numeric(df_e.get("EM ESTOQUE", pd.Series()), errors="coerce").fillna(0).astype(int)
+    df_e["PRECO_CUSTO"] = parse_money_series(df_e.get("PRECO_CUSTO", pd.Series())).fillna(0)
+    df_e["PRECO_VENDA"] = parse_money_series(df_e.get("PRECO_VENDA", pd.Series())).fillna(0)
 
-    # conversões seguras
-    df_e["EM ESTOQUE"] = pd.to_numeric(df_e.get("EM ESTOQUE", 0), errors="coerce").fillna(0).astype(int)
-    df_e["PRECO_CUSTO"] = parse_money_series(df_e.get("PRECO_CUSTO", 0)).fillna(0)
-    df_e["PRECO_VENDA"] = parse_money_series(df_e.get("PRECO_VENDA", 0)).fillna(0)
-
-    # totais
     df_e["VALOR_CUSTO_TOTAL"] = df_e["PRECO_CUSTO"] * df_e["EM ESTOQUE"]
     df_e["VALOR_VENDA_TOTAL"] = df_e["PRECO_VENDA"] * df_e["EM ESTOQUE"]
 
@@ -222,11 +200,13 @@ if "ESTOQUE" in dfs and dfs["ESTOQUE"] is not None:
 if "VENDAS" in dfs and dfs["VENDAS"] is not None:
     df_v = dfs["VENDAS"].copy()
 
-    col_prod = encontrar(df_v.columns.str.upper(), ["PRODUTO"])
-    col_valor = encontrar(df_v.columns.str.upper(), ["VALOR"])
-    col_custo = encontrar(df_v.columns.str.upper(), ["CUSTO"])
-    col_qtd = encontrar(df_v.columns.str.upper(), ["QTD","QUANT"])
-    col_data = encontrar(df_v.columns.str.upper(), ["DATA"])
+    cols = df_v.columns.str.upper()
+
+    col_prod = encontrar(cols, ["PROD"])
+    col_valor = encontrar(cols, ["VALOR","VENDA"])
+    col_custo = encontrar(cols, ["CUSTO"])
+    col_qtd = encontrar(cols, ["QTD","QUANT"])
+    col_data = encontrar(cols, ["DATA"])
 
     if col_prod: df_v.rename(columns={col_prod:"PRODUTO"}, inplace=True)
     if col_valor: df_v.rename(columns={col_valor:"VALOR VENDA"}, inplace=True)
@@ -234,9 +214,9 @@ if "VENDAS" in dfs and dfs["VENDAS"] is not None:
     if col_qtd: df_v.rename(columns={col_qtd:"QTD"}, inplace=True)
     if col_data: df_v.rename(columns={col_data:"DATA"}, inplace=True)
 
-    df_v["VALOR VENDA"] = parse_money_series(df_v.get("VALOR VENDA",0)).fillna(0)
-    df_v["CUSTO"] = parse_money_series(df_v.get("CUSTO",0)).fillna(0)
-    df_v["QTD"] = pd.to_numeric(df_v.get("QTD",0), errors="coerce").fillna(0).astype(int)
+    df_v["VALOR VENDA"] = parse_money_series(df_v.get("VALOR VENDA", pd.Series())).fillna(0)
+    df_v["CUSTO"] = parse_money_series(df_v.get("CUSTO", pd.Series())).fillna(0)
+    df_v["QTD"] = pd.to_numeric(df_v.get("QTD", pd.Series()), errors="coerce").fillna(0).astype(int)
 
     df_v["DATA"] = pd.to_datetime(df_v["DATA"], errors="coerce")
     df_v["VALOR TOTAL"] = df_v["VALOR VENDA"] * df_v["QTD"]
@@ -251,17 +231,18 @@ if "VENDAS" in dfs and dfs["VENDAS"] is not None:
 # ==============================================================
 if "COMPRAS" in dfs and dfs["COMPRAS"] is not None:
     df_c = dfs["COMPRAS"].copy()
+    cols = df_c.columns.str.upper()
 
-    col_qtd = encontrar(df_c.columns.str.upper(), ["QTD","QUANT"])
-    col_custo = encontrar(df_c.columns.str.upper(), ["CUSTO"])
-    col_data = encontrar(df_c.columns.str.upper(), ["DATA"])
+    col_qtd = encontrar(cols, ["QTD","QUANT"])
+    col_custo = encontrar(cols, ["CUSTO"])
+    col_data = encontrar(cols, ["DATA"])
 
     if col_qtd: df_c.rename(columns={col_qtd:"QTD"}, inplace=True)
     if col_custo: df_c.rename(columns={col_custo:"CUSTO UNITARIO"}, inplace=True)
     if col_data: df_c.rename(columns={col_data:"DATA"}, inplace=True)
 
-    df_c["QTD"] = pd.to_numeric(df_c.get("QTD",0), errors="coerce").fillna(0).astype(int)
-    df_c["CUSTO UNITARIO"] = parse_money_series(df_c.get("CUSTO UNITARIO",0)).fillna(0)
+    df_c["QTD"] = pd.to_numeric(df_c.get("QTD", pd.Series()), errors="coerce").fillna(0).astype(int)
+    df_c["CUSTO UNITARIO"] = parse_money_series(df_c.get("CUSTO UNITARIO", pd.Series())).fillna(0)
     df_c["CUSTO TOTAL"] = df_c["QTD"] * df_c["CUSTO UNITARIO"]
     df_c["DATA"] = pd.to_datetime(df_c["DATA"], errors="coerce")
     df_c["MES_ANO"] = df_c["DATA"].dt.strftime("%Y-%m")
@@ -269,9 +250,8 @@ if "COMPRAS" in dfs and dfs["COMPRAS"] is not None:
     dfs["COMPRAS"] = df_c
 
 
-
 # ==============================================================
-# KPIs
+# TELA PRINCIPAL
 # ==============================================================
 st.title("📊 Painel Geral — Inteligência Comercial")
 
@@ -283,50 +263,44 @@ if not df_v.empty:
     qtd_itens = df_v["QTD"].sum()
 
     k1, k2, k3 = st.columns(3)
-
     k1.markdown(f"<div class='kpi'><h3>Total Vendido</h3><div class='value'>{formatar_reais(total_vendido)}</div></div>", unsafe_allow_html=True)
     k2.markdown(f"<div class='kpi'><h3>Lucro Total</h3><div class='value'>{formatar_reais(total_lucro)}</div></div>", unsafe_allow_html=True)
     k3.markdown(f"<div class='kpi'><h3>Itens Vendidos</h3><div class='value'>{qtd_itens}</div></div>", unsafe_allow_html=True)
 
 
-# ==============================================================
+# ===================================================
 # GRÁFICOS PRINCIPAIS
-# ==============================================================
+# ===================================================
 st.subheader("📈 Panorama Geral")
 
 if not df_v.empty:
-
     colA, colB = st.columns(2)
 
     vendas_mes = df_v.groupby("MES_ANO")["VALOR TOTAL"].sum().reset_index()
 
     fig1 = px.line(vendas_mes, x="MES_ANO", y="VALOR TOTAL", markers=True, title="Vendas Mensais")
-    fig1.update_traces(line_width=3)
-    fig1.update_layout(height=350, showlegend=False)
-
+    fig1.update_layout(height=350)
     colA.plotly_chart(fig1, use_container_width=True)
 
     top_itens = df_v.groupby("PRODUTO")["QTD"].sum().sort_values(ascending=False).head(5).reset_index()
-    fig2 = px.bar(top_itens, x="QTD", y="PRODUTO", orientation="h", title="Top 5 Produtos")
-    fig2.update_layout(height=350)
-
+    fig2 = px.bar(top_itens, x="QTD", y="PRODUTO", orientation="h", title="Top Produtos")
     colB.plotly_chart(fig2, use_container_width=True)
 
     # IA — Tendência
     st.markdown("### 🤖 Inteligência Comercial")
 
     if len(vendas_mes) >= 2:
-        dif = vendas_mes.iloc[-1]["VALOR TOTAL"] - vendas_mes.iloc[-2]["VALOR TOTAL"]
-        perc = (dif / vendas_mes.iloc[-2]["VALOR TOTAL"] * 100) if vendas_mes.iloc[-2]["VALOR TOTAL"] > 0 else 0
+        ult = vendas_mes.iloc[-1]["VALOR TOTAL"]
+        ant = vendas_mes.iloc[-2]["VALOR TOTAL"]
+        dif = ult - ant
+        perc = (dif / ant * 100) if ant > 0 else 0
 
         tendencia = "📈 Crescimento" if perc > 15 else "📉 Queda" if perc < -15 else "🟣 Estável"
-
         st.info(f"{tendencia} — variação de {perc:.1f}% no mês")
 
-    # Projeção IA
     vendas_mes["MM3"] = vendas_mes["VALOR TOTAL"].rolling(3).mean()
     if vendas_mes["MM3"].notna().any():
-        st.success(f"🧠 Projeção do próximo mês: {formatar_reais(vendas_mes['MM3'].iloc[-1])}")
+        st.success(f"🧠 Projeção IA (próximo mês): {formatar_reais(vendas_mes['MM3'].iloc[-1])}")
 
 
 # ==============================================================
@@ -336,60 +310,49 @@ st.markdown("---")
 tabs = st.tabs(["📦 Estoque", "💰 Vendas", "🧾 Compras", "🔍 Pesquisar (IA)"])
 
 
-# --------------------------------------------------------------
-# 📦 ESTOQUE
-# --------------------------------------------------------------
+# ---------------- ESTOQUE ----------------
 with tabs[0]:
-    st.subheader("📦 Estoque Atual")
+    st.subheader("📦 Estoque")
     df_e = dfs.get("ESTOQUE", pd.DataFrame())
 
     if not df_e.empty:
-        df_sorted = df_e.sort_values("EM ESTOQUE")
-        st.dataframe(df_sorted, use_container_width=True)
+        st.dataframe(df_e, use_container_width=True)
 
         crit = df_e[df_e["EM ESTOQUE"] <= 3]
         if not crit.empty:
-            st.warning("⚠️ Estoque Critico")
-            st.dataframe(crit, use_container_width=True)
+            st.warning("⚠️ Estoque Crítico")
+            st.dataframe(crit)
 
 
-# --------------------------------------------------------------
-# 💰 VENDAS
-# --------------------------------------------------------------
+# ---------------- VENDAS ----------------
 with tabs[1]:
     st.subheader("💰 Vendas")
-
     if not df_v.empty:
         meses = df_v["MES_ANO"].unique().tolist()
         sel = st.multiselect("Filtrar por mês:", meses, default=meses[:1])
 
-        df_f = df_v[df_v["MES_ANO"].isin(sel)] if sel else df_v
-        st.dataframe(df_f, use_container_width=True)
+        df_fil = df_v[df_v["MES_ANO"].isin(sel)] if sel else df_v
 
-        df_dia = df_f.groupby("DATA")["VALOR TOTAL"].sum().reset_index()
-        fig3 = px.bar(df_dia, x="DATA", y="VALOR TOTAL", title="Vendas por Dia")
-        st.plotly_chart(fig3, use_container_width=True)
+        st.dataframe(df_fil, use_container_width=True)
+
+        df_dia = df_fil.groupby("DATA")["VALOR TOTAL"].sum().reset_index()
+        fig = px.bar(df_dia, x="DATA", y="VALOR TOTAL", title="Vendas por Dia")
+        st.plotly_chart(fig, use_container_width=True)
 
 
-# --------------------------------------------------------------
-# 🧾 COMPRAS
-# --------------------------------------------------------------
+# ---------------- COMPRAS ----------------
 with tabs[2]:
     st.subheader("🧾 Compras")
-
     df_c = dfs.get("COMPRAS", pd.DataFrame())
-
     if not df_c.empty:
         st.dataframe(df_c, use_container_width=True)
 
-        df_comp = df_c.groupby("DATA")["CUSTO TOTAL"].sum().reset_index()
-        fig4 = px.line(df_comp, x="DATA", y="CUSTO TOTAL", markers=True, title="Compras por Dia")
-        st.plotly_chart(fig4, use_container_width=True)
+        df_dia = df_c.groupby("DATA")["CUSTO TOTAL"].sum().reset_index()
+        fig = px.line(df_dia, x="DATA", y="CUSTO TOTAL", markers=True, title="Compras por Dia")
+        st.plotly_chart(fig, use_container_width=True)
 
 
-# --------------------------------------------------------------
-# 🔍 PESQUISAR (IA)
-# --------------------------------------------------------------
+# ---------------- PESQUISA IA ----------------
 with tabs[3]:
     st.subheader("🔍 Pesquisa Inteligente")
 
@@ -399,7 +362,7 @@ with tabs[3]:
     termo = st.text_input("Buscar produto:")
 
     df_busca = df_e.copy()
-    if termo.strip() != "":
+    if termo.strip():
         df_busca = df_busca[df_busca["PRODUTO"].str.contains(termo, case=False, na=False)]
 
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -415,32 +378,30 @@ with tabs[3]:
     if f4: df_busca = df_busca.sort_values("PRECO_VENDA", ascending=False)
     if f5: df_busca = df_busca.sort_values("PRODUTO")
 
-    def tag_movimentacao(prod):
+    def tag_mov(prod):
         if df_v.empty: return "🟣 Sem dados"
-        vendas_prod = df_v[df_v["PRODUTO"].str.lower() == prod.lower()]
-        qtd = vendas_prod["QTD"].sum()
+        qtd = df_v[df_v["PRODUTO"].str.lower()==prod.lower()]["QTD"].sum()
         if qtd >= 20: return "🔥 Alta procura"
-        elif qtd >= 5: return "🟡 Estável"
-        elif qtd == 0: return "❄️ Sem saída"
-        else: return "⚠️ Baixa movimentação"
+        if qtd >= 5: return "🟡 Estável"
+        if qtd == 0: return "❄️ Zerado"
+        return "⚠️ Baixa"
 
     if not df_busca.empty:
         st.markdown("<div class='card-grid'>", unsafe_allow_html=True)
 
-        for _, row in df_busca.iterrows():
-
-            badge = tag_movimentacao(row["PRODUTO"])
+        for _, r in df_busca.iterrows():
+            badge = tag_mov(r["PRODUTO"])
 
             st.markdown(f"""
             <div class='product-card'>
-                <div class='product-title'>{row["PRODUTO"]}</div>
+                <div class='product-title'>{r["PRODUTO"]}</div>
                 <div style='margin-top:6px;'><span class='card-badge'>{badge}</span></div>
 
                 <p style='margin-top:12px;'>
-                <strong>Estoque:</strong> {int(row["EM ESTOQUE"])}<br>
-                <strong>Preço venda:</strong> {formatar_reais(row["PRECO_VENDA"])}<br>
-                <strong>Custo médio:</strong> {formatar_reais(row["PRECO_CUSTO"])}<br>
-                <strong>Total venda:</strong> {formatar_reais(row["VALOR_VENDA_TOTAL"])}<br>
+                <strong>Estoque:</strong> {int(r["EM ESTOQUE"])}<br>
+                <strong>Preço venda:</strong> {formatar_reais(r["PRECO_VENDA"])}<br>
+                <strong>Custo médio:</strong> {formatar_reais(r["PRECO_CUSTO"])}<br>
+                <strong>Total venda:</strong> {formatar_reais(r["VALOR_VENDA_TOTAL"])}<br>
                 </p>
             </div>
             """, unsafe_allow_html=True)
