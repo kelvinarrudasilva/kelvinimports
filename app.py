@@ -727,7 +727,7 @@ with tabs[2]:
 
             # compact vs ecommerce body
             if compact:
-                html = f\"\"\"
+                html = f"""
 <div class='card-ecom'>
   <div class='card-thumb'>{nome[:2].upper()}</div>
   <div class='card-body'>
@@ -736,9 +736,9 @@ with tabs[2]:
     <div class='card-prices'><div class='card-price'>{venda}</div></div>
   </div>
 </div>
-\"\"\"
+"""
             else:
-                html = f\"\"\"
+                html = f"""
 <div class='card-ecom'>
   <div class='card-thumb'>{nome[:2].upper()}</div>
   <div class='card-body'>
@@ -748,7 +748,7 @@ with tabs[2]:
     <div class='card-badges'>{badges_html}</div>
   </div>
 </div>
-\"\"\"
+"""
 
             st.markdown(html, unsafe_allow_html=True)
 
