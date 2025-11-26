@@ -172,17 +172,24 @@ def preparar_tabela_vendas(df):
         if c not in d.columns:
             d[c]=0
 
-    # converter numericamente antes de formatar
+    # garantir numericos
     for col in ["VALOR VENDA","VALOR TOTAL","MEDIA CUSTO UNITARIO","LUCRO UNITARIO"]:
         try:
             d[col]=d[col].astype(float)
         except:
             pass
 
+    # **CALCULAR LUCRO TOTAL AQUI**
+    d["LUCRO TOTAL"] = (d["LUCRO UNITARIO"] * d["QTD"]).astype(float)
+
+    # formatar tudo após calcular
     d["VALOR VENDA"]=d["VALOR VENDA"].map(formatar_reais_com_centavos)
     d["VALOR TOTAL"]=d["VALOR TOTAL"].map(formatar_reais_com_centavos)
     d["MEDIA CUSTO UNITARIO"]=d["MEDIA CUSTO UNITARIO"].map(formatar_reais_com_centavos)
     d["LUCRO UNITARIO"]=d["LUCRO UNITARIO"].map(formatar_reais_com_centavos)
+
+    # **FORMATA LUCRO TOTAL**
+    d["LUCRO TOTAL"]=d["LUCRO TOTAL"].map(formatar_reais_com_centavos)
 
     d=d.loc[:, ~d.columns.astype(str).str.contains("^Unnamed|MES_ANO")]
 
@@ -194,6 +201,7 @@ def preparar_tabela_vendas(df):
             pass
 
     return d
+
 
 # =============================
 # Plot config
@@ -531,3 +539,4 @@ st.markdown("""
   <strong>Valor Venda Sugerido</strong> e <strong>EM ESTOQUE</strong> — estes indicadores não são afetados pelo filtro de mês.
 </div>
 """, unsafe_allow_html=True)
+
