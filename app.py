@@ -522,22 +522,6 @@ with tabs[2]:
         transition: transform .12s ease;
         color:#eaeaea;
     }
-.avatar {
-    width: 54px;
-    height: 54px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #8b5cf6, #ec4899);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    color:white;
-    font-weight:900;
-    font-size:18px;
-    flex-shrink:0;
-    box-shadow:0 4px 12px rgba(0,0,0,0.45);
-    margin-right:12px;
-}
-
     .search-card:hover {
         transform: translateY(-6px);
         border-color: rgba(167,139,250,0.28);
@@ -662,6 +646,13 @@ with tabs[2]:
 
             for _, r in df_page.iterrows():
                 nome = r["PRODUTO"]
+    # === GERAR INICIAIS DO PRODUTO ===
+    partes = str(nome).split()
+    iniciais = ""
+    for p in partes[:2]:
+        if p:
+            iniciais += p[0].upper()
+
                 estoque = int(r["EM ESTOQUE"])
                 venda   = r["VENDA_FMT"]
                 custo   = r["CUSTO_FMT"]
@@ -680,9 +671,7 @@ with tabs[2]:
 
                 # CARD HTML — SEM INDENTAÇÃO
                 html_card = f"""
-<div class='search-card' style='display:flex; gap:14px; align-items:flex-start;'>
-  <div class='avatar'>{iniciais}</div>
-  <div style='flex:1;'>
+<div class='search-card'>
 <div class='search-title'>{nome}</div>
 <div>{badges_html}</div>
 <div class='meta'>
