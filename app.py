@@ -20,22 +20,17 @@ st.markdown("""
   --bg:#07060a;
   --card-bg: rgba(255,255,255,0.03);
   --glass: rgba(255,255,255,0.06);
-  --glass-2: rgba(255,255,255,0.04);
   --neon-1: #8b5cf6;
   --neon-2: #ec4899;
-  --neon-3: #06b6d4;
   --muted:#cfcfd6;
   --accent-2:#a78bfa;
 }
 
 /* Base */
 body, .stApp { 
-  background: linear-gradient(180deg, rgba(7,6,10,1) 0%, rgba(9,7,15,1) 100%) no-repeat fixed, 
-              url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="3"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity="0.04"/></svg>') !important;
+  background: linear-gradient(180deg, rgba(7,6,10,1) 0%, rgba(9,7,15,1) 100%) no-repeat fixed, url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAF0lEQVR4Xu3BAQ0AAADCoPdPbQ43oAAAAAAAAAB4G4cAAQABJREFUeJztwQeYHcW5//3p7r3u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7'') !important;
   color: #eef2ff !important;
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-  -webkit-font-smoothing:antialiased;
-  -moz-osx-font-smoothing:grayscale;
 }
 
 /* Glass cards & premium shadows */
@@ -52,7 +47,7 @@ body, .stApp {
 /* Neon gradient accents */
 .logo-wrap {
   width:56px;height:56px;border-radius:14px;
-  background: linear-gradient(135deg, var(--neon-1), var(--neon-2) 60%, var(--neon-3));
+  background: linear-gradient(135deg, var(--neon-1), var(--neon-2) 60%);
   box-shadow: 0 6px 24px rgba(139,92,246,0.14), 0 0 40px rgba(236,72,153,0.06);
   display:flex;align-items:center;justify-content:center;
 }
@@ -78,63 +73,28 @@ body, .stApp {
 }
 
 /* Floating & neon halo */
-.avatar::after{
-  content:'';
-  position:absolute;
-  width:140px;height:140px;
-  border-radius:50%;
-  filter: blur(24px);
-  background: radial-gradient(circle, rgba(139,92,246,0.12) 0%, rgba(236,72,153,0.06) 30%, transparent 60%);
-  z-index:-1;
-  transform: translateY(-10px);
-}
+.avatar::after{ content:''; position:absolute; width:140px;height:140px; border-radius:50%; filter: blur(24px); background: radial-gradient(circle, rgba(139,92,246,0.12) 0%, rgba(236,72,153,0.06) 30%, transparent 60%); z-index:-1; transform: translateY(-10px); }
 
 /* Entry animations */
-@keyframes enterFadeUp {
-  from { opacity:0; transform: translateY(18px) scale(.997); }
-  to { opacity:1; transform: translateY(0) scale(1); }
-}
+@keyframes enterFadeUp { from { opacity:0; transform: translateY(18px) scale(.997); } to { opacity:1; transform: translateY(0) scale(1); } }
 .topbar, .kpi-row, .card-ecom, .stTabs { animation: enterFadeUp .6s cubic-bezier(.2,.9,.3,1) both; }
 
 /* Skeleton loader */
-.skeleton {
-  height: 12px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.06), rgba(255,255,255,0.03));
-  background-size: 200% 100%;
-  animation: skeletonAnim 1.6s linear infinite;
-  border-radius:6px;
-}
+.skeleton { height: 12px; background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.06), rgba(255,255,255,0.03)); background-size: 200% 100%; animation: skeletonAnim 1.6s linear infinite; border-radius:6px; }
 .skel-row{ display:flex; gap:10px; align-items:center; }
 .skel-box{ width:70px; height:70px; border-radius:10px; background: rgba(255,255,255,0.02); }
 @keyframes skeletonAnim { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
 /* Table tweaks */
-.stDataFrame thead th {
-  background: linear-gradient(90deg, rgba(139,92,246,0.10), rgba(6,182,212,0.06)) !important;
-  color: #eef2ff !important;
-  font-weight:800 !important;
-  border-bottom: 1px solid rgba(255,255,255,0.04) !important;
-}
-.stDataFrame tbody tr td {
-  background: transparent !important;
-  border-bottom: 1px solid rgba(255,255,255,0.02) !important;
-  color: #e8e8f0 !important;
-}
+.stDataFrame thead th { background: linear-gradient(90deg, rgba(139,92,246,0.10), rgba(6,182,212,0.06)) !important; color: #eef2ff !important; font-weight:800 !important; border-bottom: 1px solid rgba(255,255,255,0.04) !important; }
+.stDataFrame tbody tr td { background: transparent !important; border-bottom: 1px solid rgba(255,255,255,0.02) !important; color: #e8e8f0 !important; }
 
 /* Responsive */
-@media (max-width: 900px) {
-  .card-grid-ecom { grid-template-columns: repeat(2,1fr); }
-}
-@media (max-width: 600px) {
-  .card-grid-ecom { grid-template-columns: 1fr; }
-  .logo-wrap { width:48px;height:48px;border-radius:12px; }
-  .title { font-size:18px; }
-}
+@media (max-width: 900px) { .card-grid-ecom { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 600px) { .card-grid-ecom { grid-template-columns: 1fr; } .logo-wrap { width:48px;height:48px;border-radius:12px; } .title { font-size:18px; } }
+
 </style>
-""",
-
-# Apply replacement
-
+""", unsafe_allow_html=True)
 
 # =============================
 # Top Bar
@@ -452,6 +412,7 @@ with tabs[0]:
     st.subheader("Vendas — período selecionado")
 
     if vendas_filtradas.empty:
+        st.markdown("""<div class="skel-row"><div class="skel-box"></div><div style="flex:1"><div class="skeleton" style="width:60%;height:18px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div></div>""", unsafe_allow_html=True)
         st.info("Sem dados de vendas.")
     else:
         df_sem=vendas_filtradas.copy()
@@ -498,6 +459,7 @@ with tabs[0]:
 with tabs[1]:
 
     if estoque_df.empty:
+        st.markdown("""<div class="skel-row"><div class="skel-box"></div><div style="flex:1"><div class="skeleton" style="width:60%;height:18px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div></div>""", unsafe_allow_html=True)
         st.info("Sem dados de estoque.")
     else:
         estoque_display=estoque_df.copy()
