@@ -771,7 +771,7 @@ with tabs[2]:
                     )
         except Exception:
             dias_sem_venda = ""
-html=f"""
+        html=f"""
 <div class='card-ecom'>
   <div class='avatar'>{iniciais}</div>
   <div>
@@ -786,7 +786,7 @@ html=f"""
     <div style='margin-top:4px;'>""" + badges_html + """</div>
   </div>
 </div>
-"""
+        """
         st.markdown(html,unsafe_allow_html=True)
 
     st.markdown("</div>",unsafe_allow_html=True)
