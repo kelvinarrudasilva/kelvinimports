@@ -503,135 +503,127 @@ with tabs[1]:
 # PESQUISAR — E-COMMERCE COMPLETO
 # =============================
 with tabs[2]:
-
-    st.markdown("""
+    st.markdown('''
     <style>
-    .card-grid-ecom {
-        display: grid;
-        grid-template-columns: repeat(3,1fr);
-        gap:16px;
-    }
-    @media(max-width:1200px){ .card-grid-ecom{grid-template-columns:repeat(2,1fr);} }
-    @media(max-width:720px){ .card-grid-ecom{grid-template-columns:1fr;} }
-
-    .card-ecom{
-        background:#141414;
-        border-radius:12px;
-        padding:14px;
-        border:1px solid rgba(255,255,255,0.05);
-        display:flex;
-        gap:12px;
-    }
-    .avatar{
-        width:64px;height:64px;border-radius:14px;
-        background:linear-gradient(135deg,#8b5cf6,#ec4899);
-        display:flex;align-items:center;justify-content:center;
-        color:white;font-weight:900;font-size:22px;
-        box-shadow:0 4px 14px rgba(0,0,0,0.35);
-        flex-shrink:0;
-    }
-    .card-title{font-weight:900;font-size:16px;margin-bottom:6px;color:#fff;}
-    .card-meta{font-size:13px;color:#ccc;margin-bottom:6px;}
-    .card-prices{display:flex;gap:12px;margin-bottom:6px;}
-    .card-price{color:#a78bfa;font-weight:900;}
-    .card-cost{color:#999;font-weight:700;}
-    .badge{padding:4px 8px;border-radius:8px;font-size:12px;}
-    .low{background:#4b0000;color:#fff;}
-    .hot{background:#3b0050;color:#fff;}
-    .zero{background:#2f2f2f;color:#fff;}
+    .glass-wrap { background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:12px; border:1px solid rgba(255,255,255,0.03); backdrop-filter: blur(6px); }
+    .title-compact { font-weight:800; font-size:16px; color:#f7f7fb; margin-bottom:6px; }
+    .muted { color: rgba(247,247,251,0.7); }
     </style>
-    """, unsafe_allow_html=True)
+    ''', unsafe_allow_html=True)
 
-    st.subheader("🔍 Buscar produtos — Modo E-commerce")
+    st.markdown("<div class='glass-wrap'>", unsafe_allow_html=True)
+    st.markdown("### 🔍 Buscar produtos — Glass (simplificado)")
 
-    termo = st.text_input("Buscar","",placeholder="Nome do produto...")
+    c1, c2, c3, c4 = st.columns([3,1,1,1])
+    with c1:
+        termo = st.text_input("Procurar produto", "")
+    with c2:
+        modo = st.radio("Exibir:", ["Grade","Lista"], index=0, horizontal=True)
+    with c3:
+        itens_pagina = st.selectbox("Itens por página", [6,9,12], index=0)
+    with c4:
+        ordenar = st.selectbox("Ordenar por", ["Relevância","Nome A–Z","Estoque (maior)","Preço (maior)","Mais vendidos"] , index=0)
 
-    filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)")
-    filtro_alto = st.checkbox("📦 Alto estoque (≥20)")
-    filtro_vendidos = st.checkbox("🔥 Com vendas")
-    filtro_sem_venda = st.checkbox("❄️ Sem vendas")
-
-    df = estoque_df.copy()
+    df = estoque_df.copy() if not estoque_df.empty else pd.DataFrame()
     vendas_df = dfs.get("VENDAS", pd.DataFrame()).copy()
     if not vendas_df.empty and "QTD" in vendas_df.columns:
-        vend = vendas_df.groupby("PRODUTO")["QTD"].sum().reset_index().rename(columns={"QTD":"TOTAL_QTD"})
-        df = df.merge(vend,how="left",on="PRODUTO").fillna({"TOTAL_QTD":0})
+        vendas_ag = vendas_df.groupby("PRODUTO")["QTD"].sum().reset_index().rename(columns={"QTD":"TOTAL_QTD"})
+        df = df.merge(vendas_ag, how="left", on="PRODUTO").fillna({"TOTAL_QTD":0})
     else:
-        df["TOTAL_QTD"]=0
+        df["TOTAL_QTD"] = 0
 
-    if termo.strip():
-        df = df[df["PRODUTO"].str.contains(termo,case=False,na=False)]
-    if filtro_baixo:
-        df = df[df["EM ESTOQUE"]<=3]
-    if filtro_alto:
-        df = df[df["EM ESTOQUE"]>=20]
-    if filtro_vendidos:
-        df = df[df["TOTAL_QTD"]>0]
-    if filtro_sem_venda:
-        df = df[df["TOTAL_QTD"]==0]
+    if termo and termo.strip():
+        df = df[df["PRODUTO"].str.contains(termo.strip(), case=False, na=False)]
 
-    df["CUSTO_FMT"]=df["Media C. UNITARIO"].map(formatar_reais_com_centavos)
-    df["VENDA_FMT"]=df["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
+    if ordenar == "Nome A–Z":
+        df = df.sort_values("PRODUTO", ascending=True)
+    elif ordenar == "Estoque (maior)":
+        df = df.sort_values("EM ESTOQUE", ascending=False)
+    elif ordenar == "Preço (maior)":
+        df = df.sort_values("Valor Venda Sugerido", ascending=False)
+    elif ordenar == "Mais vendidos":
+        df = df.sort_values("TOTAL_QTD", ascending=False)
 
-    itens_pagina = st.selectbox("Itens por página:", [6,9,12], index=0)
     total = len(df)
     total_paginas = max(1, (total + itens_pagina - 1)//itens_pagina)
-
     if "pagina" not in st.session_state:
-        st.session_state["pagina"]=1
+        st.session_state["pagina"] = 1
 
-    colp1, colp2, colp3 = st.columns([1,1,1])
-    with colp1:
-        if st.button("⬅️ Voltar"):
-            st.session_state['pagina'] = max(1, st.session_state['pagina']-1)
-    with colp2:
-        st.write(f"Página **{st.session_state['pagina']}** de **{total_paginas}**")
-    with colp3:
-        if st.button("Avançar ➡️"):
-            st.session_state['pagina'] = min(total_paginas, st.session_state['pagina']+1)
+    p1, p2, p3 = st.columns([1,2,1])
+    with p1:
+        if st.button("⬅️ Anterior"):
+            st.session_state["pagina"] = max(1, st.session_state["pagina"] - 1)
+    with p2:
+        pagina = st.number_input("Página", min_value=1, max_value=total_paginas, value=st.session_state["pagina"], step=1)
+        st.session_state["pagina"] = int(pagina)
+    with p3:
+        if st.button("Próxima ➡️"):
+            st.session_state["pagina"] = min(total_paginas, st.session_state["pagina"] + 1)
 
-    pagina = st.session_state["pagina"]
-    inicio = (pagina-1)*itens_pagina
-    fim = inicio + itens_pagina
-    df_page = df.iloc[inicio:fim]
+    inicio = (st.session_state["pagina"] - 1) * itens_pagina
+    df_page = df.iloc[inicio: inicio + itens_pagina]
 
-    st.markdown(f"**{total} resultados encontrados**")
+    st.markdown(f"**{total} resultados — página {st.session_state['pagina']}/{total_paginas}**")
 
-    st.markdown("<div class='card-grid-ecom'>",unsafe_allow_html=True)
+    if modo == "Grade":
+        cols_per_row = 3
+        items = df_page.to_dict(orient="records")
+        for i in range(0, len(items), cols_per_row):
+            row_items = items[i:i+cols_per_row]
+            cols = st.columns(len(row_items))
+            for col, item in zip(cols, row_items):
+                with col:
+                    nome = item.get("PRODUTO","-")
+                    estoque = int(item.get("EM ESTOQUE",0) or 0)
+                    venda = formatar_reais_com_centavos(item.get("Valor Venda Sugerido",0))
+                    custo = formatar_reais_com_centavos(item.get("Media C. UNITARIO",0))
+                    vendidos = int(item.get("TOTAL_QTD",0) or 0)
 
-    for _, r in df_page.iterrows():
-        nome=r["PRODUTO"]
-        estoque=int(r["EM ESTOQUE"])
-        venda=r["VENDA_FMT"]
-        custo=r["CUSTO_FMT"]
-        vendidos=int(r["TOTAL_QTD"])
+                    foto = None
+                    for c in item.keys():
+                        if str(c).strip().upper() in ("FOTO","IMAGEM","IMAGE","IMG","URL_IMAGE","URL_FOTO"):
+                            foto = item.get(c)
+                            break
 
-        partes=str(nome).split()
-        iniciais=""
-        for p in partes[:2]:
-            if p:
-                iniciais+=p[0].upper()
+                    if foto and str(foto).strip():
+                        try:
+                            st.image(str(foto).strip(), width=120)
+                        except:
+                            st.write(nome[:2].upper())
+                    else:
+                        st.write(nome[:2].upper())
 
-        badges=[]
-        if estoque<=3: badges.append("<span class='badge low'>⚠️ Baixo</span>")
-        if vendidos>=15: badges.append("<span class='badge hot'>🔥 Saindo</span>")
-        if vendidos==0: badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
-        badges_html=" ".join(badges)
+                    st.markdown(f"<div class='title-compact'>{nome}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='muted'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div>Preço: <b>{venda}</b> • Custo: <b style='color:#ddd'>{custo}</b></div>", unsafe_allow_html=True)
 
-        html=f"""
-<div class='card-ecom'>
-  <div class='avatar'>{iniciais}</div>
-  <div>
-    <div class='card-title'>{nome}</div>
-    <div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>
-    <div class='card-prices'>
-      <div class='card-price'>{venda}</div>
-      <div class='card-cost'>{custo}</div>
-    </div>
-    <div>{badges_html}</div>
-  </div>
-</div>
-"""
-        st.markdown(html,unsafe_allow_html=True)
+    else:
+        for _, item in df_page.iterrows():
+            nome = item.get("PRODUTO","-")
+            estoque = int(item.get("EM ESTOQUE",0) or 0)
+            venda = formatar_reais_com_centavos(item.get("Valor Venda Sugerido",0))
+            custo = formatar_reais_com_centavos(item.get("Media C. UNITARIO",0))
+            vendidos = int(item.get("TOTAL_QTD",0) or 0)
 
-    st.markdown("</div>",unsafe_allow_html=True)
+            foto = None
+            for c in item.index:
+                if str(c).strip().upper() in ("FOTO","IMAGEM","IMAGE","IMG","URL_IMAGE","URL_FOTO"):
+                    foto = item.get(c)
+                    break
+
+            cols = st.columns([0.18, 0.82])
+            with cols[0]:
+                if foto and str(foto).strip():
+                    try:
+                        st.image(str(foto).strip(), width=96)
+                    except:
+                        st.write(nome[:2].upper())
+                else:
+                    st.write(nome[:2].upper())
+
+            with cols[1]:
+                st.markdown(f"<div class='title-compact'>{nome}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='muted'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>", unsafe_allow_html=True)
+                st.markdown(f"<div>Preço: <b>{venda}</b> • Custo: <b style='color:#ddd'>{custo}</b></div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
