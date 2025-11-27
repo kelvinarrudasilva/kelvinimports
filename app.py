@@ -67,80 +67,6 @@ div[data-testid="stVerticalBlock"] > div > section::-webkit-scrollbar { width:8p
   .title { font-size:16px; }
   .kpi .value { font-size:16px; }
 }
-
-/* ===== PREMIUM VISUALS & ANIMATIONS ===== */
-/* Glassmorphism for cards */
-.card-ecom{
-  backdrop-filter: blur(6px) saturate(120%);
-  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
-  border: 1px solid rgba(255,255,255,0.06);
-  box-shadow: 0 8px 30px rgba(2,6,23,0.6);
-  transition: transform .32s cubic-bezier(.2,.8,.2,1), box-shadow .32s;
-}
-
-/* Hover depth */
-.card-ecom:hover{
-  transform: translateY(-8px) scale(1.01);
-  box-shadow: 0 18px 40px rgba(2,6,23,0.7);
-}
-
-/* Avatar neon gradient animation */
-.avatar{
-  background: linear-gradient(90deg,#8b5cf6,#ec4899,#06b6d4);
-  background-size: 300% 300%;
-  animation: neon 6s ease-in-out infinite;
-}
-@keyframes neon {
-  0%{background-position:0% 50%}
-  50%{background-position:100% 50%}
-  100%{background-position:0% 50%}
-}
-
-/* Entry animation for cards */
-.card-grid-ecom .card-ecom{
-  opacity:0;
-  transform: translateY(8px);
-  animation: enter .45s forwards cubic-bezier(.2,.8,.2,1);
-}
-.card-grid-ecom .card-ecom:nth-child(1){ animation-delay:0.03s; }
-.card-grid-ecom .card-ecom:nth-child(2){ animation-delay:0.06s; }
-.card-grid-ecom .card-ecom:nth-child(3){ animation-delay:0.09s; }
-@keyframes enter {
-  to { opacity:1; transform: translateY(0); }
-}
-
-/* Skeleton placeholder */
-.skel {
-  height: 120px;
-  border-radius: 12px;
-  background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-  animation: pulse 1.2s infinite;
-}
-@keyframes pulse {
-  0%{opacity:0.6}
-  50%{opacity:1}
-  100%{opacity:0.6}
-}
-
-/* Small text styles for last purchase and badges */
-.small-muted { font-size:11px; color: #c7c7c7; margin-top:4px; }
-
-/* Mobile safe area and app-style bottom nav placeholder */
-@media (max-width:720px){
-  body, .stApp { padding-bottom: 64px !important; }
-}
-
-/* Force dark inputs (fix for Windows theme light) */
-input, textarea, select, .stTextInput input {
-    color:#ffffff !important;
-    background:#1a1a1a !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-}
-.stCheckbox label, label { color:#fff !important; }
-
-/* Tiny neon accents for KPIs */
-.kpi { border-left-width: 6px; border-left-style: solid; }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -564,6 +490,12 @@ with tabs[1]:
         st.markdown("### 📋 Estoque — visão detalhada")
         st.dataframe(display_df, use_container_width=True)
 
+
+
+
+
+
+
 # =============================
 # PESQUISAR (MODERNIZADA — FINAL CORRIGIDO)
 # =============================
@@ -571,8 +503,6 @@ with tabs[1]:
 # PESQUISAR — E-COMMERCE COMPLETO
 # =============================
 with tabs[2]:
-    # Modal state
-    
 
     st.markdown("""
     <style>
@@ -616,14 +546,6 @@ with tabs[2]:
 
     termo = st.text_input("Buscar","",placeholder="Nome do produto...")
 
-    # Autocomplete suggestions (local, lightweight)
-    produtos_possiveis = estoque_df['PRODUTO'].dropna().unique().tolist() if not estoque_df.empty else []
-    sugestoes = [p for p in produtos_possiveis if termo.strip().lower() in p.lower()] if termo.strip() else []
-    if sugestoes:
-        escolha = st.selectbox('Sugestões', [''] + sugestoes, index=0)
-        if escolha:
-            termo = escolha
-
     filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)")
     filtro_alto = st.checkbox("📦 Alto estoque (≥20)")
     filtro_vendidos = st.checkbox("🔥 Com vendas")
@@ -648,6 +570,7 @@ with tabs[2]:
         tmp = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
         ultima_compra = dict(zip(tmp["PRODUTO"], tmp["DATA"].dt.strftime("%d/%m/%Y")))
 
+
     if termo.strip():
         df = df[df["PRODUTO"].str.contains(termo,case=False,na=False)]
     if filtro_baixo:
@@ -662,14 +585,7 @@ with tabs[2]:
     df["CUSTO_FMT"]=df["Media C. UNITARIO"].map(formatar_reais_com_centavos)
     df["VENDA_FMT"]=df["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
 
-    if 'itens_pagina' not in st.session_state:
-        st.session_state['itens_pagina'] = 6
-    st.session_state['itens_pagina'] = st.selectbox('Itens por página:', [6,9,12], index=[6,9,12].index(st.session_state['itens_pagina']))
-    itens_pagina = st.session_state['itens_pagina']
-    # Save layout preference
-    if 'layout_pref' not in st.session_state:
-        st.session_state['layout_pref'] = 'grid'
-    st.session_state['layout_pref'] = st.radio('Layout:', ['grid','list'], index=0 if st.session_state.get('layout_pref','grid')=='grid' else 1, horizontal=True)
+    itens_pagina = st.selectbox("Itens por página:", [6,9,12], index=0)
     total = len(df)
     total_paginas = max(1, (total + itens_pagina - 1)//itens_pagina)
 
@@ -692,11 +608,6 @@ with tabs[2]:
     df_page = df.iloc[inicio:fim]
 
     st.markdown(f"**{total} resultados encontrados**")
-
-    # skeleton loading (smooth)
-    with st.spinner('Carregando produtos...'):
-        import time
-        time.sleep(0.25)
 
     st.markdown("<div class='card-grid-ecom'>",unsafe_allow_html=True)
 
@@ -721,9 +632,19 @@ with tabs[2]:
 
         ultima = ultima_compra.get(nome, "—")
 
-        # build small card and a detalhes button that opens modal
-        ultima = ultima_compra.get(nome, "—")
-        # render card html
+        # Dias desde a última venda
+        dias_sem_venda = ""
+        try:
+            vendas_prod = vendas_df[vendas_df["PRODUTO"] == nome]
+            if not vendas_prod.empty:
+                last_date = vendas_prod["DATA"].max()
+                if pd.notna(last_date):
+                    delta = (pd.Timestamp.now() - last_date).days
+                    dias_sem_venda = f"<div style='font-size:11px;color:#777;margin-top:2px;'>📅 Dias sem vender: <b>{delta}</b></div>"
+        except:
+            dias_sem_venda = ""
+
+
         html=f"""
 <div class='card-ecom'>
   <div class='avatar'>{iniciais}</div>
@@ -734,73 +655,12 @@ with tabs[2]:
       <div class='card-price'>{venda}</div>
       <div class='card-cost'>{custo}</div>
     </div>
-    <div class='small-muted'>🕒 Última compra: <b>{ultima}</b></div>
+    <div style='font-size:11px;color:#777;margin-top:2px;'>🕒 Última compra: <b>{ultima}</b></div>
+    {dias_sem_venda}
     <div>{badges_html}</div>
   </div>
 </div>
 """
-        
         st.markdown(html,unsafe_allow_html=True)
-        # compute extra metrics (displayed below card)
-        try:
-            custo_val = float(r.get('Media C. UNITARIO', 0)) if 'Media C. UNITARIO' in r.index else 0
-            venda_val = float(r.get('Valor Venda Sugerido', 0)) if 'Valor Venda Sugerido' in r.index else 0
-            margem = (venda_val - custo_val) / venda_val * 100 if venda_val else None
-        except:
-            margem = None
 
-        dias_sem_venda = '—'
-        try:
-            vendas_prod = dfs.get('VENDAS', pd.DataFrame())
-            if not vendas_prod.empty and 'DATA' in vendas_prod.columns:
-                vp = vendas_prod[vendas_prod['PRODUTO']==nome].copy()
-                if not vp.empty:
-                    last = vp['DATA'].max()
-                    dias_sem_venda = (pd.Timestamp.now() - pd.to_datetime(last)).days
-        except:
-            pass
-
-        margem_str = f"Margem: {margem:.0f}%" if margem is not None else "Margem: —"
-        dias_str = f"Dias desde última venda: {dias_sem_venda}"
-        st.markdown(f"<div class='small-muted'>{margem_str} • {dias_str}</div>", unsafe_allow_html=True)
-
-
-        # detalhes modal
-        key_modal = f"detalhes_{nome}"
-        
-            
-
-    
-    
-st.markdown("</div>",unsafe_allow_html=True)
-
-# ===== MEGA ADD-ONS (STUBS & INSTRUCTIONS) =====
-# Auto-sync (real-time) with Google Sheets: to enable, provide Google API credentials and implement a background
-# thread or use Pub/Sub to push updates. Placeholder function:
-def enable_realtime_sync(credentials_json_path=None):
-    # Implement Google Sheets API watch or use polling with exponential backoff.
-    pass
-
-# Notifications (Telegram) example stub:
-def send_telegram_message(bot_token, chat_id, text):
-    import requests
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    try:
-        requests.post(url, data=payload, timeout=6)
-    except Exception as e:
-        pass
-
-# PDF labels: can be implemented using reportlab to generate a PDF of labels for selected products
-def gerar_etiquetas_pdf(df_selected):
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.pdfgen import canvas
-        c = canvas.Canvas('/tmp/etiquetas.pdf', pagesize=A4)
-        # implement label layout...
-        c.save()
-        return '/tmp/etiquetas.pdf'
-    except Exception as e:
-        return None
-
-# Sound alerts and push: requires user configuration (webhook / telegram / local sound file). Provide tokens in settings.
+    st.markdown("</div>",unsafe_allow_html=True)
