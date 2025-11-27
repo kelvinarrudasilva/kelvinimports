@@ -9,6 +9,59 @@ from io import BytesIO
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
+
+# --- Cálculo GLOBAL de Produtos Encalhados (usado para alerta e destaque nos cards) ---
+def compute_encalhados_global(dfs, limit=10):
+    import pandas as _pd
+    estoque_all = dfs.get("ESTOQUE", _pd.DataFrame()).copy()
+    vendas_all = dfs.get("VENDAS", _pd.DataFrame()).copy()
+    compras_all = dfs.get("COMPRAS", _pd.DataFrame()).copy()
+
+    if not compras_all.empty:
+        compras_all["DATA"] = _pd.to_datetime(compras_all["DATA"], errors="coerce")
+    if not vendas_all.empty:
+        vendas_all["DATA"] = _pd.to_datetime(vendas_all["DATA"], errors="coerce")
+
+    if estoque_all.empty:
+        return [], _pd.DataFrame()
+
+    # last sale
+    if not vendas_all.empty and "PRODUTO" in vendas_all.columns:
+        last_sale = vendas_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA":"ULT_VENDA"})
+    else:
+        last_sale = _pd.DataFrame(columns=["PRODUTO","ULT_VENDA"])
+    # last buy
+    if not compras_all.empty and "PRODUTO" in compras_all.columns:
+        last_buy = compras_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA":"ULT_COMPRA"})
+    else:
+        last_buy = _pd.DataFrame(columns=["PRODUTO","ULT_COMPRA"])
+
+    enc = estoque_all.merge(last_sale, how="left", on="PRODUTO").merge(last_buy, how="left", on="PRODUTO")
+    enc = enc[enc.get("EM ESTOQUE", 0) > 0].copy()
+
+    today = _pd.Timestamp.now()
+
+    def calc_days(row):
+        if _pd.notna(row.get("ULT_VENDA")):
+            return (today - row["ULT_VENDA"]).days
+        if _pd.notna(row.get("ULT_COMPRA")):
+            return (today - row["ULT_COMPRA"]).days
+        return 9999
+
+    enc["DIAS_PARADO"] = enc.apply(calc_days, axis=1)
+    enc_sorted = enc.sort_values("DIAS_PARADO", ascending=False).head(limit)
+    enc_list = enc_sorted["PRODUTO"].tolist()
+    return enc_list, enc_sorted
+
+# compute once and show alert
+try:
+    _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
+    if len(_enc_list_global) > 0:
+        st.warning(f"❄️ Produtos encalhados detectados: {len(_enc_list_global)} — vá em VENDAS > Produtos encalhados para ver a lista.")
+except Exception:
+    _enc_list_global, _enc_df_global = [], None
+
+
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # =============================
@@ -500,33 +553,71 @@ with tabs[0]:
         except Exception:
             pass
 
+        
         # ---------------------
-        # PRODUTOS ENCALHADOS (10 com última venda mais antiga)
+        # PRODUTOS ENCALHADOS — lógica profissional (global)
         # ---------------------
         try:
             estoque_all = dfs.get("ESTOQUE", pd.DataFrame()).copy()
             vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
+            compras_all = dfs.get("COMPRAS", pd.DataFrame()).copy()
+
+            if not compras_all.empty:
+                compras_all["DATA"] = pd.to_datetime(compras_all["DATA"], errors="coerce")
+
+            if not vendas_all.empty:
+                vendas_all["DATA"] = pd.to_datetime(vendas_all["DATA"], errors="coerce")
+
             if not estoque_all.empty:
-                # last sale date per product (NaT if never sold)
-                if not vendas_all.empty and "DATA" in vendas_all.columns:
+                estoque_all = estoque_all.copy()
+
+                # Última venda
+                if not vendas_all.empty:
                     last_sale = vendas_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA":"ULT_VENDA"})
-                    last_sale["ULT_VENDA"] = pd.to_datetime(last_sale["ULT_VENDA"], errors="coerce")
                 else:
                     last_sale = pd.DataFrame(columns=["PRODUTO","ULT_VENDA"])
-                # merge with estoque
-                enc = estoque_all.merge(last_sale, how="left", on="PRODUTO")
-                # products never sold get NaT; we'll treat NaT as very old but show with ❄️
-                # sort: oldest date first (NaT at end), but requirement says "por ordem de data antiga" - include never sold at end
-                enc_sorted = enc.sort_values(by=["ULT_VENDA"], ascending=True, na_position="last").head(10)
-                if not enc_sorted.empty:
-                    # format display
-                    enc_display = enc_sorted[["PRODUTO","EM ESTOQUE","ULT_VENDA"]].copy()
+
+                # Última compra
+                if not compras_all.empty:
+                    last_buy = compras_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA":"ULT_COMPRA"})
+                else:
+                    last_buy = pd.DataFrame(columns=["PRODUTO","ULT_COMPRA"])
+
+                enc = estoque_all.merge(last_sale, how="left", on="PRODUTO").merge(last_buy, how="left", on="PRODUTO")
+
+                # Consider only products with estoque > 0
+                enc = enc[enc["EM ESTOQUE"] > 0].copy()
+
+                # Calculate days stopped
+                today = pd.Timestamp.now()
+
+                def calc_days(row):
+                    if pd.notna(row["ULT_VENDA"]):
+                        return (today - row["ULT_VENDA"]).days
+                    if pd.notna(row["ULT_COMPRA"]):
+                        return (today - row["ULT_COMPRA"]).days
+                    return 9999  # extreme case
+
+                enc["DIAS_PARADO"] = enc.apply(calc_days, axis=1)
+
+                enc = enc.sort_values("DIAS_PARADO", ascending=False).head(10)
+
+                if not enc.empty:
+                    enc_display = enc[["PRODUTO","EM ESTOQUE","ULT_VENDA","ULT_COMPRA","DIAS_PARADO"]].copy()
                     enc_display["ULT_VENDA"] = enc_display["ULT_VENDA"].dt.strftime("%d/%m/%Y").fillna("—")
-                    st.markdown("""### ❄️ Produtos encalhados — 10 com última venda mais antiga
-""", unsafe_allow_html=True)
-                    st.table(enc_display.rename(columns={"PRODUTO":"Produto","EM ESTOQUE":"Em estoque","ULT_VENDA":"Última venda"}))
-        except Exception:
-            pass
+                    enc_display["ULT_COMPRA"] = enc_display["ULT_COMPRA"].dt.strftime("%d/%m/%Y").fillna("—")
+
+                    st.markdown("### ❄️ Produtos encalhados (global) — baseado em última venda / compra e estoque atual")
+                    st.table(enc_display.rename(columns={
+                        "PRODUTO":"Produto",
+                        "EM ESTOQUE":"Estoque",
+                        "ULT_VENDA":"Última venda",
+                        "ULT_COMPRA":"Última compra",
+                        "DIAS_PARADO":"Dias parado"
+                    }))
+        except Exception as e:
+            st.write("Erro encalhados:", e)
+
 
 
 
@@ -728,12 +819,27 @@ with tabs[2]:
             if p:
                 iniciais += p[0].upper()
 
+        
         badges = []
         if estoque<=3: badges.append("<span class='badge low'>⚠️ Baixo</span>")
         if vendidos>=15: badges.append("<span class='badge hot'>🔥 Saindo</span>")
-        if vendidos==0: badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
+        # only show 'Sem vendas' if there is stock
+        if vendidos==0 and estoque>0: badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
+        # highlight if product is in global encalhados list
+        try:
+            if nome in _enc_list_global:
+                badges.append("<span class='badge zero'>❄️ Encalhado</span>")
+        except Exception:
+            pass
         badges_html = " ".join(badges)
+    
         ultima = ultima_compra.get(nome, "—")
+        enc_style = ""
+        try:
+            if nome in _enc_list_global:
+                enc_style = "style='border-left:6px solid #0ea5e9;'"
+        except Exception:
+            enc_style = ""
 
         # Dias desde a última venda — só se houver venda e estoque>0
         dias_sem_venda = ""
@@ -760,8 +866,9 @@ with tabs[2]:
         except Exception:
             dias_sem_venda = ""
 
-        html = f"""
-<div class='card-ecom'>
+                enc_style = ''
+html = f"""
+<div class='card-ecom' {enc_style}>
   <div class='avatar'>{iniciais}</div>
   <div>
     <div class='card-title'>{nome}</div>
