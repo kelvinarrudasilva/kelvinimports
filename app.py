@@ -12,6 +12,20 @@ st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", in
 
 # --- Cálculo GLOBAL de Produtos Encalhados (usado para alerta e destaque nos cards) ---
 def compute_encalhados_global(dfs, limit=10):
+
+# --- Cálculo GLOBAL Top 5 mais vendidos ---
+def compute_top5_global(dfs):
+    import pandas as _pd
+    vendas = dfs.get("VENDAS", _pd.DataFrame()).copy()
+    if vendas.empty or "PRODUTO" not in vendas.columns:
+        return []
+    top = vendas.groupby("PRODUTO")["QTD"].sum().sort_values(ascending=False).head(5)
+    return top.index.tolist()
+
+try:
+    _top5_list_global = compute_top5_global(dfs)
+except:
+    _top5_list_global = []
     import pandas as _pd
     estoque_all = dfs.get("ESTOQUE", _pd.DataFrame()).copy()
     vendas_all = dfs.get("VENDAS", _pd.DataFrame()).copy()
@@ -844,16 +858,36 @@ with tabs[2]:
         except:
             pass
 
-        badges_html = " ".join(badges)
+        
+if nome in _top5_list_global:
+    badges.append("<span class='badge hot'>🥇 Campeão</span>")
+badges_html = " ".join(badges)
+
     
     
         ultima = ultima_compra.get(nome, "—")
         enc_style = ""
         try:
             if nome in _enc_list_global:
+                enc_style = "style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
+            elif nome in _top5_list_global:
+                enc_style = "style='border-left:6px solid #22c55e;'"
+        except:
+            enc_style = ""
+
+        try:
+            if nome in _enc_list_global:
                 enc_style = "style='border-left:6px solid #0ea5e9;'"
         except Exception:
             enc_style = ""
+        try:
+            if nome in _enc_list_global:
+                enc_style = "style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
+            elif nome in _top5_list_global:
+                enc_style = "style='border-left:6px solid #22c55e;'"
+        except:
+            enc_style = ""
+
 
         # Dias desde a última venda — só se houver venda e estoque>0
         dias_sem_venda = ""
