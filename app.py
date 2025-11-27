@@ -502,123 +502,65 @@ with tabs[1]:
 # =============================
 # PESQUISAR — E-COMMERCE COMPLETO
 # =============================
-# =============================
-# PESQUISAR — GLASS MODERADO (COMPLETO)
-# =============================
 with tabs[2]:
 
     st.markdown("""
     <style>
-    /* Glass Moderado theme */
-    .glass-wrap {
-        background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-        border-radius: 14px;
-        padding: 16px;
-        border: 1px solid rgba(255,255,255,0.03);
-        backdrop-filter: blur(6px);
-        box-shadow: 0 8px 30px rgba(0,0,0,0.45);
-        margin-top:8px;
+    .card-grid-ecom {
+        display: grid;
+        grid-template-columns: repeat(3,1fr);
+        gap:16px;
     }
-    .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
-    .controls > div { min-width:140px; }
-    .card-grid-ecom { display:grid; grid-template-columns: repeat(3,1fr); gap:16px; }
     @media(max-width:1200px){ .card-grid-ecom{grid-template-columns:repeat(2,1fr);} }
     @media(max-width:720px){ .card-grid-ecom{grid-template-columns:1fr;} }
 
     .card-ecom{
-        background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.008));
+        background:#141414;
         border-radius:12px;
-        padding:12px;
-        border:1px solid rgba(255,255,255,0.02);
+        padding:14px;
+        border:1px solid rgba(255,255,255,0.05);
         display:flex;
         gap:12px;
-        align-items:flex-start;
-        transition: transform .16s ease, box-shadow .16s ease;
-        color:#f7f7fb;
     }
-    .card-ecom:hover{ transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
-
-    .avatar, .thumb-img {
-        width:72px; height:72px; border-radius:12px; flex-shrink:0;
-        display:flex; align-items:center; justify-content:center; font-weight:900; font-size:20px; color:white;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    .avatar{
+        width:64px;height:64px;border-radius:14px;
+        background:linear-gradient(135deg,#8b5cf6,#ec4899);
+        display:flex;align-items:center;justify-content:center;
+        color:white;font-weight:900;font-size:22px;
+        box-shadow:0 4px 14px rgba(0,0,0,0.35);
+        flex-shrink:0;
     }
-    .avatar { background: linear-gradient(135deg, #8b5cf6, #ec4899); }
-    .thumb-img img { width:72px; height:72px; object-fit:cover; border-radius:10px; display:block; }
-
-    .card-title{font-weight:800; font-size:15px; color:#fff; margin-bottom:6px;}
-    .card-meta{color:rgba(247,247,251,0.75); font-size:13px; margin-bottom:8px;}
-    .card-prices{display:flex; gap:12px; align-items:center; margin-bottom:6px;}
-    .card-price{font-weight:900; color:#a78bfa;}
-    .card-cost{color:rgba(247,247,251,0.65); font-weight:700;} /* no strike */
-    .badge{padding:4px 8px; border-radius:8px; font-size:12px; margin-right:6px;}
-    .low{background:#4b0000; color:#fff;}
-    .hot{background:#3b0050; color:#fff;}
-    .zero{background:#2f2f2f; color:#fff;}
-
-    .list-item { display:flex; gap:12px; align-items:center; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.02); margin-bottom:8px; }
-    .list-thumb { width:72px; height:72px; border-radius:10px; overflow:hidden; }
-
-    .small-muted { color: rgba(247,247,251,0.65); font-size:13px; }
-
-    .pagination { display:flex; gap:8px; align-items:center; margin-top:12px; }
-    .page-btn { background:transparent; border:1px solid rgba(255,255,255,0.04); padding:8px 10px; border-radius:8px; color:#f7f7fb; cursor:pointer; }
+    .card-title{font-weight:900;font-size:16px;margin-bottom:6px;color:#fff;}
+    .card-meta{font-size:13px;color:#ccc;margin-bottom:6px;}
+    .card-prices{display:flex;gap:12px;margin-bottom:6px;}
+    .card-price{color:#a78bfa;font-weight:900;}
+    .card-cost{color:#999;font-weight:700;}
+    .badge{padding:4px 8px;border-radius:8px;font-size:12px;}
+    .low{background:#4b0000;color:#fff;}
+    .hot{background:#3b0050;color:#fff;}
+    .zero{background:#2f2f2f;color:#fff;}
     </style>
     """, unsafe_allow_html=True)
-    
-    st.markdown("<div class='glass-wrap'>", unsafe_allow_html=True)
-    st.markdown("### 🔍 Buscar produtos — Glass Moderado (completo)")
 
-    # Controls
-    cols = st.columns([3,1,1,1,1])
-    with cols[0]:
-        termo = st.text_input("Procurar produto", "", placeholder="Nome, SKU, etc...")
-    with cols[1]:
-        modo = st.radio("Exibir:", ["Grade","Lista"], index=0, horizontal=True)
-    with cols[2]:
-        ordenar = st.selectbox("Ordenar por:", ["Relevância","Nome A–Z","Estoque (maior→menor)","Preço (maior→menor)","Custo (maior→menor)","Mais vendidos"], index=0)
-    with cols[3]:
-        mostrar_com_foto = st.checkbox("Apenas com foto", value=False)
-    with cols[4]:
-        itens_pagina = st.selectbox("Itens por página:", [6,9,12], index=0)
+    st.subheader("🔍 Buscar produtos — Modo E-commerce")
 
-    # Price slider if column exists
-    preco_min, preco_max = None, None
-    if "Valor Venda Sugerido" in estoque_df.columns:
-        try:
-            arr = estoque_df["Valor Venda Sugerido"].fillna(0).astype(float)
-            minp = float(arr.min())
-            maxp = float(arr.max())
-            preco_min, preco_max = st.slider("Faixa de preço (R$)", min_value=float(minp), max_value=float(maxp), value=(float(minp), float(maxp)))
-        except Exception:
-            preco_min, preco_max = None, None
+    termo = st.text_input("Buscar","",placeholder="Nome do produto...")
 
-    # quick filters
-    fcols = st.columns(4)
-    filtro_baixo = fcols[0].checkbox("⚠️ Baixo estoque (≤3)")
-    filtro_alto = fcols[1].checkbox("📦 Alto estoque (≥20)")
-    filtro_vendidos = fcols[2].checkbox("🔥 Com vendas")
-    filtro_sem_venda = fcols[3].checkbox("❄️ Sem vendas")
+    filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)")
+    filtro_alto = st.checkbox("📦 Alto estoque (≥20)")
+    filtro_vendidos = st.checkbox("🔥 Com vendas")
+    filtro_sem_venda = st.checkbox("❄️ Sem vendas")
 
-    # Data and merge vendas
-    df = estoque_df.copy() if not estoque_df.empty else pd.DataFrame()
+    df = estoque_df.copy()
     vendas_df = dfs.get("VENDAS", pd.DataFrame()).copy()
     if not vendas_df.empty and "QTD" in vendas_df.columns:
         vend = vendas_df.groupby("PRODUTO")["QTD"].sum().reset_index().rename(columns={"QTD":"TOTAL_QTD"})
-        df = df.merge(vend, how="left", on="PRODUTO").fillna({"TOTAL_QTD":0})
+        df = df.merge(vend,how="left",on="PRODUTO").fillna({"TOTAL_QTD":0})
     else:
-        df["TOTAL_QTD"] = 0
+        df["TOTAL_QTD"]=0
 
-    # detect photo column
-    foto_col = None
-    for c in df.columns:
-        if str(c).strip().upper() in ("FOTO","IMAGEM","IMAGE","IMG","URL_IMAGE","URL_FOTO"):
-            foto_col = c
-            break
-
-    # filters
-    if termo and termo.strip():
-        df = df[df["PRODUTO"].str.contains(termo.strip(), case=False, na=False)]
+    if termo.strip():
+        df = df[df["PRODUTO"].str.contains(termo,case=False,na=False)]
     if filtro_baixo:
         df = df[df["EM ESTOQUE"]<=3]
     if filtro_alto:
@@ -628,132 +570,68 @@ with tabs[2]:
     if filtro_sem_venda:
         df = df[df["TOTAL_QTD"]==0]
 
-    if preco_min is not None and preco_max is not None and "Valor Venda Sugerido" in df.columns:
-        try:
-            df = df[(df["Valor Venda Sugerido"]>=preco_min)&(df["Valor Venda Sugerido"]<=preco_max)]
-        except Exception:
-            pass
+    df["CUSTO_FMT"]=df["Media C. UNITARIO"].map(formatar_reais_com_centavos)
+    df["VENDA_FMT"]=df["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
 
-    if mostrar_com_foto and foto_col is not None:
-        df = df[df[foto_col].notna() & df[foto_col].astype(str).str.strip().ne("")]
-
-    # formats
-    df["CUSTO_FMT"] = df.get("Media C. UNITARIO", 0).fillna(0).map(formatar_reais_com_centavos)
-    df["VENDA_FMT"] = df.get("Valor Venda Sugerido", 0).fillna(0).map(formatar_reais_com_centavos)
-    df["TOTAL_QTD"] = df.get("TOTAL_QTD", 0).astype(int)
-
-    # sorting
-    if ordenar == "Nome A–Z":
-        df = df.sort_values("PRODUTO", ascending=True)
-    elif ordenar == "Estoque (maior→menor)":
-        df = df.sort_values("EM ESTOQUE", ascending=False)
-    elif ordenar == "Preço (maior→menor)":
-        df = df.sort_values("Valor Venda Sugerido", ascending=False)
-    elif ordenar == "Custo (maior→menor)":
-        df = df.sort_values("Media C. UNITARIO", ascending=False)
-    elif ordenar == "Mais vendidos":
-        df = df.sort_values("TOTAL_QTD", ascending=False)
-    else:
-        df = df.sort_index()
-
+    itens_pagina = st.selectbox("Itens por página:", [6,9,12], index=0)
     total = len(df)
     total_paginas = max(1, (total + itens_pagina - 1)//itens_pagina)
 
     if "pagina" not in st.session_state:
-        st.session_state["pagina"] = 1
-    if st.session_state["pagina"] > total_paginas:
-        st.session_state["pagina"] = total_paginas
+        st.session_state["pagina"]=1
 
-    # pagination controls
-    pcol1, pcol2, pcol3, pcol4 = st.columns([1,1,1,2])
-    with pcol1:
-        if st.button("⬅️ Anterior"):
-            st.session_state["pagina"] = max(1, st.session_state["pagina"] - 1)
-    with pcol2:
-        pagina_input = st.number_input("Ir para página", min_value=1, max_value=total_paginas, value=st.session_state["pagina"], step=1)
-        if pagina_input != st.session_state["pagina"]:
-            st.session_state["pagina"] = int(pagina_input)
-    with pcol3:
-        if st.button("Próxima ➡️"):
-            st.session_state["pagina"] = min(total_paginas, st.session_state["pagina"] + 1)
-    with pcol4:
-        st.write(f"Página **{st.session_state['pagina']}** de **{total_paginas}** — {total} itens")
+    colp1, colp2, colp3 = st.columns([1,1,1])
+    with colp1:
+        if st.button("⬅️ Voltar"):
+            st.session_state['pagina'] = max(1, st.session_state['pagina']-1)
+    with colp2:
+        st.write(f"Página **{st.session_state['pagina']}** de **{total_paginas}**")
+    with colp3:
+        if st.button("Avançar ➡️"):
+            st.session_state['pagina'] = min(total_paginas, st.session_state['pagina']+1)
 
     pagina = st.session_state["pagina"]
-    inicio = (pagina - 1) * itens_pagina
+    inicio = (pagina-1)*itens_pagina
     fim = inicio + itens_pagina
     df_page = df.iloc[inicio:fim]
 
-    st.markdown(f"**{total} resultados**", unsafe_allow_html=True)
+    st.markdown(f"**{total} resultados encontrados**")
 
-    # render grade
-    if modo == "Grade":
-        st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
-        for _, r in df_page.iterrows():
-            nome = r.get("PRODUTO","-")
-            estoque = int(r.get("EM ESTOQUE",0) or 0)
-            venda = r.get("VENDA_FMT","R$ 0,00")
-            custo = r.get("CUSTO_FMT","R$ 0,00")
-            vendidos = int(r.get("TOTAL_QTD",0) or 0)
+    st.markdown("<div class='card-grid-ecom'>",unsafe_allow_html=True)
 
-            partes = str(nome).split()
-            iniciais = ""
-            for p in partes[:2]:
-                if p:
-                    iniciais += p[0].upper()
+    for _, r in df_page.iterrows():
+        nome=r["PRODUTO"]
+        estoque=int(r["EM ESTOQUE"])
+        venda=r["VENDA_FMT"]
+        custo=r["CUSTO_FMT"]
+        vendidos=int(r["TOTAL_QTD"])
 
-            thumb_html = ""
-            if foto_col and pd.notna(r.get(foto_col)) and str(r.get(foto_col)).strip() != "":
-                url = str(r.get(foto_col)).strip().replace("'", "&#39;")
-                thumb_html = f"<div class='thumb-img'><img src='{url}' alt='thumb' /></div>"
-            else:
-                thumb_html = f"<div class='avatar'>{iniciais}</div>"
+        partes=str(nome).split()
+        iniciais=""
+        for p in partes[:2]:
+            if p:
+                iniciais+=p[0].upper()
 
-            badges = []
-            if estoque <= 3: badges.append("<span class='badge low'>⚠️ Baixo</span>")
-            if vendidos >= 15: badges.append("<span class='badge hot'>🔥 Saindo</span>")
-            if vendidos == 0: badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
-            badges_html = " ".join(badges)
+        badges=[]
+        if estoque<=3: badges.append("<span class='badge low'>⚠️ Baixo</span>")
+        if vendidos>=15: badges.append("<span class='badge hot'>🔥 Saindo</span>")
+        if vendidos==0: badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
+        badges_html=" ".join(badges)
 
-            html = ("<div class='card-ecom'>"
-                    f"{thumb_html}"
-                    "<div>"
-                    f"<div class='card-title'>{nome}</div>"
-                    f"<div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>"
-                    f"<div class='card-prices'><div class='card-price'>{venda}</div><div class='card-cost'>{custo}</div></div>"
-                    f"<div>{badges_html}</div>"
-                    "</div>"
-                    "</div>")
-            st.markdown(html, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        # list mode
-        for _, r in df_page.iterrows():
-            nome = r.get("PRODUTO","-")
-            estoque = int(r.get("EM ESTOQUE",0) or 0)
-            venda = r.get("VENDA_FMT","R$ 0,00")
-            custo = r.get("CUSTO_FMT","R$ 0,00")
-            vendidos = int(r.get("TOTAL_QTD",0) or 0)
-
-            partes = str(nome).split()
-            iniciais = ""
-            for p in partes[:2]:
-                if p:
-                    iniciais += p[0].upper()
-
-            if foto_col and pd.notna(r.get(foto_col)) and str(r.get(foto_col)).strip() != "":
-                img_url = str(r.get(foto_col)).strip().replace("'","&#39;")
-                thumb = "<div class='list-thumb'><img src='" + img_url + "' style='width:100%;height:100%;object-fit:cover;border-radius:8px;' /></div>"
-            else:
-                thumb = "<div class='list-thumb' style='background:linear-gradient(135deg,#8b5cf6,#ec4899);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:18px;'>" + iniciais + "</div>"
-
-            st.markdown("""<div class='list-item'>
-  {thumb}
-  <div style='flex:1'>
+        html=f"""
+<div class='card-ecom'>
+  <div class='avatar'>{iniciais}</div>
+  <div>
     <div class='card-title'>{nome}</div>
     <div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>
-    <div class='muted'>Preço: <b>{venda}</b> • Custo: <b>{custo}</b></div>
+    <div class='card-prices'>
+      <div class='card-price'>{venda}</div>
+      <div class='card-cost'>{custo}</div>
+    </div>
+    <div>{badges_html}</div>
   </div>
-</div>""", unsafe_allow_html=True)
+</div>
+"""
+        st.markdown(html,unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)  # close glass-wrap
+    st.markdown("</div>",unsafe_allow_html=True)
