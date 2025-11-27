@@ -866,7 +866,7 @@ with tabs[2]:
         except Exception:
             dias_sem_venda = ""
         enc_style = ''
-html = f"""
+        html = f"""
 <div class='card-ecom' {enc_style}>
   <div class='avatar'>{iniciais}</div>
   <div>
@@ -885,4 +885,3 @@ html = f"""
         st.markdown(html,unsafe_allow_html=True)
 
     st.markdown("</div>",unsafe_allow_html=True)
-
