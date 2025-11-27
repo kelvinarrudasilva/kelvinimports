@@ -764,12 +764,14 @@ with tabs[2]:
                     else:
                         cor = "#22c55e"; icone = "✅"; pulse = "pulseGreen"
 
+                    if estoque > 0:
                     dias_sem_venda = (
-                        f"<div style='font-size:11px;margin-top:2px;color:{cor};"
+                        f\"<div style='font-size:11px;margin-top:2px;color:{cor};\"
                         f"animation:{pulse} 2s infinite;'>{icone} Dias sem vender: "
                         f"<b>{delta}</b></div>"
                     )
         except Exception:
+            dias_sem_venda = ""
             dias_sem_venda = ""
         html=f"""
 <div class='card-ecom'>
@@ -783,7 +785,7 @@ with tabs[2]:
     </div>
     <div style='font-size:11px;color:#777;margin-top:2px;'>🕒 Última compra: <b>{ultima}</b></div>
     {dias_sem_venda}
-    <div style='margin-top:4px;'>""" + badges_html + """</div>
+    <div style='margin-top:4px;'>{badges_html}</div>
   </div>
 </div>
         """
