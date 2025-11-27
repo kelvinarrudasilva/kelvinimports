@@ -15,27 +15,92 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 # CSS - Dark Theme (tabelas incluídas)
 # =============================
 st.markdown("""
+<style>
+:root{
+  --bg:#0b0b0b;
+  --accent:#8b5cf6;
+  --accent-2:#a78bfa;
+  --muted:#bdbdbd;
+  --card-bg:#141414;
+  --table-head:#161616;
+  --table-row:#121212;
+}
+body, .stApp { background: var(--bg) !important; color:#f0f0f0 !important; font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+.topbar { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.logo-wrap { width:44px; height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background: linear-gradient(135deg,var(--accent),var(--accent-2)); box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+.logo-wrap svg { width:26px; height:26px; }
+.title { font-size:20px; font-weight:800; color:var(--accent-2); margin:0; line-height:1; }
+.subtitle { margin:0; font-size:12px; color:var(--muted); margin-top:2px; }
+.kpi-row { display:flex; gap:10px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+.kpi { background:var(--card-bg); border-radius:10px; padding:10px 14px; box-shadow:0 6px 16px rgba(0,0,0,0.45); border-left:6px solid var(--accent); min-width:160px; display:flex; flex-direction:column; justify-content:center; color:#f0f0f0; }
+.kpi h3 { margin:0; font-size:12px; color:var(--accent-2); font-weight:800; letter-spacing:0.2px; }
+.kpi .value { margin-top:6px; font-size:20px; font-weight:900; color:#f0f0f0; white-space:nowrap; }
+.stTabs { margin-top: 20px !important; }
+.stTabs button { background:#1e1e1e !important; border:1px solid #333 !important; border-radius:12px !important; padding:8px 14px !important; margin-right:8px !important; margin-bottom:8px !important; font-weight:700 !important; color:var(--accent-2) !important; box-shadow:0 3px 10px rgba(0,0,0,0.2) !important; }
 
 
-    <style>
-    .card-grid-ecom { display: grid; grid-template-columns: repeat(3,1fr); gap:18px; }
-    @media(max-width:1200px){ .card-grid-ecom{grid-template-columns:repeat(2,1fr);} }
-    @media(max-width:720px){ .card-grid-ecom{grid-template-columns:1fr;} }
+/* Premium animations */
+* {
+  transition: all .25s ease;
+}
 
-    .card-ecom{ background: linear-gradient(180deg,#ffffff,#fffdf9); border-radius:14px; padding:16px; border:1px solid rgba(10,10,10,0.04); display:flex; gap:14px; box-shadow: 0 10px 30px rgba(10,10,10,0.04); transition: transform .22s; }
-    .avatar{ width:72px;height:72px;border-radius:16px; background: linear-gradient(135deg,#ff6a00,#ff9b3d); display:flex;align-items:center;justify-content:center; color:white;font-weight:900;font-size:22px; box-shadow: 0 10px 30px rgba(255,120,40,0.12); flex-shrink:0; }
-    .card-title{font-weight:900;font-size:16px;margin-bottom:6px;color:#081018;}
-    .card-meta{font-size:13px;color:#6b6b6b;margin-bottom:6px;}
-    .card-prices{display:flex;gap:12px;margin-bottom:6px;}
-    .card-price{color:#b84b00;font-weight:900;}
-    .card-cost{color:#666;font-weight:700;}
-    .badge{padding:6px 10px;border-radius:10px;font-size:12px;}
-    .low{background:#b91c1c;color:#fff;}
-    .hot{background:#8a4500;color:#fff;}
-    .zero{background:#575757;color:#fff;}
-    </style>
+.kpi:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow:0 12px 32px rgba(0,0,0,0.55);
+}
 
+.card-ecom:hover {
+  transform: translateY(-4px) scale(1.015);
+  border-color: rgba(255,255,255,0.12);
+  box-shadow:0 8px 26px rgba(0,0,0,0.55);
+}
 
+.avatar {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Noise background subtle */
+body, .stApp {
+  background: var(--bg) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity="0.045"/></svg>') !important;
+  background-size: cover !important;
+}
+
+/* Streamlit dataframes - dark */
+
+.stDataFrame, .element-container, .stTable {
+  color: #f0f0f0 !important;
+  font-size:13px !important;
+}
+.stDataFrame thead th {
+  background: linear-gradient(90deg, rgba(139,92,246,0.16), rgba(167,139,250,0.06)) !important;
+  color: #f0f0f0 !important;
+  font-weight:700 !important;
+  border-bottom: 1px solid #2a2a2a !important;
+}
+.stDataFrame tbody tr td {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+  color: #eaeaea !important;
+}
+
+/* Smaller scrollbars in dark */
+div[data-testid="stHorizontalBlock"] > div > section::-webkit-scrollbar { height:8px; }
+div[data-testid="stVerticalBlock"] > div > section::-webkit-scrollbar { width:8px; }
+
+/* Make container cards darker */
+.element-container { background: transparent !important; }
+
+/* responsive tweaks */
+@media (max-width: 600px) {
+  .title { font-size:16px; }
+  .kpi .value { font-size:16px; }
+}
+</style>
 """, unsafe_allow_html=True)
 
 # =============================
@@ -177,30 +242,17 @@ def preparar_tabela_vendas(df):
 
     return d
 
-
 def plotly_dark_config(fig):
     fig.update_layout(
-        plot_bgcolor="#ffffff",
-        paper_bgcolor="#ffffff",
-        font_color="#081018",
-        xaxis=dict(color="#081018",gridcolor="#f3f3f3"),
-        yaxis=dict(color="#081018",gridcolor="#f3f3f3"),
+        plot_bgcolor="#0b0b0b",
+        paper_bgcolor="#0b0b0b",
+        font_color="#f0f0f0",
+        xaxis=dict(color="#f0f0f0",gridcolor="#2a2a2a"),
+        yaxis=dict(color="#f0f0f0",gridcolor="#2a2a2a"),
         margin=dict(t=30,b=30,l=10,r=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    # make traces use our accent by default if not set
-    try:
-        for i, trace in enumerate(fig.data):
-            if getattr(trace, "marker", None) is not None:
-                if not getattr(trace.marker, "color", None):
-                    trace.marker.color = "#ff6a00"
-            if getattr(trace, "line", None) is not None:
-                if not getattr(trace.line, "color", None):
-                    trace.line.color = "#ff6a00"
-    except:
-        pass
     return fig
-
 
 # =============================
 # Carregar planilha
@@ -434,7 +486,7 @@ with tabs[1]:
                 textinfo="label+value",
                 textposition="inside",
                 pull=[0.05 if i == 0 else 0 for i in range(len(top_for_pie))],
-                marker=dict(line=dict(color="#ffffff", width=1))
+                marker=dict(line=dict(color="#0b0b0b", width=1))
             )
             fig_pie.update_layout(
                 title={"text": "Top itens por quantidade em estoque", "y":0.96, "x":0.5, "xanchor":"center"},
