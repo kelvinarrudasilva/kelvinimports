@@ -820,18 +820,32 @@ with tabs[2]:
                 iniciais += p[0].upper()
 
         
+        
         badges = []
+        # Baixo estoque
         if estoque<=3: badges.append("<span class='badge low'>⚠️ Baixo</span>")
+        # Alta venda
         if vendidos>=15: badges.append("<span class='badge hot'>🔥 Saindo</span>")
-        # only show 'Sem vendas' if there is stock
-        if vendidos==0 and estoque>0: badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
-        # highlight if product is in global encalhados list
+
+        # ❄️ Sem vendas REAL
+        sem_vendas_real = False
+        if estoque > 0 and vendidos == 0:
+            if nome in ultima_compra and ultima_compra[nome] != "—":
+                vendas_produto = vendas_df[vendas_df["PRODUTO"] == nome]
+                if vendas_produto.empty:
+                    sem_vendas_real = True
+        if sem_vendas_real:
+            badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
+
+        # Encalhado
         try:
             if nome in _enc_list_global:
                 badges.append("<span class='badge zero'>❄️ Encalhado</span>")
-        except Exception:
+        except:
             pass
+
         badges_html = " ".join(badges)
+    
     
         ultima = ultima_compra.get(nome, "—")
         enc_style = ""
