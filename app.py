@@ -484,6 +484,52 @@ with tabs[0]:
         tabela_vendas_exib=preparar_tabela_vendas(df_sem)
         st.dataframe(tabela_vendas_exib, use_container_width=True)
 
+        # ---------------------
+        # TOP 5 PRODUTOS BOMBANDO (por quantidade vendida)
+        # ---------------------
+        try:
+            vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
+            if not vendas_all.empty and "PRODUTO" in vendas_all.columns:
+                top5 = vendas_all.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(5)
+                if not top5.empty:
+                    st.markdown("""### 🔥 Top 5 — Produtos bombando (por unidades vendidas)
+""", unsafe_allow_html=True)
+                    # render as small table
+                    top5["QTD"] = top5["QTD"].astype(int)
+                    st.table(top5.rename(columns={"PRODUTO":"Produto","QTD":"Unidades"}))
+        except Exception:
+            pass
+
+        # ---------------------
+        # PRODUTOS ENCALHADOS (10 com última venda mais antiga)
+        # ---------------------
+        try:
+            estoque_all = dfs.get("ESTOQUE", pd.DataFrame()).copy()
+            vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
+            if not estoque_all.empty:
+                # last sale date per product (NaT if never sold)
+                if not vendas_all.empty and "DATA" in vendas_all.columns:
+                    last_sale = vendas_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA":"ULT_VENDA"})
+                    last_sale["ULT_VENDA"] = pd.to_datetime(last_sale["ULT_VENDA"], errors="coerce")
+                else:
+                    last_sale = pd.DataFrame(columns=["PRODUTO","ULT_VENDA"])
+                # merge with estoque
+                enc = estoque_all.merge(last_sale, how="left", on="PRODUTO")
+                # products never sold get NaT; we'll treat NaT as very old but show with ❄️
+                # sort: oldest date first (NaT at end), but requirement says "por ordem de data antiga" - include never sold at end
+                enc_sorted = enc.sort_values(by=["ULT_VENDA"], ascending=True, na_position="last").head(10)
+                if not enc_sorted.empty:
+                    # format display
+                    enc_display = enc_sorted[["PRODUTO","EM ESTOQUE","ULT_VENDA"]].copy()
+                    enc_display["ULT_VENDA"] = enc_display["ULT_VENDA"].dt.strftime("%d/%m/%Y").fillna("—")
+                    st.markdown("""### ❄️ Produtos encalhados — 10 com última venda mais antiga
+""", unsafe_allow_html=True)
+                    st.table(enc_display.rename(columns={"PRODUTO":"Produto","EM ESTOQUE":"Em estoque","ULT_VENDA":"Última venda"}))
+        except Exception:
+            pass
+
+
+
 # =============================
 # ESTOQUE
 # =============================
@@ -597,65 +643,9 @@ with tabs[2]:
     .low{background:#4b0000;color:#fff;}
     .hot{background:#3b0050;color:#fff;}
     .zero{background:#2f2f2f;color:#fff;}
-    
-.badge{
-    padding:4px 8px;
-    border-radius:8px;
-    font-size:12px;
-    display:inline-block;
-    font-weight:700;
-    letter-spacing:0.3px;
-    animation:fadeIn 0.6s ease;
-}
 
-.low{
-    background:rgba(255,0,0,0.25);
-    color:#ffb4b4;
-    box-shadow:0 0 8px rgba(255,0,0,0.35);
-}
-.hot{
-    background:rgba(150,0,255,0.25);
-    color:#e0b0ff;
-    box-shadow:0 0 8px rgba(150,0,255,0.35);
-}
-.zero{
-    background:rgba(255,255,255,0.1);
-    color:#fff;
-    box-shadow:0 0 8px rgba(255,255,255,0.15);
-}
-
-@keyframes fadeIn{
-    from{opacity:0; transform:translateY(4px);}
-    to{opacity:1; transform:translateY(0);}
-}
-
-.avatar{
-    width:64px;height:64px;border-radius:14px;
-    background:linear-gradient(120deg,#a78bfa,#ec4899,#06b6d4);
-    background-size:300% 300%;
-    animation:neonMove 6s ease infinite;
-    display:flex;align-items:center;justify-content:center;
-    color:white;font-weight:900;font-size:22px;
-    box-shadow:0 4px 14px rgba(0,0,0,0.5);
-}
-@keyframes neonMove{
-    0%{background-position:0% 50%;}
-    50%{background-position:100% 50%;}
-    100%{background-position:0% 50%;}
-}
-
-@keyframes pulseRed{0%{opacity:.7;}50%{opacity:1;}100%{opacity:.7;}}
-@keyframes pulseOrange{0%{opacity:.7;}50%{opacity:1;}100%{opacity:.7;}}
-@keyframes pulsePurple{0%{opacity:.7;}50%{opacity:1;}100%{opacity:.7;}}
-@keyframes pulseGreen{0%{opacity:.7;}50%{opacity:1;}100%{opacity:.7;}}
-
-.card-ecom:hover{
-    transform:translateY(-2px);
-    transition:.2s;
-    box-shadow:0 8px 20px rgba(0,0,0,0.35);
-}
-
-</style>
+    .small-muted { font-size:11px; color: #c7c7c7; margin-top:4px; }
+    </style>
     """, unsafe_allow_html=True)
 
     st.subheader("🔍 Buscar produtos — Modo E-commerce")
@@ -675,9 +665,7 @@ with tabs[2]:
     else:
         df["TOTAL_QTD"]=0
 
-    # =============================
     # Última data de compra por produto (discreta no card)
-    # =============================
     compras_df = dfs.get("COMPRAS", pd.DataFrame()).copy()
     ultima_compra = {}
     if not compras_df.empty and "DATA" in compras_df.columns and "PRODUTO" in compras_df.columns:
@@ -686,7 +674,7 @@ with tabs[2]:
         tmp = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
         ultima_compra = dict(zip(tmp["PRODUTO"], tmp["DATA"].dt.strftime("%d/%m/%Y")))
 
-
+    # Filters
     if termo.strip():
         df = df[df["PRODUTO"].str.contains(termo,case=False,na=False)]
     if filtro_baixo:
@@ -728,33 +716,33 @@ with tabs[2]:
     st.markdown("<div class='card-grid-ecom'>",unsafe_allow_html=True)
 
     for _, r in df_page.iterrows():
-        nome=r["PRODUTO"]
-        estoque=int(r["EM ESTOQUE"])
-        venda=r["VENDA_FMT"]
-        custo=r["CUSTO_FMT"]
-        vendidos=int(r["TOTAL_QTD"])
+        nome = r["PRODUTO"]
+        estoque = int(r.get("EM ESTOQUE",0))
+        venda = r.get("VENDA_FMT","R$ 0")
+        custo = r.get("CUSTO_FMT","R$ 0")
+        vendidos = int(r.get("TOTAL_QTD",0))
 
-        partes=str(nome).split()
-        iniciais=""
+        partes = str(nome).split()
+        iniciais = ""
         for p in partes[:2]:
             if p:
-                iniciais+=p[0].upper()
+                iniciais += p[0].upper()
 
-        badges=[]
+        badges = []
         if estoque<=3: badges.append("<span class='badge low'>⚠️ Baixo</span>")
         if vendidos>=15: badges.append("<span class='badge hot'>🔥 Saindo</span>")
         if vendidos==0: badges.append("<span class='badge zero'>❄️ Sem vendas</span>")
-        badges_html=" ".join(badges)
+        badges_html = " ".join(badges)
         ultima = ultima_compra.get(nome, "—")
-                        #         # Dias desde a última venda (premium animated)
+
+        # Dias desde a última venda — só se houver venda e estoque>0
         dias_sem_venda = ""
         try:
             vendas_prod = vendas_df[vendas_df["PRODUTO"] == nome]
-            if not vendas_prod.empty:
+            if not vendas_prod.empty and "DATA" in vendas_prod.columns:
                 last_date = vendas_prod["DATA"].max()
-                if pd.notna(last_date):
+                if pd.notna(last_date) and estoque>0:
                     delta = (pd.Timestamp.now() - last_date).days
-
                     if delta >= 60:
                         cor = "#ef4444"; icone = "⛔"; pulse = "pulseRed"
                     elif delta >= 30:
@@ -764,16 +752,15 @@ with tabs[2]:
                     else:
                         cor = "#22c55e"; icone = "✅"; pulse = "pulseGreen"
 
-                    if estoque > 0:
                     dias_sem_venda = (
-                        f\"<div style='font-size:11px;margin-top:2px;color:{cor};\"
+                        f"<div style='font-size:11px;margin-top:2px;color:{cor};"
                         f"animation:{pulse} 2s infinite;'>{icone} Dias sem vender: "
                         f"<b>{delta}</b></div>"
                     )
         except Exception:
             dias_sem_venda = ""
-            dias_sem_venda = ""
-        html=f"""
+
+        html = f"""
 <div class='card-ecom'>
   <div class='avatar'>{iniciais}</div>
   <div>
@@ -788,7 +775,8 @@ with tabs[2]:
     <div style='margin-top:4px;'>{badges_html}</div>
   </div>
 </div>
-        """
+"""
         st.markdown(html,unsafe_allow_html=True)
 
     st.markdown("</div>",unsafe_allow_html=True)
+
