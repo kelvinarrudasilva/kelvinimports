@@ -500,9 +500,10 @@ with tabs[1]:
 # PESQUISAR (MODERNIZADA — FINAL CORRIGIDO)
 # =============================
 # =============================
-# PESQUISAR — VERSÃO E‑COMMERCE COMPLETA COM AVATAR
+# PESQUISAR — E-COMMERCE COMPLETO
 # =============================
 with tabs[2]:
+
     st.markdown("""
     <style>
     .card-grid-ecom {
@@ -533,7 +534,7 @@ with tabs[2]:
     .card-meta{font-size:13px;color:#ccc;margin-bottom:6px;}
     .card-prices{display:flex;gap:12px;margin-bottom:6px;}
     .card-price{color:#a78bfa;font-weight:900;}
-    .card-cost{text-decoration:line-through;color:#999;}
+    .card-cost{color:#999;font-weight:700;}
     .badge{padding:4px 8px;border-radius:8px;font-size:12px;}
     .low{background:#4b0000;color:#fff;}
     .hot{background:#3b0050;color:#fff;}
@@ -541,7 +542,7 @@ with tabs[2]:
     </style>
     """, unsafe_allow_html=True)
 
-    st.subheader("🔍 Buscar produtos — Modo E‑commerce")
+    st.subheader("🔍 Buscar produtos — Modo E-commerce")
 
     termo = st.text_input("Buscar","",placeholder="Nome do produto...")
 
@@ -572,11 +573,33 @@ with tabs[2]:
     df["CUSTO_FMT"]=df["Media C. UNITARIO"].map(formatar_reais_com_centavos)
     df["VENDA_FMT"]=df["Valor Venda Sugerido"].map(formatar_reais_com_centavos)
 
-    st.markdown(f"**{len(df)} resultados encontrados**")
+    itens_pagina = st.selectbox("Itens por página:", [6,9,12], index=0)
+    total = len(df)
+    total_paginas = max(1, (total + itens_pagina - 1)//itens_pagina)
+
+    if "pagina" not in st.session_state:
+        st.session_state["pagina"]=1
+
+    colp1, colp2, colp3 = st.columns([1,1,1])
+    with colp1:
+        if st.button("⬅️ Voltar"):
+            st.session_state['pagina'] = max(1, st.session_state['pagina']-1)
+    with colp2:
+        st.write(f"Página **{st.session_state['pagina']}** de **{total_paginas}**")
+    with colp3:
+        if st.button("Avançar ➡️"):
+            st.session_state['pagina'] = min(total_paginas, st.session_state['pagina']+1)
+
+    pagina = st.session_state["pagina"]
+    inicio = (pagina-1)*itens_pagina
+    fim = inicio + itens_pagina
+    df_page = df.iloc[inicio:fim]
+
+    st.markdown(f"**{total} resultados encontrados**")
 
     st.markdown("<div class='card-grid-ecom'>",unsafe_allow_html=True)
 
-    for _, r in df.iterrows():
+    for _, r in df_page.iterrows():
         nome=r["PRODUTO"]
         estoque=int(r["EM ESTOQUE"])
         venda=r["VENDA_FMT"]
@@ -612,4 +635,3 @@ with tabs[2]:
         st.markdown(html,unsafe_allow_html=True)
 
     st.markdown("</div>",unsafe_allow_html=True)
-
