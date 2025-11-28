@@ -69,11 +69,6 @@ def compute_top5_global(dfs):
 
 
 # --- Cálculo GLOBAL Top 5 mais vendidos ---
-try:
-    _top5_list_global = compute_top5_global(dfs)
-except:
-    _top5_list_global = []
-
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # =============================
@@ -282,6 +277,13 @@ def limpar_aba_raw(df_raw,nome):
 # Preparar tabela vendas
 # =============================
 def preparar_tabela_vendas(df):
+
+    # Criar lucro total adequado
+    df["LUCRO TOTAL"] = df["LUCRO UNITARIO"].astype(float) * df["QTD"].astype(float)
+    try:
+        df["LUCRO TOTAL"] = df["LUCRO TOTAL"].map(formatar_reais_com_centavos)
+    except:
+        pass
     if df is None or df.empty: 
         return pd.DataFrame()
 
@@ -357,6 +359,18 @@ except Exception as e:
 abas_all = xls.sheet_names
 dfs = {}
 for aba in ["ESTOQUE","VENDAS","COMPRAS"]:
+
+# === Inicializações corretas (campeão + encalhado) ===
+try:
+    _top5_list_global = compute_top5_global(dfs)
+except Exception:
+    _top5_list_global = []
+
+try:
+    _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
+except Exception:
+    _enc_list_global, _enc_df_global = [], None
+
     if aba in abas_all:
         raw = pd.read_excel(URL_PLANILHA, sheet_name=aba, header=None)
         cleaned = limpar_aba_raw(raw, aba)
