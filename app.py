@@ -960,83 +960,130 @@ with tabs[2]:
 
     # render grid with advanced badges
     st.markdown(f"<style>.card-grid{{grid-template-columns: repeat({cols},1fr);}}</style>", unsafe_allow_html=True)
-    st.markdown("<div class='card-grid'>", unsafe_allow_html=True)
+    
+st.markdown("<div class='card-grid'>", unsafe_allow_html=True)
 
-    for _, r in df_page.iterrows():
-        nome = r.get("PRODUTO","")
-        estoque = int(r.get("EM ESTOQUE",0)) if pd.notna(r.get("EM ESTOQUE",0)) else 0
-        venda_fmt = r.get("VENDA_FMT","R$ 0,00")
-        custo_fmt = r.get("CUSTO_FMT","R$ 0,00")
-        total_vendido = int(r.get("TOTAL_QTD",0)) if pd.notna(r.get("TOTAL_QTD",0)) else 0
+# Robust rendering: ensure fields exist and provide safe fallbacks
+for _, r in df_page.iterrows():
+    # product name robust: try common column variants
+    nome = ""
+    for c in ("PRODUTO","Produto","produto","NOME"):
+        if c in r and pd.notna(r.get(c)):
+            nome = str(r.get(c)).strip()
+            break
+    if not nome:
+        # fallback: try first text-like column
+        for col in r.index:
+            if isinstance(r.get(col), str) and r.get(col).strip():
+                nome = r.get(col).strip(); break
+    nome = nome or "—"
 
-        # initials avatar
-        iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
+    # estoque and numeric safe parsing
+    try:
+        estoque = int(r.get("EM ESTOQUE", r.get("ESTOQUE",0)) if pd.notna(r.get("EM ESTOQUE", r.get("ESTOQUE",0))) else 0)
+    except:
+        try:
+            estoque = int(float(r.get("EM ESTOQUE",0)))
+        except:
+            estoque = 0
 
-        # last sale datetime and formatted
-        ultima_venda_dt = ultima_venda_map.get(nome, None)
-        ultima_venda_fmt = ultima_venda_dt.strftime("%d/%m/%Y") if pd.notna(ultima_venda_dt) and ultima_venda_dt is not None else "—"
-
-        ultima_compra_fmt = ultima_compra.get(nome, "—")
-
-        # dias sem vender (if estoque >0)
-        dias_sem_venda = ""
-        if estoque > 0:
-            if ultima_venda_dt is not None and pd.notna(ultima_venda_dt):
-                delta = (pd.Timestamp.now() - ultima_venda_dt).days
-                dias_sem_venda = f"🕒 {delta} dias sem vender"
+    # prices formatted (ensure numeric then format)
+    venda_val = r.get("Valor Venda Sugerido", r.get("VENDA_FMT", None))
+    if venda_val is None:
+        venda_fmt = "R$ 0,00"
+    else:
+        try:
+            if isinstance(venda_val, str) and venda_val.strip().startswith("R$"):
+                venda_fmt = venda_val
             else:
-                dias_sem_venda = "🕒 Nunca vendeu"
+                venda_fmt = formatar_reais_com_centavos(float(venda_val))
+        except:
+            venda_fmt = str(venda_val)
 
-        # badges
-        badges = []
-        try:
-            if nome in _top5_list_global:
-                badges.append(("🏆 Campeão de vendas","hot"))
-        except Exception:
-            pass
-        try:
-            if nome in _enc_list_global:
-                badges.append(("🐌 Encalhado","enc"))
-        except Exception:
-            pass
-        if total_vendido==0:
-            badges.append(("❄️ Produto sem vendas","zero"))
-        if estoque==0:
-            badges.append(("❌ Sem estoque","zero"))
-        if estoque<=3 and estoque>0:
-            badges.append(("⚠️ Baixo estoque","low"))
-        if estoque>=20:
-            badges.append(("📦 Alto estoque","stock"))
-
-        badges_html = " ".join([f"<span class='pill {btype}'>{label}</span>" for label,btype in badges])
-
-        # border & shadow style
-        if nome in _top5_list_global:
-            border = "border-left:6px solid #a855f7; box-shadow:0 18px 40px rgba(168,85,247,0.12);"
-        elif nome in _enc_list_global:
-            border = "border-left:6px solid #38bdf8; box-shadow:0 18px 40px rgba(56,189,248,0.08);"
-        elif estoque<=3 and estoque>0:
-            border = "border-left:6px solid #ef4444; box-shadow:0 12px 30px rgba(239,68,68,0.06);"
-        elif estoque==0:
-            border = "border-left:6px solid #6b7280; box-shadow:0 8px 16px rgba(70,70,70,0.04);"
+    custo_val = r.get("Media C. UNITARIO", r.get("CUSTO_FMT", None))
+    try:
+        if isinstance(custo_val, str) and custo_val.strip().startswith("R$"):
+            custo_fmt = custo_val
         else:
-            border = ""
+            custo_fmt = formatar_reais_com_centavos(float(custo_val)) if custo_val is not None else "R$ 0,00"
+    except:
+        custo_fmt = "R$ 0,00"
 
-        # vendas label
-        vendas_label = f"<b>{total_vendido}</b> vendas" if total_vendido>0 else "❄️ Produto sem vendas"
+    # total sold quantity
+    try:
+        total_vendido = int(r.get("TOTAL_QTD", 0)) if pd.notna(r.get("TOTAL_QTD",0)) else 0
+    except:
+        total_vendido = 0
 
-        card_html = f"""
-        <div class='card-ecom' style='{border}'>
-            <div class='avatar' style='background:linear-gradient(135deg,#8b5cf6,#ec4899);'>{iniciais}</div>
-            <div style='flex:1'>
-                <div class='ctitle'>{nome}</div>
-                <div class='cmeta'>Estoque: <b>{estoque}</b> • {vendas_label} • Última venda: <b>{ultima_venda_fmt}</b></div>
-                <div class='cprice'>{venda_fmt} <span class='meta-small' style='margin-left:10px;'>Custo: {custo_fmt}</span></div>
-                <div class='meta-small'>{dias_sem_venda} • Última compra: <b>{ultima_compra_fmt}</b></div>
-                <div class='badges'>{badges_html}</div>
-            </div>
-        </div>
-        """
-        st.markdown(card_html, unsafe_allow_html=True)
+    # initials
+    iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    # ultima venda and compra maps (using precomputed maps)
+    ultima_venda_dt = ultima_venda_map.get(nome, None) if 'ultima_venda_map' in globals() else None
+    ultima_venda_fmt = ultima_venda_dt.strftime("%d/%m/%Y") if hasattr(ultima_venda_dt, "strftime") else "—"
+    ultima_compra_fmt = ultima_compra.get(nome, "—") if 'ultima_compra' in globals() else "—"
+
+    # dias sem vender
+    dias_sem_venda = ""
+    if estoque > 0:
+        if ultima_venda_dt is not None and str(ultima_venda_dt) != "NaT":
+            try:
+                delta = (pd.Timestamp.now() - pd.to_datetime(ultima_venda_dt)).days
+                dias_sem_venda = f"🕒 {delta} dias sem vender"
+            except:
+                dias_sem_venda = "🕒 —"
+        else:
+            dias_sem_venda = "🕒 Nunca vendeu"
+
+    # badges construction robust
+    badges = []
+    try:
+        if nome in _top5_list_global:
+            badges.append(("🏆 Campeão de vendas","hot"))
+    except:
+        pass
+    try:
+        if nome in _enc_list_global:
+            badges.append(("🐌 Encalhado","enc"))
+    except:
+        pass
+
+    if total_vendido == 0:
+        badges.append(("❄️ Produto sem vendas","zero"))
+    if estoque == 0:
+        badges.append(("❌ Sem estoque","zero"))
+    if 0 < estoque <= 3:
+        badges.append(("⚠️ Baixo estoque","low"))
+    if estoque >= 20:
+        badges.append(("📦 Alto estoque","stock"))
+
+    # build badges html safely
+    badges_html = " ".join([f"<span class='pill {btype}'>{label}</span>" for label,btype in badges])
+
+    # vendas label showing count when exists
+    vendas_label = f"<b>{total_vendido}</b> vendas" if total_vendido>0 else "Sem vendas"
+
+    # border style
+    if nome in _top5_list_global:
+        border = "border-left:6px solid #a855f7; box-shadow:0 18px 40px rgba(168,85,247,0.12);"
+    elif nome in _enc_list_global:
+        border = "border-left:6px solid #38bdf8; box-shadow:0 18px 40px rgba(56,189,248,0.08);"
+    elif 0 < estoque <= 3:
+        border = "border-left:6px solid #ef4444; box-shadow:0 12px 30px rgba(239,68,68,0.06);"
+    elif estoque == 0:
+        border = "border-left:6px solid #6b7280; box-shadow:0 8px 16px rgba(70,70,70,0.04);"
+    else:
+        border = ""
+
+    # render card safe using single-quoted python string with double-quoted html attributes
+    card_html = '<div class="card-ecom" style="{border}">' +                 '<div class="avatar" style="background:linear-gradient(135deg,#8b5cf6,#ec4899);">{iniciais}</div>' +                 '<div style="flex:1">' +                 '<div class="ctitle">{nome}</div>' +                 '<div class="cmeta">Estoque: <b>{estoque}</b> • {vendas_label} • Última venda: <b>{ultima_venda_fmt}</b></div>' +                 '<div class="cprice">{venda_fmt} <span class="meta-small" style="margin-left:10px;">Custo: {custo_fmt}</span></div>' +                 '<div class="meta-small">{dias_sem_venda} • Última compra: <b>{ultima_compra_fmt}</b></div>' +                 '<div class="badges">{badges_html}</div>' +                 '</div>' +                 '</div>'
+    # format placeholders
+    card_html = card_html.format(border=border, iniciais=iniciais, nome=nome, estoque=estoque,
+                                 vendas_label=vendas_label, ultima_venda_fmt=ultima_venda_fmt,
+                                 venda_fmt=venda_fmt, custo_fmt=custo_fmt, dias_sem_venda=dias_sem_venda,
+                                 ultima_compra_fmt=ultima_compra_fmt, badges_html=badges_html)
+
+    st.markdown(card_html, unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
