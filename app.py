@@ -786,4 +786,257 @@ with tabs[1]:
 
 
 with tabs[2]:
-    st.write('PESQUISAR PREMIUM A+')
+
+    # ==========================================================
+    # PESQUISAR — PREMIUM A+ (com badges, encalhado, campeão, dias sem vender)
+    # ==========================================================
+    st.markdown("""
+    <style>
+    .titulo-pesquisar { font-size:34px; font-weight:900; color:var(--accent-2); margin-bottom:18px;
+        text-shadow:0 0 16px rgba(167,139,250,0.55); }
+    .search-panel{ background:var(--card-bg); padding:16px; border-radius:12px; border:1px solid #222; margin-bottom:18px; box-shadow:0 6px 18px rgba(0,0,0,0.45); }
+    .card-grid{ display:grid; gap:16px; margin-top:8px; }
+    @media(min-width:900px){ .card-grid{grid-template-columns:repeat(3,1fr);} }
+    @media(min-width:1200px){ .card-grid{grid-template-columns:repeat(4,1fr);} }
+    .card-ecom{ background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:12px; border-radius:12px; display:flex; gap:12px; align-items:flex-start; border:2px solid rgba(255,255,255,0.03); transition:transform .14s ease; }
+    .card-ecom:hover{ transform:translateY(-6px); }
+    .avatar{ width:64px; height:64px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:22px; color:white; box-shadow:0 6px 18px rgba(0,0,0,0.45); }
+    .ctitle{ font-size:16px; font-weight:900; color:#fff; margin-bottom:4px; }
+    .cmeta{ font-size:12px; color:#cfcfe0; margin-bottom:6px; }
+    .cprice{ font-weight:900; font-size:16px; color:var(--accent-2); }
+    .badges { margin-top:8px; }
+    .pill{ display:inline-block; padding:5px 8px; border-radius:8px; font-size:12px; margin-right:6px; margin-top:6px; font-weight:800; }
+    .pill.hot{ background:rgba(139,92,246,0.12); color:#e9d5ff; border:1px solid rgba(139,92,246,0.06); }
+    .pill.enc{ background:rgba(56,189,248,0.08); color:#bfebff; border:1px solid rgba(56,189,248,0.06); }
+    .pill.low{ background:rgba(255,69,96,0.08); color:#ffb4b4; border:1px solid rgba(255,69,96,0.06); }
+    .pill.zero{ background:rgba(255,255,255,0.04); color:#fff; border:1px solid rgba(255,255,255,0.03); }
+    .pill.stock{ background:rgba(34,197,94,0.08); color:#d1fae5; border:1px solid rgba(34,197,94,0.06); }
+    .meta-small{ font-size:11px; color:#9ca3af; margin-top:6px;}
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Title + clear button
+    st.markdown("<div class='titulo-pesquisar'>🔍 PESQUISAR PRODUTOS</div>", unsafe_allow_html=True)
+    c1, c2 = st.columns([1,7])
+    with c1:
+        if st.button("🧹 LIMPAR TUDO", key="limpar_pesquisar"):
+            # reset known keys used in this tab
+            for k in ["termo","ordenar","cols","getitem","ver_tudo","f_baixo","f_alto","f_vendidos","f_sem_venda","pagina"]:
+                if k in st.session_state:
+                    st.session_state.pop(k)
+            st.experimental_rerun()
+
+    with c2:
+        st.write("")  # keep alignment
+
+    # Search controls panel
+    st.markdown("<div class='search-panel'>", unsafe_allow_html=True)
+    termo = st.text_input("🔎 Buscar produto", st.session_state.get("termo",""), key="termo", placeholder="Digite o nome do produto...")
+
+    col1, col2, col3, col4 = st.columns([2,1.2,1,1])
+    with col1:
+        ordenar = st.selectbox("Ordenar por", ["Nome A–Z","Nome Z–A","Menor preço","Maior preço","Mais vendidos","Maior estoque","Última compra (recente)","Última compra (antiga)"], key="ordenar")
+    with col2:
+        itens_pag = st.selectbox("Itens por página", [6,9,12,24,36,48,60], index=2, key="getitem")
+    with col3:
+        cols = st.selectbox("Colunas", [2,3,4], index=2, key="cols")
+    with col4:
+        ver_tudo = st.checkbox("Ver tudo", key="ver_tudo")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # advanced filters
+    fcol1,fcol2,fcol3,fcol4 = st.columns(4)
+    with fcol1:
+        f_baixo = st.checkbox("⚠️ Baixo estoque (≤3)", key="f_baixo")
+    with fcol2:
+        f_alto = st.checkbox("📦 Alto estoque (≥20)", key="f_alto")
+    with fcol3:
+        f_vendidos = st.checkbox("🔥 Com vendas", key="f_vendidos")
+    with fcol4:
+        f_sem_venda = st.checkbox("❄️ Sem vendas", key="f_sem_venda")
+
+    # build df copy and merge vendas/compras info
+    df = estoque_df.copy() if not estoque_df.empty else pd.DataFrame(columns=["PRODUTO","EM ESTOQUE"])
+    vendas_df = dfs.get("VENDAS", pd.DataFrame()).copy()
+    compras_df = dfs.get("COMPRAS", pd.DataFrame()).copy()
+
+    # ensure vendas date parsed
+    if not vendas_df.empty and "DATA" in vendas_df.columns:
+        vendas_df["DATA"] = pd.to_datetime(vendas_df["DATA"], errors="coerce")
+
+    # total vendas por produto
+    if not vendas_df.empty and "QTD" in vendas_df.columns:
+        vend_sum = vendas_df.groupby("PRODUTO")["QTD"].sum().reset_index().rename(columns={"QTD":"TOTAL_QTD"})
+        df = df.merge(vend_sum, how="left", on="PRODUTO").fillna({"TOTAL_QTD":0})
+    else:
+        df["TOTAL_QTD"] = df.get("TOTAL_QTD",0).fillna(0)
+
+    # ultima compra map
+    ultima_compra = {}
+    if not compras_df.empty and "PRODUTO" in compras_df.columns and "DATA" in compras_df.columns:
+        compras_df["DATA"] = pd.to_datetime(compras_df["DATA"], errors="coerce")
+        tmpc = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
+        ultima_compra = dict(zip(tmpc["PRODUTO"], tmpc["DATA"].dt.strftime("%d/%m/%Y")))
+
+    # ultima venda map (for display)
+    ultima_venda_map = {}
+    if not vendas_df.empty and "PRODUTO" in vendas_df.columns and "DATA" in vendas_df.columns:
+        tmpv = vendas_df.groupby("PRODUTO")["DATA"].max().reset_index()
+        ultima_venda_map = dict(zip(tmpv["PRODUTO"], tmpv["DATA"]))
+
+    # apply search and filters
+    if termo and termo.strip():
+        df = df[df["PRODUTO"].astype(str).str.contains(termo, case=False, na=False)]
+
+    if f_baixo:
+        df = df[df.get("EM ESTOQUE",0) <= 3]
+    if f_alto:
+        df = df[df.get("EM ESTOQUE",0) >= 20]
+    if f_vendidos:
+        df = df[df.get("TOTAL_QTD",0) > 0]
+    if f_sem_venda:
+        df = df[df.get("TOTAL_QTD",0) == 0]
+
+    # formatting fields
+    df["CUSTO_FMT"] = df.get("Media C. UNITARIO",0).map(formatar_reais_com_centavos) if "Media C. UNITARIO" in df.columns else "R$ 0,00"
+    df["VENDA_FMT"] = df.get("Valor Venda Sugerido",0).map(formatar_reais_com_centavos) if "Valor Venda Sugerido" in df.columns else "R$ 0,00"
+
+    # sorting
+    if ordenar == "Nome A–Z":
+        df = df.sort_values("PRODUTO", ascending=True)
+    elif ordenar == "Nome Z–A":
+        df = df.sort_values("PRODUTO", ascending=False)
+    elif ordenar == "Menor preço":
+        df = df.sort_values("Valor Venda Sugerido", ascending=True)
+    elif ordenar == "Maior preço":
+        df = df.sort_values("Valor Venda Sugerido", ascending=False)
+    elif ordenar == "Mais vendidos":
+        if "TOTAL_QTD" in df.columns:
+            df = df.sort_values("TOTAL_QTD", ascending=False)
+    elif ordenar == "Maior estoque":
+        df = df.sort_values("EM ESTOQUE", ascending=False)
+    elif ordenar == "Última compra (recente)":
+        if not compras_df.empty:
+            tmp2 = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
+            tmp2.columns = ["PRODUTO","ULT_COMPRA_RAW"]
+            df = df.merge(tmp2, how="left", on="PRODUTO")
+            df["ULT_COMPRA_RAW"] = pd.to_datetime(df["ULT_COMPRA_RAW"], errors="coerce")
+            df = df.sort_values("ULT_COMPRA_RAW", ascending=False).drop(columns=["ULT_COMPRA_RAW"])
+    elif ordenar == "Última compra (antiga)":
+        if not compras_df.empty:
+            tmp2 = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
+            tmp2.columns = ["PRODUTO","ULT_COMPRA_RAW"]
+            df = df.merge(tmp2, how="left", on="PRODUTO")
+            df["ULT_COMPRA_RAW"] = pd.to_datetime(df["ULT_COMPRA_RAW"], errors="coerce")
+            df = df.sort_values("ULT_COMPRA_RAW", ascending=True).drop(columns=["ULT_COMPRA_RAW"])
+
+    total = len(df)
+
+    # pagination
+    if ver_tudo:
+        itens_pagina_used = total if total>0 else 1
+    else:
+        itens_pagina_used = int(itens_pag)
+
+    total_paginas = max(1, (total + itens_pagina_used - 1)//itens_pagina_used)
+    if "pagina" not in st.session_state:
+        st.session_state["pagina"] = 1
+    st.session_state["pagina"] = max(1, min(st.session_state["pagina"], total_paginas))
+
+    coln1, coln2, coln3 = st.columns([1,2,1])
+    with coln1:
+        if st.button("⬅️ Voltar", key="prev_page"):
+            st.session_state["pagina"] = max(1, st.session_state["pagina"]-1)
+    with coln2:
+        st.markdown(f"**Página {st.session_state['pagina']} de {total_paginas} — {total} resultados**")
+    with coln3:
+        if st.button("Avançar ➡️", key="next_page"):
+            st.session_state["pagina"] = min(total_paginas, st.session_state["pagina"]+1)
+
+    pagina = st.session_state["pagina"]
+    inicio = (pagina-1)*itens_pagina_used
+    fim = inicio + itens_pagina_used
+    df_page = df.iloc[inicio:fim].reset_index(drop=True)
+
+    # render grid with advanced badges
+    st.markdown(f"<style>.card-grid{{grid-template-columns: repeat({cols},1fr);}}</style>", unsafe_allow_html=True)
+    st.markdown("<div class='card-grid'>", unsafe_allow_html=True)
+
+    for _, r in df_page.iterrows():
+        nome = r.get("PRODUTO","")
+        estoque = int(r.get("EM ESTOQUE",0)) if pd.notna(r.get("EM ESTOQUE",0)) else 0
+        venda_fmt = r.get("VENDA_FMT","R$ 0,00")
+        custo_fmt = r.get("CUSTO_FMT","R$ 0,00")
+        total_vendido = int(r.get("TOTAL_QTD",0)) if pd.notna(r.get("TOTAL_QTD",0)) else 0
+
+        # initials avatar
+        iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
+
+        # last sale datetime and formatted
+        ultima_venda_dt = ultima_venda_map.get(nome, None)
+        ultima_venda_fmt = ultima_venda_dt.strftime("%d/%m/%Y") if pd.notna(ultima_venda_dt) and ultima_venda_dt is not None else "—"
+
+        ultima_compra_fmt = ultima_compra.get(nome, "—")
+
+        # dias sem vender (if estoque >0)
+        dias_sem_venda = ""
+        if estoque > 0:
+            if ultima_venda_dt is not None and pd.notna(ultima_venda_dt):
+                delta = (pd.Timestamp.now() - ultima_venda_dt).days
+                dias_sem_venda = f"🕒 {delta} dias sem vender"
+            else:
+                dias_sem_venda = "🕒 Nunca vendeu"
+
+        # badges
+        badges = []
+        try:
+            if nome in _top5_list_global:
+                badges.append(("🏆 Campeão de vendas","hot"))
+        except Exception:
+            pass
+        try:
+            if nome in _enc_list_global:
+                badges.append(("🐌 Encalhado","enc"))
+        except Exception:
+            pass
+        if total_vendido==0:
+            badges.append(("❌ Produto sem vendas","zero"))
+        if estoque==0:
+            badges.append(("❌ Sem estoque","zero"))
+        if estoque<=3 and estoque>0:
+            badges.append(("⚠️ Baixo estoque","low"))
+        if estoque>=20:
+            badges.append(("📦 Alto estoque","stock"))
+
+        badges_html = " ".join([f\"<span class='pill {btype}'>{label}</span>\" for label,btype in badges])
+
+        # border & shadow style
+        if nome in _top5_list_global:
+            border = "border-left:6px solid #a855f7; box-shadow:0 18px 40px rgba(168,85,247,0.12);"
+        elif nome in _enc_list_global:
+            border = "border-left:6px solid #38bdf8; box-shadow:0 18px 40px rgba(56,189,248,0.08);"
+        elif estoque<=3 and estoque>0:
+            border = "border-left:6px solid #ef4444; box-shadow:0 12px 30px rgba(239,68,68,0.06);"
+        elif estoque==0:
+            border = "border-left:6px solid #6b7280; box-shadow:0 8px 16px rgba(70,70,70,0.04);"
+        else:
+            border = ""
+
+        # vendas label
+        vendas_label = f\"<b>{total_vendido}</b> vendas\" if total_vendido>0 else "Sem vendas"
+
+        card_html = f\"\"\"
+        <div class='card-ecom' style='{border}'>
+            <div class='avatar' style='background:linear-gradient(135deg,#8b5cf6,#ec4899);'>{iniciais}</div>
+            <div style='flex:1'>
+                <div class='ctitle'>{nome}</div>
+                <div class='cmeta'>Estoque: <b>{estoque}</b> • {vendas_label} • Última venda: <b>{ultima_venda_fmt}</b></div>
+                <div class='cprice'>{venda_fmt} <span class='meta-small' style='margin-left:10px;'>Custo: {custo_fmt}</span></div>
+                <div class='meta-small'>{dias_sem_venda} • Última compra: <b>{ultima_compra_fmt}</b></div>
+                <div class='badges'>{badges_html}</div>
+            </div>
+        </div>
+        \"\"\"
+        st.markdown(card_html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
