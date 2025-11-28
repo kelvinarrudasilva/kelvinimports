@@ -857,28 +857,79 @@ with tabs[2]:
 
     # build df copy and merge vendas/compras info
     df = estoque_df.copy() if not estoque_df.empty else pd.DataFrame(columns=["PRODUTO","EM ESTOQUE"])
+    
+    # carregar vendas/compras com normalização de nomes para merges robustos
     vendas_df = dfs.get("VENDAS", pd.DataFrame()).copy()
     compras_df = dfs.get("COMPRAS", pd.DataFrame()).copy()
 
-    # ensure vendas date parsed
-    if not vendas_df.empty and "DATA" in vendas_df.columns:
-        vendas_df["DATA"] = pd.to_datetime(vendas_df["DATA"], errors="coerce")
+    # normalizar nome do produto em todas as tabelas para evitar mismatch por espaço/maiusculas
+    def _norm_prod(x):
+        try:
+            s = str(x).strip()
+            # collapse multiple spaces, uppercase
+            s = re.sub(r"\s+", " ", s)
+            return s.upper()
+        except:
+            return ""
 
-    # total vendas por produto
-    if not vendas_df.empty and "QTD" in vendas_df.columns:
-        vend_sum = vendas_df.groupby("PRODUTO")["QTD"].sum().reset_index().rename(columns={"QTD":"TOTAL_QTD"})
-        df = df.merge(vend_sum, how="left", on="PRODUTO").fillna({"TOTAL_QTD":0})
+    # ensure columns exist before adding normalized names
+    if not vendas_df.empty:
+        vendas_df.columns = [str(c).strip() for c in vendas_df.columns]
+        if "PRODUTO" not in vendas_df.columns:
+            # try to find a product-like column
+            for c in vendas_df.columns:
+                if "PROD" in str(c).upper() or "PRODUTO" in str(c).upper():
+                    vendas_df = vendas_df.rename(columns={c:"PRODUTO"})
+                    break
+        vendas_df["PROD_NORM"] = vendas_df["PRODUTO"].map(_norm_prod)
+        if "DATA" in vendas_df.columns:
+            vendas_df["DATA"] = pd.to_datetime(vendas_df["DATA"], errors="coerce")
+        # ensure QTD exists as int
+        if "QTD" not in vendas_df.columns:
+            for c in vendas_df.columns:
+                if str(c).upper() in ("QTD","QUANTIDADE","QTY"):
+                    vendas_df["QTD"] = vendas_df[c]
+                    break
+        vendas_df["QTD"] = vendas_df.get("QTD", 0).fillna(0).astype(int)
+
+    if not compras_df.empty:
+        compras_df.columns = [str(c).strip() for c in compras_df.columns]
+        if "PRODUTO" not in compras_df.columns:
+            for c in compras_df.columns:
+                if "PROD" in str(c).upper():
+                    compras_df = compras_df.rename(columns={c:"PRODUTO"})
+                    break
+        compras_df["PROD_NORM"] = compras_df["PRODUTO"].map(_norm_prod)
+        if "DATA" in compras_df.columns:
+            compras_df["DATA"] = pd.to_datetime(compras_df["DATA"], errors="coerce")
+
+    # normalize estoque names too (df was created earlier as 'df = estoque_df.copy()')
+    if 'df' in locals() and not df.empty:
+        if "PROD_NORM" not in df.columns:
+            df["PROD_NORM"] = df.get("PRODUTO", df.get("Produto", "")).map(_norm_prod)
+
+    # total vendas por produto (using normalized names) and merge back to df by PROD_NORM
+    if not vendas_df.empty and "PROD_NORM" in vendas_df.columns:
+        vend_sum = vendas_df.groupby("PROD_NORM")["QTD"].sum().reset_index().rename(columns={"QTD":"TOTAL_QTD"})
+        # merge on PROD_NORM; keep original names in df
+        if "PROD_NORM" not in df.columns:
+            df["PROD_NORM"] = df.get("PRODUTO", df.get("Produto", "")).map(_norm_prod)
+        df = df.merge(vend_sum, how="left", on="PROD_NORM").fillna({"TOTAL_QTD":0})
     else:
         df["TOTAL_QTD"] = df.get("TOTAL_QTD",0).fillna(0)
 
-    # ultima compra map
+    # ultima compra map (normalized keys)
     ultima_compra = {}
-    if not compras_df.empty and "PRODUTO" in compras_df.columns and "DATA" in compras_df.columns:
-        compras_df["DATA"] = pd.to_datetime(compras_df["DATA"], errors="coerce")
-        tmpc = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
-        ultima_compra = dict(zip(tmpc["PRODUTO"], tmpc["DATA"].dt.strftime("%d/%m/%Y")))
-
-    # ultima venda map (for display)
+    if not compras_df.empty and "PROD_NORM" in compras_df.columns and "DATA" in compras_df.columns:
+        tmpc = compras_df.groupby("PROD_NORM")["DATA"].max().reset_index()
+        # map normalized name -> formatted date, and also keep mapping to original product names via df
+        ultima_compra = dict(zip(tmpc["PROD_NORM"], tmpc["DATA"].dt.strftime("%d/%m/%Y")))
+    # ultima venda map (normalized)
+    ultima_venda_map = {}
+    if not vendas_df.empty and "PROD_NORM" in vendas_df.columns and "DATA" in vendas_df.columns:
+        tmpv = vendas_df.groupby("PROD_NORM")["DATA"].max().reset_index()
+        ultima_venda_map = dict(zip(tmpv["PROD_NORM"], tmpv["DATA"]))
+# ultima venda map (for display)
     ultima_venda_map = {}
     if not vendas_df.empty and "PRODUTO" in vendas_df.columns and "DATA" in vendas_df.columns:
         tmpv = vendas_df.groupby("PRODUTO")["DATA"].max().reset_index()
@@ -931,6 +982,16 @@ with tabs[2]:
             df = df.sort_values("ULT_COMPRA_RAW", ascending=True).drop(columns=["ULT_COMPRA_RAW"])
 
     total = len(df)
+    # create normalized lookup sets for top5 and encalhados
+    try:
+        _top5_norm_set = set([s.strip().upper() for s in _top5_list_global]) if '_top5_list_global' in globals() else set()
+    except:
+        _top5_norm_set = set()
+    try:
+        _enc_norm_set = set([s.strip().upper() for s in _enc_list_global]) if '_enc_list_global' in globals() else set()
+    except:
+        _enc_norm_set = set()
+
 
     # pagination
     if ver_tudo:
@@ -1019,9 +1080,9 @@ for _, r in df_page.iterrows():
     iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
 
     # ultima venda and compra maps (using precomputed maps)
-    ultima_venda_dt = ultima_venda_map.get(nome, None) if 'ultima_venda_map' in globals() else None
+    ultima_venda_dt = ultima_venda_map.get(nome.upper(), None) if isinstance(nome, str) else ultima_venda_map.get(str(nome), None) if 'ultima_venda_map' in globals() else None
     ultima_venda_fmt = ultima_venda_dt.strftime("%d/%m/%Y") if hasattr(ultima_venda_dt, "strftime") else "—"
-    ultima_compra_fmt = ultima_compra.get(nome, "—") if 'ultima_compra' in globals() else "—"
+    ultima_compra_fmt = ultima_compra.get(nome.upper(), "—") if isinstance(nome, str) else ultima_compra.get(str(nome), "—") if 'ultima_compra' in globals() else "—"
 
     # dias sem vender
     dias_sem_venda = ""
@@ -1038,12 +1099,12 @@ for _, r in df_page.iterrows():
     # badges construction robust
     badges = []
     try:
-        if nome in _top5_list_global:
+        if nome.strip().upper() in _top5_norm_set:
             badges.append(("🏆 Campeão de vendas","hot"))
     except:
         pass
     try:
-        if nome in _enc_list_global:
+        if nome.strip().upper() in _enc_norm_set:
             badges.append(("🐌 Encalhado","enc"))
     except:
         pass
@@ -1064,9 +1125,9 @@ for _, r in df_page.iterrows():
     vendas_label = f"<b>{total_vendido}</b> vendas" if total_vendido>0 else "Sem vendas"
 
     # border style
-    if nome in _top5_list_global:
+    if nome.strip().upper() in _top5_norm_set:
         border = "border-left:6px solid #a855f7; box-shadow:0 18px 40px rgba(168,85,247,0.12);"
-    elif nome in _enc_list_global:
+    elif nome.strip().upper() in _enc_norm_set:
         border = "border-left:6px solid #38bdf8; box-shadow:0 18px 40px rgba(56,189,248,0.08);"
     elif 0 < estoque <= 3:
         border = "border-left:6px solid #ef4444; box-shadow:0 12px 30px rgba(239,68,68,0.06);"
