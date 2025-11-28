@@ -68,7 +68,7 @@ st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", in
 
 
 # --- Cálculo GLOBAL de Produtos Encalhados (limpo) ---
-def compute_encalhados_global(dfs, limit=10):
+# def compute_encalhados_global(dfs, limit=10):
     import pandas as _pd
     estoque = dfs.get("ESTOQUE", _pd.DataFrame()).copy()
     vendas = dfs.get("VENDAS", _pd.DataFrame()).copy()
@@ -109,7 +109,7 @@ def compute_encalhados_global(dfs, limit=10):
 
 
 # --- Cálculo GLOBAL Top 5 mais vendidos ---
-def compute_top5_global(dfs):
+# def compute_top5_global(dfs):
     import pandas as _pd
     vendas = dfs.get("VENDAS", _pd.DataFrame()).copy()
     if vendas.empty or "PRODUTO" not in vendas.columns:
@@ -125,7 +125,7 @@ def compute_top5_global(dfs):
 
 
 # --- Cálculo GLOBAL Top 5 mais vendidos ---
-def compute_top5_global(dfs):
+# def compute_top5_global(dfs):
     import pandas as _pd
     vendas = dfs.get("VENDAS", _pd.DataFrame()).copy()
     if vendas.empty or "PRODUTO" not in vendas.columns:
@@ -184,7 +184,7 @@ def compute_top5_global(dfs):
 
 # compute once and show alert
 try:
-    _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
+#     _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
     if len(_enc_list_global) > 0:
         st.warning(f"❄️ Produtos encalhados detectados: {len(_enc_list_global)} — vá em VENDAS > Produtos encalhados para ver a lista.")
 except Exception:
@@ -481,12 +481,12 @@ for aba in ["ESTOQUE","VENDAS","COMPRAS"]:
             dfs[aba] = cleaned
 # === Inicializações corretas ===
 try:
-    _top5_list_global = compute_top5_global(dfs)
+#     _top5_list_global = compute_top5_global(dfs)
 except Exception:
     _top5_list_global = []
 
 try:
-    _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
+#     _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
 except Exception:
     _enc_list_global, _enc_df_global = [], None
 
@@ -1142,4 +1142,3 @@ for _, r in df_page.iterrows():
     st.markdown(card_html, unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
-
