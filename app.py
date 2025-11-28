@@ -956,4 +956,4 @@ with tabs[2]:
             f"</div>"
             f"</div>"
         )
-    st.markdown(html, unsafe_allow_html=True)
+        st.markdown(html, unsafe_allow_html=True)
