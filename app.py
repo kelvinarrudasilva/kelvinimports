@@ -784,6 +784,14 @@ with tabs[1]:
 # =============================
 with tabs[2]:
 
+# --- Seleção da quantidade por página ---
+qtd_por_pagina = st.selectbox(
+    "Resultados por página:",
+    [6, 9, 12, 24, 48, 100],
+    index=0
+)
+
+
     st.markdown("""
     <style>
     .card-grid-ecom {
@@ -956,4 +964,4 @@ with tabs[2]:
             f"</div>"
             f"</div>"
         )
-        st.markdown(html, unsafe_allow_html=True)
+    st.markdown(html, unsafe_allow_html=True)
