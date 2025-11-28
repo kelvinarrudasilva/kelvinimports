@@ -12,20 +12,6 @@ st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", in
 
 # --- Cálculo GLOBAL de Produtos Encalhados (usado para alerta e destaque nos cards) ---
 def compute_encalhados_global(dfs, limit=10):
-
-# --- Cálculo GLOBAL Top 5 mais vendidos ---
-def compute_top5_global(dfs):
-    import pandas as _pd
-    vendas = dfs.get("VENDAS", _pd.DataFrame()).copy()
-    if vendas.empty or "PRODUTO" not in vendas.columns:
-        return []
-    top = vendas.groupby("PRODUTO")["QTD"].sum().sort_values(ascending=False).head(5)
-    return top.index.tolist()
-
-try:
-    _top5_list_global = compute_top5_global(dfs)
-except:
-    _top5_list_global = []
     import pandas as _pd
     estoque_all = dfs.get("ESTOQUE", _pd.DataFrame()).copy()
     vendas_all = dfs.get("VENDAS", _pd.DataFrame()).copy()
@@ -67,16 +53,21 @@ except:
     enc_list = enc_sorted["PRODUTO"].tolist()
     return enc_list, enc_sorted
 
-# compute once and show alert
+# --- Cálculo GLOBAL Top 5 mais vendidos ---
+def compute_top5_global(dfs):
+    import pandas as _pd
+    vendas = dfs.get("VENDAS", _pd.DataFrame()).copy()
+    if vendas.empty or "PRODUTO" not in vendas.columns:
+        return []
+    top = vendas.groupby("PRODUTO")["QTD"].sum().sort_values(ascending=False).head(5)
+    return top.index.tolist()
+
 try:
-    _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
-    if len(_enc_list_global) > 0:
-        st.warning(f"❄️ Produtos encalhados detectados: {len(_enc_list_global)} — vá em VENDAS > Produtos encalhados para ver a lista.")
+    _top5_list_global = compute_top5_global(dfs)
 except Exception:
-    _enc_list_global, _enc_df_global = [], None
+    _top5_list_global = []
 
-
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
+URL_PLANILHA =URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # =============================
 # CSS - Dark Theme (tabelas incluídas)
