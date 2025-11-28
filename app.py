@@ -1008,7 +1008,7 @@ with tabs[2]:
         if estoque>=20:
             badges.append(("📦 Alto estoque","stock"))
 
-        badges_html = " ".join([f\"<span class='pill {btype}'>{label}</span>\" for label,btype in badges])
+        badges_html = " ".join([f"<span class='pill {btype}'>{label}</span>" for label,btype in badges])
 
         # border & shadow style
         if nome in _top5_list_global:
@@ -1023,9 +1023,9 @@ with tabs[2]:
             border = ""
 
         # vendas label
-        vendas_label = f\"<b>{total_vendido}</b> vendas\" if total_vendido>0 else "Sem vendas"
+        vendas_label = f"<b>{total_vendido}</b> vendas" if total_vendido>0 else "Sem vendas"
 
-        card_html = f\"\"\"
+        card_html = f"""
         <div class='card-ecom' style='{border}'>
             <div class='avatar' style='background:linear-gradient(135deg,#8b5cf6,#ec4899);'>{iniciais}</div>
             <div style='flex:1'>
@@ -1036,7 +1036,7 @@ with tabs[2]:
                 <div class='badges'>{badges_html}</div>
             </div>
         </div>
-        \"\"\"
+        """
         st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
