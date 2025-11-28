@@ -973,13 +973,7 @@ filtro_sem_venda = st.checkbox("❄️ Sem vendas", value=False)
         iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
 
         badges = []
-        # --- Estoque zerado ---
-        if estoque == 0:
-            badges.append("<span class='badge zero'>❌ Sem estoque</span>")
-
-        # --- Baixo estoque ---
-        elif estoque <= 3:
-            badges.append("<span class='badge low'>⚠️ Baixo</span>")
+        if estoque<=3: badges.append(f"<span class='badge low'>⚠️ Baixo</span>")
         if vendidos>=15: badges.append(f"<span class='badge hot'>🔥 Saindo</span>")
         if nome in ultima_compra and vendidos==0:
             vendas_produto = vendas_df[vendas_df['PRODUTO']==nome] if not vendas_df.empty else pd.DataFrame()
