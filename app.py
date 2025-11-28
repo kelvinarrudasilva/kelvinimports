@@ -784,13 +784,12 @@ with tabs[1]:
 # =============================
 with tabs[2]:
 
-# --- Seleção da quantidade por página ---
-qtd_por_pagina = st.selectbox(
-    "Resultados por página:",
-    [6, 9, 12, 24, 48, 100],
-    index=0
-)
-
+    # --- Seleção da quantidade por página ---
+    qtd_por_pagina = st.selectbox(
+        "Resultados por página:",
+        [6, 9, 12, 24, 48, 100],
+        index=0
+    )
 
     st.markdown("""
     <style>
@@ -827,6 +826,7 @@ qtd_por_pagina = st.selectbox(
     .low{background:#4b0000;color:#fff;}
     .hot{background:#3b0050;color:#fff;}
     .zero{background:#2f2f2f;color:#fff;}
+    .slow{background:rgba(255,255,255,0.06);color:#ddd;}
 
     .small-muted { font-size:11px; color: #c7c7c7; margin-top:4px; }
     </style>
@@ -897,15 +897,15 @@ qtd_por_pagina = st.selectbox(
 
     st.markdown(f"**{total} resultados encontrados**")
 
+    # card grid
     st.markdown("<div class='card-grid-ecom'>",unsafe_allow_html=True)
 
-    
-    for _, r in df_page.iterrows():
-        nome = r["PRODUTO"]
-        estoque = int(r.get("EM ESTOQUE",0))
+    for _, r in df_page.reset_index(drop=True).iterrows():
+        nome = r.get("PRODUTO","")
+        estoque = int(r.get("EM ESTOQUE",0)) if pd.notna(r.get("EM ESTOQUE",0)) else 0
         venda = r.get("VENDA_FMT","R$ 0")
         custo = r.get("CUSTO_FMT","R$ 0")
-        vendidos = int(r.get("TOTAL_QTD",0))
+        vendidos = int(r.get("TOTAL_QTD",0)) if pd.notna(r.get("TOTAL_QTD",0)) else 0
 
         iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p])
 
@@ -913,15 +913,19 @@ qtd_por_pagina = st.selectbox(
         if estoque<=3: badges.append("<span class='badge low'>⚠️ Baixo</span>")
         if vendidos>=15: badges.append("<span class='badge hot'>🔥 Saindo</span>")
         if nome in ultima_compra and vendidos==0:
-            vendas_produto = vendas_df[vendas_df["PRODUTO"]==nome]
+            vendas_produto = vendas_df[vendas_df["PRODUTO"]==nome] if not vendas_df.empty else pd.DataFrame()
             if vendas_produto.empty:
                 badges.append("<span class='badge slow'>❄️ Sem vendas</span>")
         try:
             if nome in _enc_list_global:
                 badges.append("<span class='badge zero'>🐌 Encalhado</span>")
-        except: pass
-        if nome in _top5_list_global:
-            badges.append("<span class='badge hot'>🥇 Campeão</span>")
+        except Exception:
+            pass
+        try:
+            if nome in _top5_list_global:
+                badges.append("<span class='badge hot'>🥇 Campeão</span>")
+        except Exception:
+            pass
         badges_html=" ".join(badges)
 
         ultima = ultima_compra.get(nome,"—")
@@ -932,23 +936,29 @@ qtd_por_pagina = st.selectbox(
                 enc_style="style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
             elif nome in _top5_list_global:
                 enc_style="style='border-left:6px solid #22c55e;'"
-        except: pass
+        except Exception:
+            pass
 
         dias_sem_venda=""
         try:
-            vendas_prod=vendas_df[vendas_df["PRODUTO"]==nome]
+            vendas_prod = vendas_df[vendas_df["PRODUTO"]==nome] if not vendas_df.empty else pd.DataFrame()
             if not vendas_prod.empty:
-                last=vendas_prod["DATA"].max()
+                last = vendas_prod["DATA"].max()
                 if pd.notna(last) and estoque>0:
-                    delta=(pd.Timestamp.now()-last).days
-                    if delta>=60: cor="#ef4444"; icone="⛔"; pulse="pulseRed"
-                    elif delta>=30: cor="#f59e0b"; icone="⚠️"; pulse="pulseOrange"
-                    elif delta>=7: cor="#a78bfa"; icone="🕒"; pulse="pulsePurple"
-                    else: cor="#22c55e"; icone="✅"; pulse="pulseGreen"
-                    dias_sem_venda=f"<div style='font-size:11px;margin-top:2px;color:{cor};animation:{pulse} 2s infinite;'>{icone} Dias sem vender: <b>{delta}</b></div>"
-        except: pass
+                    delta = (pd.Timestamp.now() - last).days
+                    if delta>=60:
+                        cor="#ef4444"; icone="⛔"; pulse="pulseRed"
+                    elif delta>=30:
+                        cor="#f59e0b"; icone="⚠️"; pulse="pulseOrange"
+                    elif delta>=7:
+                        cor="#a78bfa"; icone="🕒"; pulse="pulsePurple"
+                    else:
+                        cor="#22c55e"; icone="✅"; pulse="pulseGreen"
+                    dias_sem_venda = f"<div style='font-size:11px;margin-top:2px;color:{cor};animation:{pulse} 2s infinite;'>{icone} Dias sem vender: <b>{delta}</b></div>"
+        except Exception:
+            pass
 
-        html = (
+        card_html = (
             f"<div class='card-ecom' {enc_style}>"
             f"<div class='avatar'>{iniciais}</div>"
             f"<div>"
@@ -964,4 +974,6 @@ qtd_por_pagina = st.selectbox(
             f"</div>"
             f"</div>"
         )
-    st.markdown(html, unsafe_allow_html=True)
+        st.markdown(card_html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
