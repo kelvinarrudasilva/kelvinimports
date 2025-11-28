@@ -8,6 +8,7 @@ from io import BytesIO
 import pandas as _pd
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 
