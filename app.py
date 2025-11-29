@@ -104,11 +104,7 @@ st.markdown("""
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 24px;
-    background: #0b0b0b;
-    border: 4px solid var(--laranja);
-    box-shadow: 0 0 22px rgba(201,106,24,0.45);
-}
+  }
 .logo-wrap img {
     width: 150px !important;
     height: 150px !important;
