@@ -17,11 +17,11 @@ import base64
 from io import BytesIO
 
 logo = Image.open("logo.png")
-logo_small = logo.resize((44,44))
+logo_small = logo
 buffer = BytesIO()
 logo_small.save(buffer, format="PNG")
 encoded_logo = base64.b64encode(buffer.getvalue()).decode("utf-8")
-logo_html = f'<img src="data:image/png;base64,{encoded_logo}" style="width:120px;height:120px;" >'
+logo_html = f'<img src="data:image/png;base64,{encoded_logo}" class="logo-img" >'
 
 
 # ================================================
@@ -77,6 +77,17 @@ import requests
 from io import BytesIO
 
 st.set_page_config(page_title="Nove Store — Dashboard", page_icon="logo.png", layout="wide", initial_sidebar_state="collapsed")
+
+st.markdown("""
+<style>
+.logo-img {
+    width: 150px !important;
+    height: 150px !important;
+    object-fit: contain !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 st.markdown("""
 <style>
