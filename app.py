@@ -1123,19 +1123,25 @@ with tabs[2]:
 # 
 
 
+
+
+
 # ============================
-# CSS BOTÃO FLUTUANTE (ESCOPO SEGURO)
+# BOTÃO FLUTUANTE REAL — FINAL PREMIUM
 # ============================
 st.markdown("""
 <style>
-.refresh-style {
+div[data-testid="stButton"] {
+    position: static !important;
+}
+.refresh-floating {
     position: fixed !important;
-    bottom: 120px !important;
-    right: 30px !important;
+    bottom: 90px !important;
+    right: 26px !important;
     z-index: 999999 !important;
     pointer-events: auto !important;
 }
-.refresh-style > button {
+.refresh-floating > button {
     width: 70px !important;
     height: 70px !important;
     border-radius: 50% !important;
@@ -1145,37 +1151,35 @@ st.markdown("""
     border: 2px solid rgba(180,150,255,0.35) !important;
     font-size: 32px !important;
     color: white !important;
-    box-shadow: 0 0 25px rgba(150,90,255,0.4), 0 0 10px rgba(150,90,255,0.3);
-    transition: 0.2s ease-in-out;
+    box-shadow: 0 0 25px rgba(150,90,255,0.4);
+    transition: 0.25s ease-in-out;
 }
-.refresh-style > button:hover {
+.refresh-floating > button:hover {
     transform: translateY(-8px) scale(1.08);
     box-shadow: 0 0 35px rgba(180,120,255,0.55);
 }
-div[data-testid="stButton"] { position: static !important; }
 </style>
 
 <script>
-function tagRefreshButton(){
+function applyFloating(){
     try{
         const btns = Array.from(document.querySelectorAll('div[data-testid="stButton"]'));
-        for(const b of btns){
-            const innerBtn = b.querySelector('button');
-            if(innerBtn && innerBtn.innerText && innerBtn.innerText.trim() === '🔄'){
-                b.classList.add('refresh-style');
-                b.style.display = 'flex';
+        for(const box of btns){
+            const b = box.querySelector("button");
+            if(b && b.innerText.trim() === "🔄"){
+                box.classList.add("refresh-floating");
                 return true;
             }
         }
-    }catch(e){}
+    } catch(e){}
     return false;
 }
 let attempts = 0;
-const maxAttempts = 10;
-const interval = setInterval(()=>{
-    attempts += 1;
-    const ok = tagRefreshButton();
-    if(ok || attempts >= maxAttempts) clearInterval(interval);
+let timer = setInterval(()=>{
+    attempts++;
+    if(applyFloating() || attempts > 12){
+        clearInterval(timer);
+    }
 }, 250);
 </script>
 """, unsafe_allow_html=True)
