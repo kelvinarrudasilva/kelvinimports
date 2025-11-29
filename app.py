@@ -80,6 +80,10 @@ st.set_page_config(page_title="Nove Store — Dashboard", page_icon="logo.png", 
 
 st.markdown("""
 <style>
+.topbar {
+    height: auto !important;
+    padding: 25px 0 !important;
+}
 .logo-wrap {
     display: flex;
     align-items: center;
@@ -91,13 +95,19 @@ st.markdown("""
     box-shadow: none !important;
 }
 .logo-original {
-    width: auto !important;
-    height: auto !important;
-    max-width: none !important;
-    max-height: none !important;
+    width: 150px !important;
+    height: 150px !important;
     object-fit: contain !important;
     image-rendering: auto !important;
 }
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
+
+
 </style>
 """, unsafe_allow_html=True)
 
