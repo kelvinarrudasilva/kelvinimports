@@ -1,6 +1,18 @@
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 import streamlit as st
 
+from PIL import Image
+import base64
+from io import BytesIO
+
+logo = Image.open("logo.png")
+logo_small = logo.resize((44,44))
+buffer = BytesIO()
+logo_small.save(buffer, format="PNG")
+encoded_logo = base64.b64encode(buffer.getvalue()).decode("utf-8")
+logo_html = f'<img src="data:image/png;base64,{encoded_logo}" style="width:44px;height:44px;border-radius:8px;object-fit:contain;">'
+
+
 # ================================================
 # 🔄 BOTÃO FLUTUANTE PREMIUM (ROXO NEON + ANIMAÇÃO)
 # ================================================
@@ -314,11 +326,17 @@ div[data-testid="stVerticalBlock"] > div > section::-webkit-scrollbar { width:8p
 # Top Bar
 # =============================
 st.markdown("""
+
 <div class="topbar">
-  
-<div class="logo-wrap">
-    <img src="logo.png" style="width: 44px; height: 44px; border-radius: 8px; object-fit: contain;">
+  <div class="logo-wrap">
+    {logo_html}
+  </div>
+  <div>
+    <div class="title">Nove Store — Dashboard</div>
+    <div class="subtitle">Visão rápida de vendas e estoque</div>
+  </div>
 </div>
+
 
   <div>
     <div class="title">Nove Store — Dashboard</div>
