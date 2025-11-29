@@ -2,108 +2,133 @@
 import streamlit as st
 
 # ============================================================
-# 🔄 BOTÃO FLUTUANTE PREMIUM — FUNCIONAL E LADO ESQUERDO
+# 
 # ============================================================
-import streamlit.components.v1 as components
-
+# 🔮 BOTÃO FLUTUANTE PREMIUM — LADO ESQUERDO (GLASS + NEON)
+# ============================================================
 st.markdown("""
 <style>
-#refresh-btn {
-    position: fixed;
-    bottom: 26px;
-    left: 26px;
-    width: 78px;
-    height: 78px;
-    border-radius: 50%;
-    background: radial-gradient(circle, #c084fc 0%, #9333ea 50%, #6b21a8 100%);
-    box-shadow: 0 0 22px rgba(168,85,247,0.6), 0 0 40px rgba(147,51,234,0.4);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 38px;
-    color: white;
-    cursor: pointer;
-    z-index: 99999;
-    animation: pulseGlow 3s infinite ease-in-out;
-    transition: 0.25s ease-in-out;
+/* left floating glass + neon button */
+#refresh-glass-btn{
+  position: fixed;
+  bottom: 28px;
+  left: 28px;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  z-index: 99999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  backdrop-filter: blur(6px) saturate(160%);
+  -webkit-backdrop-filter: blur(6px) saturate(160%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+  border: 1px solid rgba(167,139,250,0.08);
+  box-shadow: 0 8px 30px rgba(99,102,241,0.12), 0 6px 18px rgba(124,58,237,0.07);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-@keyframes pulseGlow {
-    0% { box-shadow: 0 0 20px rgba(168,85,247,0.6); transform: scale(1); }
-    50% { box-shadow: 0 0 45px rgba(168,85,247,0.9); transform: scale(1.10); }
-    100% { box-shadow: 0 0 20px rgba(168,85,247,0.6); transform: scale(1); }
+#refresh-glass-btn .inner {
+  width:72px;height:72px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.14), rgba(124,58,237,0.08));
+  border: 1px solid rgba(167,139,250,0.12);
+  box-shadow: inset 0 2px 8px rgba(255,255,255,0.02), 0 6px 18px rgba(124,58,237,0.12);
+  position:relative; overflow:hidden;
 }
-#refresh-btn:hover {
-    transform: scale(1.22) rotate(180deg);
+#refresh-glass-btn .icon {
+  font-size:36px; transform-origin:center center;
+  animation: spinSlow 6s linear infinite;
+  filter: drop-shadow(0 6px 18px rgba(99,102,241,0.14));
+}
+@keyframes spinSlow { 0%{ transform: rotate(0deg) } 100%{ transform: rotate(360deg) } }
+
+#refresh-glass-btn:hover{ transform: translateY(-6px) scale(1.07); box-shadow: 0 18px 50px rgba(99,102,241,0.18); }
+#refresh-glass-btn:active{ transform: translateY(-2px) scale(.98); }
+
+/* neon ring */
+#refresh-glass-btn::after{
+  content:"";
+  position:absolute; inset:-6px; border-radius:50%;
+  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.06), transparent 35%);
+  box-shadow: 0 0 18px rgba(167,139,250,0.06);
+  z-index:-1;
+  filter: blur(6px);
+  transition: opacity .25s ease;
+}
+/* ripple effect */
+.ripple {
+  position:absolute; width:8px; height:8px; border-radius:50%; background: rgba(167,139,250,0.18); transform:scale(1); opacity:0.9;
+  animation: rippleAnim 700ms ease-out;
+}
+@keyframes rippleAnim {
+  from { transform: scale(0.2); opacity:0.9; }
+  to { transform: scale(6); opacity:0; }
+}
+
+/* toast placeholder in the app (bottom-right) */
+#__refresh_toast{
+  position: fixed; right: 22px; bottom: 22px; z-index:999999; font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  display:none; padding:10px 14px; border-radius:10px; background: rgba(11,11,11,0.82); color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.03);
 }
 </style>
 
-<div id="refresh-btn">🔄</div>
-
-<script>
-const btn = document.getElementById("refresh-btn");
-btn.addEventListener("click", () => {
-    window.parent.location.reload();
-});
-</script>
-""", unsafe_allow_html=True)
-# ============================================================
-
-
-
-# ================================================
-# 🔄 BOTÃO FLUTUANTE PREMIUM (ROXO NEON + ANIMAÇÃO)
-# ================================================
-st.markdown("""
-<style>
-
-.refresh-btn {
-    position: fixed;
-    bottom: 26px;
-    right: 26px;
-    z-index: 9999;
-
-    background: linear-gradient(135deg, #a855f7, #7c3aed);
-    color: white;
-    border-radius: 50%;
-    width: 68px;
-    height: 68px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    font-size: 32px;
-    cursor: pointer;
-
-    box-shadow: 0 0 25px rgba(168, 85, 247, 0.65);
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-
-.refresh-btn:hover {
-    transform: scale(1.15) rotate(190deg);
-    box-shadow: 0 0 40px rgba(168, 85, 247, 0.95);
-}
-
-.refresh-btn:active {
-    transform: scale(0.92);
-}
-</style>
-
-<div class="refresh-btn" onclick="triggerRefresh()">
-    🔄
+<div id="refresh-glass-btn" title="Atualizar painel" aria-label="Atualizar painel" role="button">
+  <div class="inner" id="refresh-inner">
+    <div class="icon">🔄</div>
+  </div>
 </div>
+<div id="__refresh_toast">Atualizado! ✅</div>
 
 <script>
-function triggerRefresh() {
-    window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", value: "refresh_now"}, "*");
-}
+(function(){
+  const btn = document.getElementById("refresh-glass-btn");
+  const toast = document.getElementById("__refresh_toast");
+  function showToastOnce(){
+    // only show toast if query param refreshed=1 is set
+    try{
+      const params = new URLSearchParams(window.location.search);
+      if(params.get("refreshed")==="1"){
+        toast.style.display="block";
+        setTimeout(()=>{ toast.style.opacity=1; },20);
+        setTimeout(()=>{ toast.style.opacity=0; setTimeout(()=>{ toast.style.display="none"; },350); },2200);
+        // remove query param without reloading
+        params.delete("refreshed");
+        const newurl = window.location.pathname + (params.toString()? "?" + params.toString() : "");
+        window.history.replaceState({}, document.title, newurl);
+      }
+    }catch(e){ /* ignore */ }
+  }
+  // click handler creates ripple, sets query param and reloads
+  btn.addEventListener("click", function(ev){
+    const inner = document.getElementById("refresh-inner");
+    const ripple = document.createElement("div");
+    ripple.className = "ripple";
+    ripple.style.left = (ev.offsetX - 8) + "px";
+    ripple.style.top = (ev.offsetY - 8) + "px";
+    inner.appendChild(ripple);
+    setTimeout(()=>{ try{ ripple.remove() }catch(e){} },900);
+
+    // build url with refreshed=1 (preserve other params)
+    try{
+      const url = new URL(window.location.href);
+      url.searchParams.set("refreshed", "1");
+      // navigate to the new url (this reloads the app)
+      window.location.href = url.toString();
+    }catch(e){
+      // fallback to simple reload
+      window.location.reload();
+    }
+  }, false);
+
+  // run on load to show the toast if needed
+  document.addEventListener("DOMContentLoaded", showToastOnce);
+  // also try immediately in case DOMContentLoaded already fired
+  setTimeout(showToastOnce, 150);
+})();
 </script>
 """, unsafe_allow_html=True)
-
-# Listener
-if "refresh_now" in st.session_state and st.session_state["refresh_now"]:
-    st.session_state["refresh_now"] = False
-    st.rerun()
-
+# ============================================================
 
 import pandas as pd
 import plotly.express as px
