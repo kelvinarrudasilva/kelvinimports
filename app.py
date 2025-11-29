@@ -17,7 +17,7 @@ import base64
 from io import BytesIO
 
 logo = Image.open("logo.png")
-logo_small = logo
+logo_small = logo.resize((44,44))
 buffer = BytesIO()
 logo_small.save(buffer, format="PNG")
 encoded_logo = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -80,10 +80,16 @@ st.set_page_config(page_title="Nove Store — Dashboard", page_icon="logo.png", 
 
 st.markdown("""
 <style>
-.logo-img {
-    width: 150px !important;
-    height: 150px !important;
-    object-fit: contain !important;
+.block-container {
+    padding-top: 0rem !important;
+}
+.main > div {
+    padding-top: 0px !important;
+    margin-top: -20px !important;
+}
+.topbar {
+    margin-top: -10px !important;
+    padding-top: 5px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -91,36 +97,39 @@ st.markdown("""
 
 st.markdown("""
 <style>
-:root{
-  --turquesa: #19C6C2;
-  --laranja: #C96A18;
-  --preto: #0b0b0b;
-  --cinza: #141414;
-}
 
 .logo-wrap {
-    width: 160px !important;
-    height: 160px !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 24px;
-    background: #0b0b0b;
-    border: 1px solid var(--laranja);
-    box-shadow: 0 0 22px rgba(201,106,24,0.45);
+    width: auto !important;
+    height: auto !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
-.logo-wrap img {
+.logo-original {
     width: 150px !important;
     height: 150px !important;
-    object-fit: contain;
+    object-fit: contain !important;
+    image-rendering: auto !important;
 }
-.title { font-size:28px !important; font-weight:900 !important; color:var(--turquesa) !important; }
-.subtitle { font-size:14px !important; color:#bdbdbd !important; }
-.kpi { border-left:6px solid var(--turquesa) !important; }
-.kpi-lucro { border-left-color: var(--laranja) !important; }
-.badge.low { background:rgba(201,106,24,0.25); color:var(--laranja); border:1px solid rgba(201,106,24,0.4); }
-.badge.hot { background:rgba(25,198,194,0.22); color:var(--turquesa); border:1px solid rgba(25,198,194,0.4); }
-.avatar.neon { background: linear-gradient(135deg, var(--turquesa), var(--laranja)); box-shadow:0 0 18px rgba(25,198,194,0.25); }
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
+
+
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
+
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -268,7 +277,7 @@ st.markdown("""
   --table-row:#121212;
 }
 body, .stApp { background: var(--bg) !important; color:#f0f0f0 !important; font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
-.topbar { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+
 
 .logo-wrap svg { width:26px; height:26px; }
 .title { font-size:20px; font-weight:800; color:var(--accent-2); margin:0; line-height:1; }
@@ -698,11 +707,11 @@ with col_kpis:
     st.markdown(f"""
     <div class="kpi-row">
       <div class="kpi"><h3>💵 Total Vendido</h3><div class="value">{formatar_reais_sem_centavos(total_vendido)}</div></div>
-      <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Total Lucro</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
-      <div class="kpi" style="border-left-color:#f59e0b;"><h3>💸 Total Compras</h3><div class="value">{formatar_reais_sem_centavos(total_compras)}</div></div>
-      <div class="kpi" style="border-left-color:#8b5cf6;"><h3>📦 Valor Custo Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_custo_estoque)}</div></div>
-      <div class="kpi" style="border-left-color:#a78bfa;"><h3>🏷️ Valor Venda Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_venda_estoque)}</div></div>
-      <div class="kpi" style="border-left-color:#6ee7b7;"><h3>🔢 Qtde Total Itens</h3><div class="value">{quantidade_total_itens}</div></div>
+      <div class="kpi" class="logo-original"><h3>🧾 Total Lucro</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
+      <div class="kpi" class="logo-original"><h3>💸 Total Compras</h3><div class="value">{formatar_reais_sem_centavos(total_compras)}</div></div>
+      <div class="kpi" class="logo-original"><h3>📦 Valor Custo Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_custo_estoque)}</div></div>
+      <div class="kpi" class="logo-original"><h3>🏷️ Valor Venda Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_venda_estoque)}</div></div>
+      <div class="kpi" class="logo-original"><h3>🔢 Qtde Total Itens</h3><div class="value">{quantidade_total_itens}</div></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1120,9 +1129,9 @@ with tabs[2]:
         enc_style = ""
         try:
             if nome in _enc_list_global:
-                enc_style="style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
+                enc_class="logo-original"
             elif nome in _top5_list_global:
-                enc_style="style='border-left:6px solid #22c55e;'"
+                enc_class="logo-original"
         except Exception:
             pass
 
