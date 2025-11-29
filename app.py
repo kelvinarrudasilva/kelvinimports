@@ -63,7 +63,7 @@ from datetime import datetime, timedelta
 import requests
 from io import BytesIO
 
-st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Nove Store — Dashboard", page_icon="logo.png", layout="wide", initial_sidebar_state="collapsed")
 
 
 
@@ -315,15 +315,13 @@ div[data-testid="stVerticalBlock"] > div > section::-webkit-scrollbar { width:8p
 # =============================
 st.markdown("""
 <div class="topbar">
-  <div class="logo-wrap">
-    <svg viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="18" height="18" rx="4" fill="white" fill-opacity="0.06"/>
-      <path d="M7 9h10l-1 6H8L7 9z" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
-      <path d="M9 6l2-2 2 2" stroke="white" stroke-opacity="0.95" stroke-width="1.2"/>
-    </svg>
-  </div>
+  
+<div class="logo-wrap">
+    <img src="logo.png" style="width: 44px; height: 44px; border-radius: 8px; object-fit: contain;">
+</div>
+
   <div>
-    <div class="title">Loja Importados — Dashboard</div>
+    <div class="title">Nove Store — Dashboard</div>
     <div class="subtitle">Visão rápida de vendas e estoque</div>
   </div>
 </div>
