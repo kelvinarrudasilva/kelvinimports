@@ -1,6 +1,77 @@
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 import streamlit as st
 
+# ============================
+# 🔄 BOTÃO FLUTUANTE REAL + NEON
+# ============================
+refresh_area = st.empty()
+
+with refresh_area.container():
+    refresh_btn = st.button("🔄", key="refresh_btn_main")
+    if refresh_btn:
+        st.session_state["refresh_now"] = True
+        st.rerun()
+
+st.markdown("""
+<style>
+div[data-testid="stButton"][key="refresh_btn_main"] {
+    position: fixed !important;
+    bottom: 26px !important;
+    right: 26px !important;
+    z-index: 9999 !important;
+
+    background: linear-gradient(135deg, #a855f7, #7c3aed) !important;
+    color: white !important;
+    border-radius: 50% !important;
+    width: 68px !important;
+    height: 68px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 32px !important;
+    cursor: pointer !important;
+
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.65) !important;
+    transition: transform 0.25s ease, box-shadow 0.25s ease !important;
+}
+
+div[data-testid="stButton"][key="refresh_btn_main"]:hover {
+    transform: scale(1.15) rotate(190deg) !important;
+    box-shadow: 0 0 40px rgba(168, 85, 247, 0.95) !important;
+}
+
+div[data-testid="stButton"][key="refresh_btn_main"]:active {
+    transform: scale(0.92) !important;
+}
+
+div[data-testid="stButton"][key="refresh_btn_main"]::after {
+    content: "!";
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    background: #ff3333;
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow: 0 0 10px #ff3333;
+    animation: pulse 1.3s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+
 # ================================================
 # 🔄 BOTÃO FLUTUANTE PREMIUM (ROXO NEON + ANIMAÇÃO)
 # ================================================
@@ -39,15 +110,7 @@ st.markdown("""
 }
 </style>
 
-<div class="refresh-btn" onclick="triggerRefresh()">
-    🔄
-</div>
 
-<script>
-function triggerRefresh() {
-    window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", value: "refresh_now"}, "*");
-}
-</script>
 """, unsafe_allow_html=True)
 
 # Listener
@@ -64,6 +127,25 @@ import requests
 from io import BytesIO
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
+
+# ============================
+# LOGO + TÍTULO
+# ============================
+from PIL import Image
+
+try:
+    logo = Image.open("logo.png")
+except:
+    logo = None
+
+c1, c2 = st.columns([0.08, 0.92])
+with c1:
+    if logo:
+        st.image(logo, width=40)
+
+with c2:
+    st.markdown("<h1 style='margin:0; padding:0;'>NOVE STORE — Dashboard</h1>", unsafe_allow_html=True)
+
 
 
 
