@@ -31,19 +31,27 @@ div.stButton > button:hover {
     transform: scale(1.15) rotate(190deg) !important;
     box-shadow: 0 0 40px rgba(168, 85, 247, 0.95) !important;
 }
-div.stButton::after {
+
+@keyframes pulse {0%{transform:scale(1);}50%{transform:scale(1.2);}100%{transform:scale(1);} }
+
+div.stButton:last-of-type::after {
     content: "!";
     position: absolute;
     top: -4px;
     right: -4px;
-    width: 18px; height: 18px;
-    background: #ff3333; color:white;
-    border-radius:50%; font-size:13px;
-    display:flex; align-items:center; justify-content:center;
+    width: 18px;
+    height: 18px;
+    background: #ff3333;
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
     box-shadow:0 0 10px #ff3333;
-    animation:pulse 1.3s infinite;
+    animation: pulse 1.3s infinite;
 }
-@keyframes pulse {0%{transform:scale(1);}50%{transform:scale(1.2);}100%{transform:scale(1);} }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -317,6 +325,25 @@ div[data-testid="stVerticalBlock"] > div > section::-webkit-scrollbar { width:8p
     transform:translateY(-2px);
     transition:.2s;
     box-shadow:0 8px 20px rgba(0,0,0,0.35);
+}
+
+
+div.stButton:last-of-type::after {
+    content: "!";
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    background: #ff3333;
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 0 10px #ff3333;
+    animation: pulse 1.3s infinite;
 }
 
 </style>
@@ -916,7 +943,26 @@ with tabs[2]:
     .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .muted { color:#cfcfe0; font-size:13px; }
 
-    </style>
+    
+div.stButton:last-of-type::after {
+    content: "!";
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    background: #ff3333;
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 0 10px #ff3333;
+    animation: pulse 1.3s infinite;
+}
+
+</style>
     """, unsafe_allow_html=True)
 
     st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
@@ -1041,7 +1087,26 @@ with tabs[2]:
 
     # render grid with selected columns layout
     # inject dynamic grid style
-    st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}
+div.stButton:last-of-type::after {
+    content: "!";
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
+    background: #ff3333;
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 0 10px #ff3333;
+    animation: pulse 1.3s infinite;
+}
+
+</style>", unsafe_allow_html=True)
     st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
 
     for _, r in df_page.iterrows():
