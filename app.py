@@ -1,3 +1,11 @@
+
+<style>
+@keyframes spin {
+  0% {transform: rotate(0deg);}
+  100% {transform: rotate(360deg);}
+}
+</style>
+
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 import streamlit as st
 
@@ -10,7 +18,7 @@ logo_small = logo.resize((44,44))
 buffer = BytesIO()
 logo_small.save(buffer, format="PNG")
 encoded_logo = base64.b64encode(buffer.getvalue()).decode("utf-8")
-logo_html = f'<img src="data:image/png;base64,{encoded_logo}" style="width:64px;height:64px;border-radius:8px;object-fit:contain;">'
+logo_html = f'<img src="data:image/png;base64,{encoded_logo}" style="width:96px;height:96px;animation:spin 6s linear infinite;border-radius:8px;object-fit:contain;">'
 
 
 # ================================================
@@ -51,21 +59,11 @@ st.markdown("""
 }
 </style>
 
-<div class="refresh-btn" onclick="triggerRefresh()">
-    🔄
-</div>
 
-<script>
-function triggerRefresh() {
-    window.location.reload(), "*");
-}
-</script>
 """, unsafe_allow_html=True)
 
 # Listener
-if "refresh_now" in st.session_state and st.session_state["refresh_now"]:
-    st.session_state["refresh_now"] = False
-    st.rerun()
+
 
 
 import pandas as pd
