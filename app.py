@@ -5,25 +5,23 @@ import streamlit as st
 # 
 
 # ============================================================
+# 
+# ============================================================
 # 🔮 BOTÃO FLUTUANTE PREMIUM — LADO ESQUERDO (GLASS + NEON) via components.html
 # ============================================================
 import streamlit.components.v1 as components
-_components = components  # alias to avoid shadowing earlier import
-_components.html(r"""
+_components_html = r"""
 <style>
-/* left floating glass + neon button */
+/* left floating glass + neon button - fixed positioning within iframe */
 #refresh-glass-btn{
-  position: fixed;
-  bottom: 28px;
-  left: 28px;
-  width: 84px;
-  height: 84px;
-  border-radius: 50%;
-  z-index: 99999;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
+  position: fixed !important;
+  bottom: 18px !important;
+  left: 18px !important;
+  width: 84px !important;
+  height: 84px !important;
+  border-radius: 50% !important;
+  z-index: 2147483000 !important;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
   backdrop-filter: blur(6px) saturate(160%);
   -webkit-backdrop-filter: blur(6px) saturate(160%);
   background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
@@ -31,49 +29,17 @@ _components.html(r"""
   box-shadow: 0 8px 30px rgba(99,102,241,0.12), 0 6px 18px rgba(124,58,237,0.07);
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-#refresh-glass-btn .inner {
-  width:72px;height:72px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.14), rgba(124,58,237,0.08));
-  border: 1px solid rgba(167,139,250,0.12);
-  box-shadow: inset 0 2px 8px rgba(255,255,255,0.02), 0 6px 18px rgba(124,58,237,0.12);
-  position:relative; overflow:hidden;
+#refresh-glass-btn .inner { width:72px;height:72px;border-radius:50%; display:flex;align-items:center;justify-content:center;
+  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.14), rgba(124,58,237,0.08)); border: 1px solid rgba(167,139,250,0.12);
+  box-shadow: inset 0 2px 8px rgba(255,255,255,0.02), 0 6px 18px rgba(124,58,237,0.12); position:relative; overflow:hidden;
 }
-#refresh-glass-btn .icon {
-  font-size:36px; transform-origin:center center;
-  animation: spinSlow 6s linear infinite;
-  filter: drop-shadow(0 6px 18px rgba(99,102,241,0.14));
-}
+#refresh-glass-btn .icon { font-size:36px; transform-origin:center center; animation: spinSlow 6s linear infinite; filter: drop-shadow(0 6px 18px rgba(99,102,241,0.14)); }
 @keyframes spinSlow { 0%{ transform: rotate(0deg) } 100%{ transform: rotate(360deg) } }
-
 #refresh-glass-btn:hover{ transform: translateY(-6px) scale(1.07); box-shadow: 0 18px 50px rgba(99,102,241,0.18); }
 #refresh-glass-btn:active{ transform: translateY(-2px) scale(.98); }
-
-/* neon ring */
-#refresh-glass-btn::after{
-  content:"";
-  position:absolute; inset:-6px; border-radius:50%;
-  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.06), transparent 35%);
-  box-shadow: 0 0 18px rgba(167,139,250,0.06);
-  z-index:-1;
-  filter: blur(6px);
-  transition: opacity .25s ease;
-}
-/* ripple effect */
-.ripple {
-  position:absolute; width:8px; height:8px; border-radius:50%; background: rgba(167,139,250,0.18); transform:scale(1); opacity:0.9;
-  animation: rippleAnim 700ms ease-out;
-}
-@keyframes rippleAnim {
-  from { transform: scale(0.2); opacity:0.9; }
-  to { transform: scale(6); opacity:0; }
-}
-
-/* toast placeholder in the app (bottom-right) */
-#__refresh_toast{
-  position: fixed; right: 22px; bottom: 22px; z-index:999999; font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-  display:none; padding:10px 14px; border-radius:10px; background: rgba(11,11,11,0.82); color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.03);
-}
+.ripple { position:absolute; width:8px; height:8px; border-radius:50%; background: rgba(167,139,250,0.18); transform:scale(1); opacity:0.9; animation: rippleAnim 700ms ease-out; }
+@keyframes rippleAnim { from { transform: scale(0.2); opacity:0.9; } to { transform: scale(6); opacity:0; } }
+#__refresh_toast{ position: fixed; right: 22px; bottom: 22px; z-index:999999; font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; display:none; padding:10px 14px; border-radius:10px; background: rgba(11,11,11,0.82); color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.03); }
 </style>
 
 <div id="refresh-glass-btn" title="Atualizar painel" aria-label="Atualizar painel" role="button">
@@ -87,9 +53,6 @@ _components.html(r"""
 (function(){
   const btn = document.getElementById("refresh-glass-btn");
   const toast = document.getElementById("__refresh_toast");
-  function showToastOnce(){
-    // display when receiving a 'show_toast' message
-  }
   // click handler creates ripple, then notifies Streamlit via postMessage that sets a component value
   btn.addEventListener("click", function(ev){
     const inner = document.getElementById("refresh-inner");
@@ -101,24 +64,17 @@ _components.html(r"""
     setTimeout(()=>{ try{ ripple.remove() }catch(e){} },900);
 
     // send message Streamlit listens to (components.html context)
-    window.parent.postMessage({isStreamlitMessage:true, type:"streamlit:setComponentValue", key:"refresh_now", value:true}, "*");
-  }, false);
-
-  // Listen to messages from parent to show toast (parent can send 'show_toast' message)
-  window.addEventListener("message", function(e){
     try{
-      const d = e.data || {};
-      if(d && d.type === "show_refresh_toast"){
-        toast.style.display="block";
-        toast.style.opacity=1;
-        setTimeout(()=>{ toast.style.opacity=0; setTimeout(()=>{ toast.style.display="none"; },350); },2200);
-      }
-    }catch(err){}
+      window.parent.postMessage({isStreamlitMessage:true, type:"streamlit:setComponentValue", key:"refresh_now", value: true}, "*");
+    }catch(e){
+      try{ window.parent.postMessage({type:"custom_refresh", value:true}, "*"); }catch(err){}
+    }
   }, false);
-
 })();
 </script>
-""", height=140)
+"""
+# render component with adequate height so the iframe covers bottom area; allow scrolling false
+components.html(_components_html, height=180, scrolling=False)
 # ============================================================
 # ============================================================
 
