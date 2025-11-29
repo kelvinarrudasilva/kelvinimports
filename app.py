@@ -17,7 +17,7 @@ import base64
 from io import BytesIO
 
 logo = Image.open("logo.png")
-logo_small = logo.resize((44,44))
+logo_small = logo
 buffer = BytesIO()
 logo_small.save(buffer, format="PNG")
 encoded_logo = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -80,25 +80,10 @@ st.set_page_config(page_title="Nove Store — Dashboard", page_icon="logo.png", 
 
 st.markdown("""
 <style>
-.topbar {
-    height: auto !important;
-    padding: 25px 0 !important;
-}
-.logo-wrap {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: auto !important;
-    height: auto !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-}
-.logo-original {
+.logo-img {
     width: 150px !important;
     height: 150px !important;
     object-fit: contain !important;
-    image-rendering: auto !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -106,16 +91,36 @@ st.markdown("""
 
 st.markdown("""
 <style>
+:root{
+  --turquesa: #19C6C2;
+  --laranja: #C96A18;
+  --preto: #0b0b0b;
+  --cinza: #141414;
+}
 
-
-</style>
-""", unsafe_allow_html=True)
-
-
-st.markdown("""
-<style>
-
-
+.logo-wrap {
+    width: 160px !important;
+    height: 160px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 24px;
+    background: #0b0b0b;
+    border: 4px solid var(--laranja);
+    box-shadow: 0 0 22px rgba(201,106,24,0.45);
+}
+.logo-wrap img {
+    width: 150px !important;
+    height: 150px !important;
+    object-fit: contain;
+}
+.title { font-size:28px !important; font-weight:900 !important; color:var(--turquesa) !important; }
+.subtitle { font-size:14px !important; color:#bdbdbd !important; }
+.kpi { border-left:6px solid var(--turquesa) !important; }
+.kpi-lucro { border-left-color: var(--laranja) !important; }
+.badge.low { background:rgba(201,106,24,0.25); color:var(--laranja); border:1px solid rgba(201,106,24,0.4); }
+.badge.hot { background:rgba(25,198,194,0.22); color:var(--turquesa); border:1px solid rgba(25,198,194,0.4); }
+.avatar.neon { background: linear-gradient(135deg, var(--turquesa), var(--laranja)); box-shadow:0 0 18px rgba(25,198,194,0.25); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -693,11 +698,11 @@ with col_kpis:
     st.markdown(f"""
     <div class="kpi-row">
       <div class="kpi"><h3>💵 Total Vendido</h3><div class="value">{formatar_reais_sem_centavos(total_vendido)}</div></div>
-      <div class="kpi" class="logo-original"><h3>🧾 Total Lucro</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
-      <div class="kpi" class="logo-original"><h3>💸 Total Compras</h3><div class="value">{formatar_reais_sem_centavos(total_compras)}</div></div>
-      <div class="kpi" class="logo-original"><h3>📦 Valor Custo Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_custo_estoque)}</div></div>
-      <div class="kpi" class="logo-original"><h3>🏷️ Valor Venda Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_venda_estoque)}</div></div>
-      <div class="kpi" class="logo-original"><h3>🔢 Qtde Total Itens</h3><div class="value">{quantidade_total_itens}</div></div>
+      <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Total Lucro</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
+      <div class="kpi" style="border-left-color:#f59e0b;"><h3>💸 Total Compras</h3><div class="value">{formatar_reais_sem_centavos(total_compras)}</div></div>
+      <div class="kpi" style="border-left-color:#8b5cf6;"><h3>📦 Valor Custo Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_custo_estoque)}</div></div>
+      <div class="kpi" style="border-left-color:#a78bfa;"><h3>🏷️ Valor Venda Estoque</h3><div class="value">{formatar_reais_sem_centavos(valor_venda_estoque)}</div></div>
+      <div class="kpi" style="border-left-color:#6ee7b7;"><h3>🔢 Qtde Total Itens</h3><div class="value">{quantidade_total_itens}</div></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1115,9 +1120,9 @@ with tabs[2]:
         enc_style = ""
         try:
             if nome in _enc_list_global:
-                enc_class="logo-original"
+                enc_style="style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
             elif nome in _top5_list_global:
-                enc_class="logo-original"
+                enc_style="style='border-left:6px solid #22c55e;'"
         except Exception:
             pass
 
