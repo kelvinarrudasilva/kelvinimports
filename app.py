@@ -10,6 +10,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+.logo-original {
+    width: 200px !important;
+    height: 200px !important;
+    object-fit: contain !important;
+    image-rendering: auto !important;
+}
+.topbar {
+    display:flex !important;
+    justify-content:flex-start !important;
+    align-items:center !important;
+}
+
+
 
 
 from PIL import Image
@@ -108,12 +121,7 @@ st.markdown("""
     border: none !important;
     box-shadow: none !important;
 }
-.logo-original {
-    width: 150px !important;
-    height: 150px !important;
-    object-fit: contain !important;
-    image-rendering: auto !important;
-}
+
 </style>
 """, unsafe_allow_html=True)
 
