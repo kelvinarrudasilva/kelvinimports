@@ -81,8 +81,8 @@ st.set_page_config(page_title="Nove Store — Dashboard", page_icon="logo.png", 
 st.markdown("""
 <style>
 .logo-img {
-    width: 150px !important;
-    height: 150px !important;
+    width: 110px !important;
+    height: 110px !important;
     object-fit: contain !important;
 }
 </style>
