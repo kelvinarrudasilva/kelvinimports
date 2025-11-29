@@ -39,21 +39,7 @@ st.markdown("""
 }
 </style>
 
-<div class="refresh-btn" onclick="triggerRefresh()">
-    🔄
-</div>
 
-<script>
-function triggerRefresh() {
-    window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", value: "refresh_now"}, "*");
-}
-</script>
-""", unsafe_allow_html=True)
-
-# Listener
-if "refresh_now" in st.session_state and st.session_state["refresh_now"]:
-    st.session_state["refresh_now"] = False
-    st.rerun()
 
 
 import pandas as pd
@@ -1132,19 +1118,22 @@ with tabs[2]:
 
 
 # ============================
-# CSS BOTÃO FLUTUANTE
+# 
+
+
+# ============================
+# CSS BOTÃO FLUTUANTE (ESCOPO SEGURO)
 # ============================
 st.markdown("""
 <style>
-div[data-testid="stButton"][class*="stButton"] {
+.refresh-style {
     position: fixed !important;
     bottom: 120px !important;
     right: 30px !important;
     z-index: 999999 !important;
+    pointer-events: auto !important;
 }
-
-/* Botão */
-div[data-testid="stButton"] > button {
+.refresh-style > button {
     width: 70px !important;
     height: 70px !important;
     border-radius: 50% !important;
@@ -1157,10 +1146,34 @@ div[data-testid="stButton"] > button {
     box-shadow: 0 0 25px rgba(150,90,255,0.4), 0 0 10px rgba(150,90,255,0.3);
     transition: 0.2s ease-in-out;
 }
-
-div[data-testid="stButton"] > button:hover {
+.refresh-style > button:hover {
     transform: translateY(-8px) scale(1.08);
     box-shadow: 0 0 35px rgba(180,120,255,0.55);
 }
+div[data-testid="stButton"] { position: static !important; }
 </style>
+
+<script>
+function tagRefreshButton(){
+    try{
+        const btns = Array.from(document.querySelectorAll('div[data-testid="stButton"]'));
+        for(const b of btns){
+            const innerBtn = b.querySelector('button');
+            if(innerBtn && innerBtn.innerText && innerBtn.innerText.trim() === '🔄'){
+                b.classList.add('refresh-style');
+                b.style.display = 'flex';
+                return true;
+            }
+        }
+    }catch(e){}
+    return false;
+}
+let attempts = 0;
+const maxAttempts = 10;
+const interval = setInterval(()=>{
+    attempts += 1;
+    const ok = tagRefreshButton();
+    if(ok || attempts >= maxAttempts) clearInterval(interval);
+}, 250);
+</script>
 """, unsafe_allow_html=True)
