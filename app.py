@@ -99,8 +99,8 @@ st.markdown("""
 }
 
 .logo-wrap {
-    width: 160px !important;
-    height: 160px !important;
+    width: 110px !important;
+    height: 110px !important;
     display: flex;
     align-items: center;
     justify-content: center;
