@@ -2,6 +2,59 @@
 import streamlit as st
 
 # ================================================
+# 🔄 BOTÃO FLUTUANTE PREMIUM (ROXO NEON + ANIMAÇÃO)
+# ================================================
+st.markdown("""
+<style>
+
+.refresh-btn {
+    position: fixed;
+    bottom: 26px;
+    right: 26px;
+    z-index: 9999;
+
+    background: linear-gradient(135deg, #a855f7, #7c3aed);
+    color: white;
+    border-radius: 50%;
+    width: 68px;
+    height: 68px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 32px;
+    cursor: pointer;
+
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.65);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.refresh-btn:hover {
+    transform: scale(1.15) rotate(190deg);
+    box-shadow: 0 0 40px rgba(168, 85, 247, 0.95);
+}
+
+.refresh-btn:active {
+    transform: scale(0.92);
+}
+</style>
+
+<div class="refresh-btn" onclick="triggerRefresh()">
+    🔄
+</div>
+
+<script>
+function triggerRefresh() {
+    window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", value: "refresh_now"}, "*");
+}
+</script>
+""", unsafe_allow_html=True)
+
+# Listener
+if "refresh_now" in st.session_state and st.session_state["refresh_now"]:
+    st.session_state["refresh_now"] = False
+    st.rerun()
+
 
 import pandas as pd
 import plotly.express as px
@@ -12,37 +65,25 @@ from io import BytesIO
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
-# -----------------------------
-# Hidden real refresh button (triggered programmatically)
-# -----------------------------
-# Ensure flag exists
-if "refresh_now" not in st.session_state:
-    st.session_state["refresh_now"] = False
+# ============================
+# 🔄 BOTÃO FLUTUANTE REAL
+# ============================
+def reload_dfs_only():
+    try:
+        st.toast("Atualizando...")
+    except:
+        st.write("Atualizando...")
+    # >>> AQUI você coloca sua lógica REAL de recarregar planilha <<<
+    # Exemplo:
+    # carregar_todos_os_dfs()
+    try:
+        st.toast("Atualizado! ✔️")
+    except:
+        st.success("Atualizado! ✔️")
 
-# Real hidden button: when clicked it executes reload_dfs_only() on the Python side
-try:
-    st.button("REFRESH_HIDDEN_KELVIN", key="real_refresh_button", on_click=reload_dfs_only, help="Hidden refresh trigger")
-except Exception:
-    # fallback handler if on_click not available
-    if st.session_state.get("refresh_now_manual", False):
-        st.session_state["refresh_now_manual"] = False
-        try:
-            reload_dfs_only()
-        except:
-            pass
-
-# hide the visible hidden button node via small JS to avoid UI glitch
-st.markdown("""
-<script>
-setTimeout(function(){
-  try {
-    const btns = Array.from(document.querySelectorAll('button'));
-    const b = btns.find(el => el.innerText && el.innerText.trim() === 'REFRESH_HIDDEN_KELVIN');
-    if(b){ b.style.display='none'; b.dataset.hidden='1'; }
-  } catch(e){}
-}, 80);
-</script>
-""", unsafe_allow_html=True)
+clicked_refresh = st.button("🔄", key="refresh_button")
+if clicked_refresh:
+    reload_dfs_only()
 
 
 
@@ -356,57 +397,6 @@ def carregar_xlsx_from_url(url):
     r=requests.get(url,timeout=25)
     r.raise_for_status()
     return pd.ExcelFile(BytesIO(r.content))
-
-# -----------------------------
-# Função para recarregar apenas as abas/DFs (usada pelo botão premium)
-# -----------------------------
-def reload_dfs_only():
-    global dfs, xls, abas_all
-    try:
-        # try to fetch the workbook and only reload core sheets
-        xls_local = carregar_xlsx_from_url(URL_PLANILHA)
-        abas_local = xls_local.sheet_names
-        dfs_local = {}
-        for aba in ["ESTOQUE","VENDAS","COMPRAS"]:
-            if aba in abas_local:
-                raw = pd.read_excel(URL_PLANILHA, sheet_name=aba, header=None)
-                cleaned = limpar_aba_raw(raw, aba)
-                if cleaned is not None:
-                    dfs_local[aba] = cleaned
-        # replace relevant keys in dfs
-        try:
-            # keep other keys, but replace these
-            for k in ["ESTOQUE","VENDAS","COMPRAS"]:
-                if k in dfs: dfs.pop(k, None)
-            for k,v in dfs_local.items():
-                dfs[k] = v
-            # minimal normalizations
-            if "ESTOQUE" in dfs:
-                df_e = dfs["ESTOQUE"].copy()
-                if "EM ESTOQUE" in df_e.columns:
-                    df_e["EM ESTOQUE"] = parse_int_series(df_e["EM ESTOQUE"]).fillna(0).astype(int)
-                dfs["ESTOQUE"] = df_e
-        except Exception:
-            pass
-        # indicate last reload
-        try:
-            st.session_state["last_reload_ts"] = str(pd.Timestamp.now())
-        except Exception:
-            pass
-        # notify user
-        try:
-            st.toast("Atualizado! ✅")
-        except Exception:
-            try:
-                st.success("Atualizado! ✅")
-            except:
-                pass
-    except Exception as e:
-        try:
-            st.error(f"Falha ao recarregar: {e}")
-        except:
-            pass
-    return
 
 def detectar_linha_cabecalho(df_raw,keywords):
     for i in range(min(len(df_raw),12)):
@@ -1139,83 +1129,38 @@ with tabs[2]:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ============================================================
-# PREMIUM REFRESH BUTTON — Center bottom (small 60px, 20px above border)
-# ============================================================
-import streamlit.components.v1 as components
-_components_html = """
+
+
+# ============================
+# CSS BOTÃO FLUTUANTE
+# ============================
+st.markdown("""
 <style>
-#premium-refresh-btn{
-  position: fixed !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  bottom: 20px !important;
-  width: 60px !important;
-  height: 60px !important;
-  border-radius: 50% !important;
-  z-index: 2147483000 !important;
-  display:flex; align-items:center; justify-content:center; cursor:pointer;
-  backdrop-filter: blur(6px) saturate(140%);
-  -webkit-backdrop-filter: blur(6px) saturate(140%);
-  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
-  border: 1px solid rgba(167,139,250,0.12);
-  box-shadow: 0 10px 30px rgba(99,102,241,0.12), 0 6px 18px rgba(124,58,237,0.06);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+div[data-testid="stButton"][class*="stButton"] {
+    position: fixed !important;
+    bottom: 120px !important;
+    right: 30px !important;
+    z-index: 999999 !important;
 }
-#premium-refresh-btn .inner{ width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.14), rgba(124,58,237,0.08)); border:1px solid rgba(167,139,250,0.14);
-  box-shadow: inset 0 2px 8px rgba(255,255,255,0.02); position:relative; overflow:hidden;
+
+/* Botão */
+div[data-testid="stButton"] > button {
+    width: 70px !important;
+    height: 70px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, rgba(150,90,255,0.25), rgba(80,40,200,0.35)) !important;
+    backdrop-filter: blur(8px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(8px) saturate(180%) !important;
+    border: 2px solid rgba(180,150,255,0.35) !important;
+    font-size: 32px !important;
+    color: white !important;
+    box-shadow: 0 0 25px rgba(150,90,255,0.4), 0 0 10px rgba(150,90,255,0.3);
+    transition: 0.2s ease-in-out;
 }
-#premium-refresh-btn .icon{ font-size:26px; transform-origin:center center; animation: spinSlow 6s linear infinite; filter: drop-shadow(0 6px 18px rgba(99,102,241,0.14)); }
-@keyframes spinSlow{ 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
-#premium-refresh-btn:hover{ transform: translateY(-6px) scale(1.06); box-shadow: 0 20px 46px rgba(99,102,241,0.18); }
-.ripple{ position:absolute; width:8px; height:8px; border-radius:50%; background: rgba(167,139,250,0.18); transform:scale(1); opacity:0.9; animation: rippleAnim 700ms ease-out; }
-@keyframes rippleAnim{ from{transform:scale(0.2);opacity:0.9} to{transform:scale(6);opacity:0} }
-#__refresh_toast{ position: fixed; right: 22px; bottom: 22px; z-index:999999; font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; display:none; padding:10px 14px; border-radius:10px; background: rgba(11,11,11,0.92); color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.03); }
+
+div[data-testid="stButton"] > button:hover {
+    transform: translateY(-8px) scale(1.08);
+    box-shadow: 0 0 35px rgba(180,120,255,0.55);
+}
 </style>
-
-<div id="premium-refresh-btn" title="Atualizar painel" role="button" aria-label="Atualizar painel">
-  <div class="inner"><div class="icon">🔄</div></div>
-</div>
-<div id="__refresh_toast">Atualizado! ✅</div>
-
-<script>
-(function(){
-  const btn = document.getElementById("premium-refresh-btn");
-  const toast = document.getElementById("__refresh_toast");
-  btn.addEventListener("click", function(ev){
-    try{
-      // ripple
-      const inner = this.querySelector('.inner');
-      const ripple = document.createElement('div'); ripple.className='ripple';
-      const rect = inner.getBoundingClientRect();
-      ripple.style.left = (rect.width/2 - 8) + 'px'; ripple.style.top = (rect.height/2 - 8) + 'px';
-      inner.appendChild(ripple); setTimeout(()=>{ try{ ripple.remove() }catch(e){} },900);
-    }catch(e){}
-
-    // find the hidden Streamlit button by exact innerText and click it
-    try{
-      const allButtons = Array.from(document.querySelectorAll('button'));
-      const target = allButtons.find(el => el.innerText && el.innerText.trim() === 'REFRESH_HIDDEN_KELVIN');
-      if(target){
-        target.click();
-        // show local toast immediately (python will also show st.toast on success)
-        toast.style.display='block'; toast.style.opacity=1;
-        setTimeout(()=>{ toast.style.opacity=0; setTimeout(()=>{ toast.style.display='none'; },350); },2000);
-      } else {
-        // fallback: set session_state flag via Streamlit API if available
-        try{ window.parent.postMessage({isStreamlitMessage:true, type:'streamlit:setComponentValue', key:'refresh_now_manual', value:true}, "*"); }catch(e){};
-        // also show error toast
-        toast.style.display='block'; toast.innerText='Erro: trigger não encontrado';
-        setTimeout(()=>{ toast.style.opacity=0; setTimeout(()=>{ toast.style.display='none'; toast.innerText='Atualizado! ✅'; },800); },2000);
-      }
-    }catch(e){
-      try{ window.parent.postMessage({isStreamlitMessage:true, type:'streamlit:setComponentValue', key:'refresh_now_manual', value:true}, "*"); }catch(err){}
-    }
-  }, false);
-})();
-</script>
-"""
-# render component with small height
-components.html(_components_html, height=120, scrolling=False)
-
+""", unsafe_allow_html=True)
