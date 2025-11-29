@@ -1116,80 +1116,9 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
-
-    for _, r in df_page.iterrows():
-        nome = r.get("PRODUTO","")
-        estoque = int(r.get("EM ESTOQUE",0)) if pd.notna(r.get("EM ESTOQUE",0)) else 0
-        venda = r.get("VENDA_FMT","R$ 0")
-        custo = r.get("CUSTO_FMT","R$ 0")
-        vendidos = int(r.get("TOTAL_QTD",0)) if pd.notna(r.get("TOTAL_QTD",0)) else 0
-
-        iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
-
-        badges = []
-        if estoque<=3: badges.append(f"<span class='badge low'>⚠️ Baixo</span>")
-        if vendidos>=15: badges.append(f"<span class='badge hot'>🔥 Saindo</span>")
-        if nome in ultima_compra and vendidos==0:
-            vendas_produto = vendas_df[vendas_df['PRODUTO']==nome] if not vendas_df.empty else pd.DataFrame()
-            if vendas_produto.empty: badges.append("<span class='badge slow'>❄️ Sem vendas</span>")
-        try:
-            if nome in _enc_list_global:
-                badges.append("<span class='badge zero'>🐌 Encalhado</span>")
-        except Exception:
-            pass
-        try:
-            if nome in _top5_list_global:
-                badges.append("<span class='badge hot'>🥇 Campeão</span>")
-        except Exception:
-            pass
-
-        badges_html = " ".join(badges)
-        ultima = ultima_compra.get(nome,"—")
-
-        enc_style = ""
-        try:
-            if nome in _enc_list_global:
-                enc_style="style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
-            elif nome in _top5_list_global:
-                enc_style="style='border-left:6px solid #22c55e;'"
-        except Exception:
-            pass
-
-        dias_sem_venda = ""
-        try:
-            vendas_prod = vendas_df[vendas_df["PRODUTO"]==nome] if not vendas_df.empty else pd.DataFrame()
-            if not vendas_prod.empty:
-                last = vendas_prod["DATA"].max()
-                if pd.notna(last) and estoque>0:
-                    delta = (pd.Timestamp.now() - last).days
-                    if delta>=60:
-                        cor="#ef4444"; icone="⛔"; pulse="pulseRed"
-                    elif delta>=30:
-                        cor="#f59e0b"; icone="⚠️"; pulse="pulseOrange"
-                    elif delta>=7:
-                        cor="#a78bfa"; icone="🕒"; pulse="pulsePurple"
-                    else:
-                        cor="#22c55e"; icone="✅"; pulse="pulseGreen"
-                    dias_sem_venda = f"<div style='font-size:11px;margin-top:2px;color:{cor};animation:{pulse} 2s infinite;'>{icone} Dias sem vender: <b>{delta}</b></div>"
-        except Exception:
-            pass
-
-        avatar_html = f"<div class='avatar neon'>{iniciais}</div>"
-        card_html = (
-            f"<div class='card-ecom' {enc_style}>"
-            f"{avatar_html}"
-            f"<div style='flex:1;'>"
-            f"<div class='card-title'>{nome}</div>"
-            f"<div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>"
-            f"<div class='card-prices'><div class='card-price'>{venda}</div><div class='card-cost'>{custo}</div></div>"
-            f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>🕒 Última compra: <b>{ultima}</b></div>"
-            f"{dias_sem_venda}"
-            f"<div style='margin-top:6px;'>{badges_html}</div>"
-            f"</div>"
-            f"</div>"
-        )
-        st.markdown(card_html, unsafe_allow_html=True)
+st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
