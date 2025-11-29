@@ -1,6 +1,55 @@
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 import streamlit as st
 
+# ============================================================
+# 🔄 BOTÃO FLUTUANTE PREMIUM — FUNCIONAL E LADO ESQUERDO
+# ============================================================
+import streamlit.components.v1 as components
+
+st.markdown("""
+<style>
+#refresh-btn {
+    position: fixed;
+    bottom: 26px;
+    left: 26px;
+    width: 78px;
+    height: 78px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #c084fc 0%, #9333ea 50%, #6b21a8 100%);
+    box-shadow: 0 0 22px rgba(168,85,247,0.6), 0 0 40px rgba(147,51,234,0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 38px;
+    color: white;
+    cursor: pointer;
+    z-index: 99999;
+    animation: pulseGlow 3s infinite ease-in-out;
+    transition: 0.25s ease-in-out;
+}
+@keyframes pulseGlow {
+    0% { box-shadow: 0 0 20px rgba(168,85,247,0.6); transform: scale(1); }
+    50% { box-shadow: 0 0 45px rgba(168,85,247,0.9); transform: scale(1.10); }
+    100% { box-shadow: 0 0 20px rgba(168,85,247,0.6); transform: scale(1); }
+}
+#refresh-btn:hover {
+    transform: scale(1.22) rotate(180deg);
+}
+</style>
+
+<div id="refresh-btn">🔄</div>
+
+<script>
+const btn = document.getElementById("refresh-btn");
+btn.addEventListener("click", () => {
+    window.parent.location.reload();
+});
+</script>
+""", unsafe_allow_html=True)
+# ============================================================
+
+
+
 # ================================================
 # 🔄 BOTÃO FLUTUANTE PREMIUM (ROXO NEON + ANIMAÇÃO)
 # ================================================
