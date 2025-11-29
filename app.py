@@ -454,7 +454,7 @@ def reload_dfs_only():
         xls_local = carregar_xlsx_from_url(URL_PLANILHA)
         abas_local = xls_local.sheet_names
         dfs_local = {}
-        for aba in [\"ESTOQUE\",\"VENDAS\",\"COMPRAS\"]:
+        for aba in ["ESTOQUE","VENDAS","COMPRAS"]:
             if aba in abas_local:
                 raw = pd.read_excel(URL_PLANILHA, sheet_name=aba, header=None)
                 cleaned = limpar_aba_raw(raw, aba)
@@ -467,28 +467,28 @@ def reload_dfs_only():
             dfs[k] = v
         # recompute some cached globals used later (safe minimal recompute)
         try:
-            if \"ESTOQUE\" in dfs:
-                df_e = dfs[\"ESTOQUE\"].copy()
+            if "ESTOQUE" in dfs:
+                df_e = dfs["ESTOQUE"].copy()
                 # normalizações simples (mantém compatibilidade)
-                df_e[\"EM ESTOQUE\"] = parse_int_series(df_e.get(\"EM ESTOQUE\", df_e.get(\"ESTOQUE\", pd.Series(0)))).fillna(0).astype(int)
-                dfs[\"ESTOQUE\"] = df_e
+                df_e["EM ESTOQUE"] = parse_int_series(df_e.get("EM ESTOQUE", df_e.get("ESTOQUE", pd.Series(0)))).fillna(0).astype(int)
+                dfs["ESTOQUE"] = df_e
         except Exception:
             pass
-        st.session_state[\"last_reload_ts\"] = str(pd.Timestamp.now())
+        st.session_state["last_reload_ts"] = str(pd.Timestamp.now())
     except Exception as e:
-        st.error(f\"Erro ao recarregar planilha: {e}\")
+        st.error(f"Erro ao recarregar planilha: {e}")
         return
 
 # If the front-end set this flag via the components message, trigger the reload
-if st.session_state.get(\"refresh_now\", False):
+if st.session_state.get("refresh_now", False):
     # reset flag immediately to avoid loops
-    st.session_state[\"refresh_now\"] = False
+    st.session_state["refresh_now"] = False
     reload_dfs_only()
     # inform user
     try:
-        st.toast(\"Atualizado! ✅\")
+        st.toast("Atualizado! ✅")
     except Exception:
-        st.success(\"Atualizado! ✅\")
+        st.success("Atualizado! ✅")
     # continue execution (no full page reload)
 def detectar_linha_cabecalho(df_raw,keywords):
     for i in range(min(len(df_raw),12)):
