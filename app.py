@@ -1,47 +1,12 @@
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 import streamlit as st
 
-# ================================================
-# 🔄 BOTÃO FLUTUANTE PREMIUM (ROXO NEON + ANIMAÇÃO)
-# ================================================
-st.markdown("""
-<style>
-
-.refresh-btn {
-    position: fixed;
-    bottom: 26px;
-    right: 26px;
-    z-index: 9999;
-
-    background: linear-gradient(135deg, #a855f7, #7c3aed);
-    color: white;
-    border-radius: 50%;
-    width: 68px;
-    height: 68px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    font-size: 32px;
-    cursor: pointer;
-
-    box-shadow: 0 0 25px rgba(168, 85, 247, 0.65);
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-
-.refresh-btn:hover {
-    transform: scale(1.15) rotate(190deg);
-    box-shadow: 0 0 40px rgba(168, 85, 247, 0.95);
-}
-
-.refresh-btn:active {
-    transform: scale(0.92);
-}
-</style>
-""", unsafe_allow_html=True)
 
 
-
+# Listener
+if "refresh_now" in st.session_state and st.session_state["refresh_now"]:
+    st.session_state["refresh_now"] = False
+    st.rerun()
 
 
 import pandas as pd
@@ -53,26 +18,21 @@ from io import BytesIO
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
-# ============================
-# 🔄 BOTÃO FLUTUANTE REAL
-# ============================
-def reload_dfs_only():
-    try:
-        st.toast("Atualizando...")
-    except:
-        st.write("Atualizando...")
-    # >>> AQUI você coloca sua lógica REAL de recarregar planilha <<<
-    # Exemplo:
-    # carregar_todos_os_dfs()
-    try:
-        st.toast("Atualizado! ✔️")
-    except:
-        st.success("Atualizado! ✔️")
+# ============= CUSTOM TOPBAR ============
+import streamlit as st
+from PIL import Image
 
-clicked_refresh = st.button("🔄", key="refresh_button")
-if clicked_refresh:
-    reload_dfs_only()
+try:
+    logo = Image.open("logo.png")
+except:
+    logo = None
 
+colA, colB = st.columns([0.08, 0.92])
+with colA:
+    if logo:
+        st.image(logo, width=40)
+with colB:
+    st.markdown("<h1 style='display:flex; align-items:center; margin:0;'>NOVE STORE — Dashboard</h1>", unsafe_allow_html=True)
 
 
 
@@ -332,8 +292,8 @@ st.markdown("""
     </svg>
   </div>
   <div>
-    <div class="title">Loja Importados — Dashboard</div>
-    <div class="subtitle">Visão rápida de vendas e estoque</div>
+    <div class="title">NOVE STORE — Dashboard</div>
+    <div class="subtitle"></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1117,69 +1077,59 @@ with tabs[2]:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-
-
-# ============================
-# 
-
-
-
-
-
-# ============================
-# BOTÃO FLUTUANTE REAL — FINAL PREMIUM
-# ============================
+# ========== NEW REFRESH BUTTON WITH BADGE ==========
 st.markdown("""
 <style>
-div[data-testid="stButton"] {
-    position: static !important;
-}
-.refresh-floating {
+.refresh-floating{
     position: fixed !important;
-    bottom: 90px !important;
-    right: 26px !important;
+    top: 75px !important;
+    right: 30px !important;
     z-index: 999999 !important;
-    pointer-events: auto !important;
 }
-.refresh-floating > button {
-    width: 70px !important;
-    height: 70px !important;
-    border-radius: 50% !important;
-    background: linear-gradient(135deg, rgba(150,90,255,0.25), rgba(80,40,200,0.35)) !important;
-    backdrop-filter: blur(8px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(8px) saturate(180%) !important;
-    border: 2px solid rgba(180,150,255,0.35) !important;
-    font-size: 32px !important;
-    color: white !important;
-    box-shadow: 0 0 25px rgba(150,90,255,0.4);
-    transition: 0.25s ease-in-out;
+.refresh-floating > button{
+    width:55px!important;
+    height:55px!important;
+    border-radius:50%!important;
+    font-size:28px!important;
 }
-.refresh-floating > button:hover {
-    transform: translateY(-8px) scale(1.08);
-    box-shadow: 0 0 35px rgba(180,120,255,0.55);
+.refresh-badge{
+    position:absolute;
+    top:-3px;right:-3px;
+    width:18px;height:18px;
+    background:#ff3b3b;
+    color:white;
+    border-radius:50%;
+    font-size:12px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 6px #ff3b3b;
+    animation:pulse 1.3s infinite;
 }
+@keyframes pulse {0%{transform:scale(1);}50%{transform:scale(1.2);}100%{transform:scale(1);} }
 </style>
 
 <script>
-function applyFloating(){
-    try{
-        const btns = Array.from(document.querySelectorAll('div[data-testid="stButton"]'));
-        for(const box of btns){
-            const b = box.querySelector("button");
-            if(b && b.innerText.trim() === "🔄"){
-                box.classList.add("refresh-floating");
-                return true;
+function applyRefreshBtn(){
+    const btns=document.querySelectorAll('div[data-testid="stButton"]');
+    for(const b of btns){
+        const k=b.querySelector("button");
+        if(k && k.innerText.trim()=="🔄"){
+            b.classList.add("refresh-floating");
+            if(!b.querySelector(".refresh-badge")){
+                let bd=document.createElement("div");
+                bd.className="refresh-badge";
+                bd.innerHTML="!";
+                b.style.position="relative";
+                b.appendChild(bd);
             }
+            return true;
         }
-    } catch(e){}
+    }
     return false;
 }
-let attempts = 0;
-let timer = setInterval(()=>{
-    attempts++;
-    if(applyFloating() || attempts > 12){
-        clearInterval(timer);
-    }
-}, 250);
+
+let t=0,lim=15;
+let iv=setInterval(()=>{
+    t++; if(applyRefreshBtn()||t>lim) clearInterval(iv);
+},200);
 </script>
 """, unsafe_allow_html=True)
