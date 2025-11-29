@@ -88,6 +88,44 @@ from io import BytesIO
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 
+# -----------------------------
+# Hidden real refresh button (triggered programmatically) — small, reliable
+# -----------------------------
+# Ensure session_state flag exists
+if "refresh_now" not in st.session_state:
+    st.session_state["refresh_now"] = False
+
+# Real hidden button: when clicked it executes reload_dfs_only() on the Python side
+# Label is unique so JS can find it and click it programmatically.
+try:
+    st.button("REFRESH_HIDDEN_KELVIN", key="real_refresh_button", on_click=reload_dfs_only, help="Hidden refresh trigger")
+except Exception:
+    # fallback if on_click signature differs in older Streamlit versions: handle via session_state flag
+    if st.session_state.get("refresh_now_manual", False):
+        st.session_state["refresh_now_manual"] = False
+        try:
+            reload_dfs_only()
+            try: st.toast("Atualizado! ✅")
+            except: st.success("Atualizado! ✅")
+        except Exception as e:
+            try: st.error(f"Falha ao recarregar: {e}")
+            except: st.write("Falha ao recarregar:", e)
+
+# hide the visible button immediately via JS (searches by exact innerText)
+st.markdown(\"\"\"
+<script>
+setTimeout(function(){
+  try {
+    const btns = Array.from(document.querySelectorAll('button'));
+    const b = btns.find(el => el.innerText && el.innerText.trim() === 'REFRESH_HIDDEN_KELVIN');
+    if(b){ b.style.display='none'; b.dataset.hidden='1'; }
+  } catch(e){}
+}, 60);
+</script>
+\"\"\", unsafe_allow_html=True)
+
+
+
 
 # --- Cálculo GLOBAL de Produtos Encalhados (limpo) ---
 def compute_encalhados_global(dfs, limit=10):
@@ -1175,4 +1213,86 @@ with tabs[2]:
         st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+# ============================================================
+# PREMIUM REFRESH BUTTON — Center bottom (small 60px) — triggers the hidden Streamlit button
+# ============================================================
+import streamlit.components.v1 as components
+_components_html = r\"\"\"
+<style>
+#premium-refresh-btn{
+  position: fixed !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  bottom: 20px !important;
+  width: 60px !important;
+  height: 60px !important;
+  border-radius: 50% !important;
+  z-index: 2147483000 !important;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  backdrop-filter: blur(6px) saturate(140%);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+  border: 1px solid rgba(167,139,250,0.12);
+  box-shadow: 0 10px 30px rgba(99,102,241,0.12), 0 6px 18px rgba(124,58,237,0.06);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+#premium-refresh-btn .inner{ width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.14), rgba(124,58,237,0.08)); border:1px solid rgba(167,139,250,0.14);
+  box-shadow: inset 0 2px 8px rgba(255,255,255,0.02); position:relative; overflow:hidden;
+}
+#premium-refresh-btn .icon{ font-size:26px; transform-origin:center center; animation: spinSlow 6s linear infinite; filter: drop-shadow(0 6px 18px rgba(99,102,241,0.14)); }
+@keyframes spinSlow{ 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+#premium-refresh-btn:hover{ transform: translateY(-6px) scale(1.06); box-shadow: 0 20px 46px rgba(99,102,241,0.18); }
+.ripple{ position:absolute; width:8px; height:8px; border-radius:50%; background: rgba(167,139,250,0.18); transform:scale(1); opacity:0.9; animation: rippleAnim 700ms ease-out; }
+@keyframes rippleAnim{ from{transform:scale(0.2);opacity:0.9} to{transform:scale(6);opacity:0} }
+#__refresh_toast{ position: fixed; right: 22px; bottom: 22px; z-index:999999; font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; display:none; padding:10px 14px; border-radius:10px; background: rgba(11,11,11,0.92); color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.03); }
+</style>
+
+<div id="premium-refresh-btn" title="Atualizar painel" role="button" aria-label="Atualizar painel">
+  <div class="inner"><div class="icon">🔄</div></div>
+</div>
+<div id="__refresh_toast">Atualizado! ✅</div>
+
+<script>
+(function(){
+  const btn = document.getElementById("premium-refresh-btn");
+  const toast = document.getElementById("__refresh_toast");
+  btn.addEventListener("click", function(ev){
+    try{
+      // ripple
+      const inner = this.querySelector('.inner');
+      const ripple = document.createElement('div'); ripple.className='ripple';
+      const rect = inner.getBoundingClientRect();
+      ripple.style.left = (rect.width/2 - 8) + 'px'; ripple.style.top = (rect.height/2 - 8) + 'px';
+      inner.appendChild(ripple); setTimeout(()=>{ try{ ripple.remove() }catch(e){} },900);
+    }catch(e){}
+
+    // find the hidden Streamlit button by exact innerText and click it
+    try{
+      const allButtons = Array.from(document.querySelectorAll('button'));
+      const target = allButtons.find(el => el.innerText && el.innerText.trim() === 'REFRESH_HIDDEN_KELVIN');
+      if(target){
+        target.click();
+        // show local toast immediately (python will also show st.toast on success)
+        toast.style.display='block'; toast.style.opacity=1;
+        setTimeout(()=>{ toast.style.opacity=0; setTimeout(()=>{ toast.style.display='none'; },350); },2000);
+      } else {
+        // fallback: set session_state flag via Streamlit API if available
+        try{ window.parent.postMessage({isStreamlitMessage:true, type:'streamlit:setComponentValue', key:'refresh_now_manual', value:true}, "*"); }catch(e){};
+        // also show error toast
+        toast.style.display='block'; toast.innerText='Erro: trigger não encontrado';
+        setTimeout(()=>{ toast.style.opacity=0; setTimeout(()=>{ toast.style.display='none'; toast.innerText='Atualizado! ✅'; },800); },2000);
+      }
+    }catch(e){
+      try{ window.parent.postMessage({isStreamlitMessage:true, type:'streamlit:setComponentValue', key:'refresh_now_manual', value:true}, "*"); }catch(err){}
+    }
+  }, false);
+})();
+</script>
+\"\"\"
+# height small so iframe minimal but covers bottom area
+components.html(_components_html, height=120, scrolling=False)
 
