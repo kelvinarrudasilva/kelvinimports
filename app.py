@@ -1,73 +1,53 @@
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 import streamlit as st
 
-# ============================
-# 🔄 BOTÃO FLUTUANTE REAL + NEON
-# ============================
-refresh_area = st.empty()
-refresh_btn = None
-with refresh_area.container():
-    refresh_btn = st.button("🔄")
-    if refresh_btn:
-        st.session_state["refresh_now"] = True
-
-st.markdown("""
-<style>
-div.stButton > button {
-    position: fixed !important;
-    bottom: 26px !important;
-    right: 26px !important;
-    z-index: 99999 !important;
-    background: linear-gradient(135deg, #a855f7, #7c3aed) !important;
-    color: white !important;
-    border-radius: 50% !important;
-    width: 68px !important;
-    height: 68px !important;
-    font-size: 32px !important;
-    box-shadow: 0 0 25px rgba(168, 85, 247, 0.65) !important;
-    transition: transform 0.25s ease, box-shadow 0.25s ease !important;
-}
-div.stButton > button:hover {
-    transform: scale(1.15) rotate(190deg) !important;
-    box-shadow: 0 0 40px rgba(168, 85, 247, 0.95) !important;
-}
-
-@keyframes pulse {0%{transform:scale(1);}50%{transform:scale(1.2);}100%{transform:scale(1);} }
-
-div.stButton:last-of-type::after {
-    content: "!";
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 18px;
-    height: 18px;
-    background: #ff3333;
-    color: white;
-    border-radius: 50%;
-    font-size: 13px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    box-shadow:0 0 10px #ff3333;
-    animation: pulse 1.3s infinite;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# notifications
-if refresh_btn:
-    with st.spinner("🔄 Carregando..."):
-        pass
-    st.success("✔️ Atualizado!")
-    st.rerun()
-
-
 # ================================================
 # 🔄 BOTÃO FLUTUANTE PREMIUM (ROXO NEON + ANIMAÇÃO)
 # ================================================
 st.markdown("""
+<style>
 
+.refresh-btn {
+    position: fixed;
+    bottom: 26px;
+    right: 26px;
+    z-index: 9999;
+
+    background: linear-gradient(135deg, #a855f7, #7c3aed);
+    color: white;
+    border-radius: 50%;
+    width: 68px;
+    height: 68px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 32px;
+    cursor: pointer;
+
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.65);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.refresh-btn:hover {
+    transform: scale(1.15) rotate(190deg);
+    box-shadow: 0 0 40px rgba(168, 85, 247, 0.95);
+}
+
+.refresh-btn:active {
+    transform: scale(0.92);
+}
+</style>
+
+<div class="refresh-btn" onclick="triggerRefresh()">
+    🔄
+</div>
+
+<script>
+function triggerRefresh() {
+    window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", value: "refresh_now"}, "*");
+}
+</script>
 """, unsafe_allow_html=True)
 
 # Listener
@@ -325,25 +305,6 @@ div[data-testid="stVerticalBlock"] > div > section::-webkit-scrollbar { width:8p
     transform:translateY(-2px);
     transition:.2s;
     box-shadow:0 8px 20px rgba(0,0,0,0.35);
-}
-
-
-div.stButton:last-of-type::after {
-    content: "!";
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 18px;
-    height: 18px;
-    background: #ff3333;
-    color: white;
-    border-radius: 50%;
-    font-size: 13px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    box-shadow:0 0 10px #ff3333;
-    animation: pulse 1.3s infinite;
 }
 
 </style>
@@ -943,26 +904,7 @@ with tabs[2]:
     .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .muted { color:#cfcfe0; font-size:13px; }
 
-    
-div.stButton:last-of-type::after {
-    content: "!";
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 18px;
-    height: 18px;
-    background: #ff3333;
-    color: white;
-    border-radius: 50%;
-    font-size: 13px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    box-shadow:0 0 10px #ff3333;
-    animation: pulse 1.3s infinite;
-}
-
-</style>
+    </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
@@ -983,7 +925,7 @@ div.stButton:last-of-type::after {
             grid_cols = st.selectbox("Colunas", [2,3,4], index=1)
         with cols[3]:
             ver_tudo = st.checkbox("Ver tudo (sem paginação)", value=False)
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # filtros avançados
     filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)", value=False)
@@ -1087,36 +1029,81 @@ st.markdown("</div>", unsafe_allow_html=True)
 
     # render grid with selected columns layout
     # inject dynamic grid style
-    
-st.markdown(
-    f"""
-    <style>
-    .card-grid-ecom {{
-        grid-template-columns: repeat({grid_cols}, 1fr);
-    }}
+    st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
+    st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
 
-    div.stButton:last-of-type::after {{
-        content: "!";
-        position: absolute;
-        top: -4px;
-        right: -4px;
-        width: 18px;
-        height: 18px;
-        background: #ff3333;
-        color: white;
-        border-radius: 50%;
-        font-size: 13px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        box-shadow:0 0 10px #ff3333;
-        animation: pulse 1.3s infinite;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+    for _, r in df_page.iterrows():
+        nome = r.get("PRODUTO","")
+        estoque = int(r.get("EM ESTOQUE",0)) if pd.notna(r.get("EM ESTOQUE",0)) else 0
+        venda = r.get("VENDA_FMT","R$ 0")
+        custo = r.get("CUSTO_FMT","R$ 0")
+        vendidos = int(r.get("TOTAL_QTD",0)) if pd.notna(r.get("TOTAL_QTD",0)) else 0
 
-st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+        iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
+
+        badges = []
+        if estoque<=3: badges.append(f"<span class='badge low'>⚠️ Baixo</span>")
+        if vendidos>=15: badges.append(f"<span class='badge hot'>🔥 Saindo</span>")
+        if nome in ultima_compra and vendidos==0:
+            vendas_produto = vendas_df[vendas_df['PRODUTO']==nome] if not vendas_df.empty else pd.DataFrame()
+            if vendas_produto.empty: badges.append("<span class='badge slow'>❄️ Sem vendas</span>")
+        try:
+            if nome in _enc_list_global:
+                badges.append("<span class='badge zero'>🐌 Encalhado</span>")
+        except Exception:
+            pass
+        try:
+            if nome in _top5_list_global:
+                badges.append("<span class='badge hot'>🥇 Campeão</span>")
+        except Exception:
+            pass
+
+        badges_html = " ".join(badges)
+        ultima = ultima_compra.get(nome,"—")
+
+        enc_style = ""
+        try:
+            if nome in _enc_list_global:
+                enc_style="style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
+            elif nome in _top5_list_global:
+                enc_style="style='border-left:6px solid #22c55e;'"
+        except Exception:
+            pass
+
+        dias_sem_venda = ""
+        try:
+            vendas_prod = vendas_df[vendas_df["PRODUTO"]==nome] if not vendas_df.empty else pd.DataFrame()
+            if not vendas_prod.empty:
+                last = vendas_prod["DATA"].max()
+                if pd.notna(last) and estoque>0:
+                    delta = (pd.Timestamp.now() - last).days
+                    if delta>=60:
+                        cor="#ef4444"; icone="⛔"; pulse="pulseRed"
+                    elif delta>=30:
+                        cor="#f59e0b"; icone="⚠️"; pulse="pulseOrange"
+                    elif delta>=7:
+                        cor="#a78bfa"; icone="🕒"; pulse="pulsePurple"
+                    else:
+                        cor="#22c55e"; icone="✅"; pulse="pulseGreen"
+                    dias_sem_venda = f"<div style='font-size:11px;margin-top:2px;color:{cor};animation:{pulse} 2s infinite;'>{icone} Dias sem vender: <b>{delta}</b></div>"
+        except Exception:
+            pass
+
+        avatar_html = f"<div class='avatar neon'>{iniciais}</div>"
+        card_html = (
+            f"<div class='card-ecom' {enc_style}>"
+            f"{avatar_html}"
+            f"<div style='flex:1;'>"
+            f"<div class='card-title'>{nome}</div>"
+            f"<div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>"
+            f"<div class='card-prices'><div class='card-price'>{venda}</div><div class='card-cost'>{custo}</div></div>"
+            f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>🕒 Última compra: <b>{ultima}</b></div>"
+            f"{dias_sem_venda}"
+            f"<div style='margin-top:6px;'>{badges_html}</div>"
+            f"</div>"
+            f"</div>"
+        )
+        st.markdown(card_html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
