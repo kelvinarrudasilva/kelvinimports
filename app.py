@@ -1,82 +1,7 @@
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
 import streamlit as st
 
-# ============================================================
-# 
-
-# ============================================================
-# 
-# ============================================================
-# 🔮 BOTÃO FLUTUANTE PREMIUM — LADO ESQUERDO (GLASS + NEON) via components.html
-# ============================================================
-import streamlit.components.v1 as components
-_components_html = r"""
-<style>
-/* left floating glass + neon button - fixed positioning within iframe */
-#refresh-glass-btn{
-  position: fixed !important;
-  bottom: 18px !important;
-  left: 18px !important;
-  width: 84px !important;
-  height: 84px !important;
-  border-radius: 50% !important;
-  z-index: 2147483000 !important;
-  display:flex; align-items:center; justify-content:center; cursor:pointer;
-  backdrop-filter: blur(6px) saturate(160%);
-  -webkit-backdrop-filter: blur(6px) saturate(160%);
-  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
-  border: 1px solid rgba(167,139,250,0.08);
-  box-shadow: 0 8px 30px rgba(99,102,241,0.12), 0 6px 18px rgba(124,58,237,0.07);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-#refresh-glass-btn .inner { width:72px;height:72px;border-radius:50%; display:flex;align-items:center;justify-content:center;
-  background: radial-gradient(circle at 30% 30%, rgba(167,139,250,0.14), rgba(124,58,237,0.08)); border: 1px solid rgba(167,139,250,0.12);
-  box-shadow: inset 0 2px 8px rgba(255,255,255,0.02), 0 6px 18px rgba(124,58,237,0.12); position:relative; overflow:hidden;
-}
-#refresh-glass-btn .icon { font-size:36px; transform-origin:center center; animation: spinSlow 6s linear infinite; filter: drop-shadow(0 6px 18px rgba(99,102,241,0.14)); }
-@keyframes spinSlow { 0%{ transform: rotate(0deg) } 100%{ transform: rotate(360deg) } }
-#refresh-glass-btn:hover{ transform: translateY(-6px) scale(1.07); box-shadow: 0 18px 50px rgba(99,102,241,0.18); }
-#refresh-glass-btn:active{ transform: translateY(-2px) scale(.98); }
-.ripple { position:absolute; width:8px; height:8px; border-radius:50%; background: rgba(167,139,250,0.18); transform:scale(1); opacity:0.9; animation: rippleAnim 700ms ease-out; }
-@keyframes rippleAnim { from { transform: scale(0.2); opacity:0.9; } to { transform: scale(6); opacity:0; } }
-#__refresh_toast{ position: fixed; right: 22px; bottom: 22px; z-index:999999; font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; display:none; padding:10px 14px; border-radius:10px; background: rgba(11,11,11,0.82); color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.03); }
-</style>
-
-<div id="refresh-glass-btn" title="Atualizar painel" aria-label="Atualizar painel" role="button">
-  <div class="inner" id="refresh-inner">
-    <div class="icon">🔄</div>
-  </div>
-</div>
-<div id="__refresh_toast">Atualizado! ✅</div>
-
-<script>
-(function(){
-  const btn = document.getElementById("refresh-glass-btn");
-  const toast = document.getElementById("__refresh_toast");
-  // click handler creates ripple, then notifies Streamlit via postMessage that sets a component value
-  btn.addEventListener("click", function(ev){
-    const inner = document.getElementById("refresh-inner");
-    const ripple = document.createElement("div");
-    ripple.className = "ripple";
-    ripple.style.left = (ev.offsetX - 8) + "px";
-    ripple.style.top = (ev.offsetY - 8) + "px";
-    inner.appendChild(ripple);
-    setTimeout(()=>{ try{ ripple.remove() }catch(e){} },900);
-
-    // send message Streamlit listens to (components.html context)
-    try{
-      window.parent.postMessage({isStreamlitMessage:true, type:"streamlit:setComponentValue", key:"refresh_now", value: true}, "*");
-    }catch(e){
-      try{ window.parent.postMessage({type:"custom_refresh", value:true}, "*"); }catch(err){}
-    }
-  }, false);
-})();
-</script>
-"""
-# render component with adequate height so the iframe covers bottom area; allow scrolling false
-components.html(_components_html, height=180, scrolling=False)
-# ============================================================
-# ============================================================
+# ================================================
 
 import pandas as pd
 import plotly.express as px
@@ -87,32 +12,27 @@ from io import BytesIO
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
-
 # -----------------------------
-# Hidden real refresh button (triggered programmatically) — small, reliable
+# Hidden real refresh button (triggered programmatically)
 # -----------------------------
-# Ensure session_state flag exists
+# Ensure flag exists
 if "refresh_now" not in st.session_state:
     st.session_state["refresh_now"] = False
 
 # Real hidden button: when clicked it executes reload_dfs_only() on the Python side
-# Label is unique so JS can find it and click it programmatically.
 try:
     st.button("REFRESH_HIDDEN_KELVIN", key="real_refresh_button", on_click=reload_dfs_only, help="Hidden refresh trigger")
 except Exception:
-    # fallback if on_click signature differs in older Streamlit versions: handle via session_state flag
+    # fallback handler if on_click not available
     if st.session_state.get("refresh_now_manual", False):
         st.session_state["refresh_now_manual"] = False
         try:
             reload_dfs_only()
-            try: st.toast("Atualizado! ✅")
-            except: st.success("Atualizado! ✅")
-        except Exception as e:
-            try: st.error(f"Falha ao recarregar: {e}")
-            except: st.write("Falha ao recarregar:", e)
+        except:
+            pass
 
-# hide the visible button immediately via JS (searches by exact innerText)
-st.markdown(\"\"\"
+# hide the visible hidden button node via small JS to avoid UI glitch
+st.markdown("""
 <script>
 setTimeout(function(){
   try {
@@ -120,9 +40,9 @@ setTimeout(function(){
     const b = btns.find(el => el.innerText && el.innerText.trim() === 'REFRESH_HIDDEN_KELVIN');
     if(b){ b.style.display='none'; b.dataset.hidden='1'; }
   } catch(e){}
-}, 60);
+}, 80);
 </script>
-\"\"\", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 
 
@@ -437,14 +357,13 @@ def carregar_xlsx_from_url(url):
     r.raise_for_status()
     return pd.ExcelFile(BytesIO(r.content))
 
-
-
 # -----------------------------
 # Função para recarregar apenas as abas/DFs (usada pelo botão premium)
 # -----------------------------
 def reload_dfs_only():
     global dfs, xls, abas_all
     try:
+        # try to fetch the workbook and only reload core sheets
         xls_local = carregar_xlsx_from_url(URL_PLANILHA)
         abas_local = xls_local.sheet_names
         dfs_local = {}
@@ -454,36 +373,41 @@ def reload_dfs_only():
                 cleaned = limpar_aba_raw(raw, aba)
                 if cleaned is not None:
                     dfs_local[aba] = cleaned
-        # overwrite dfs with loaded tabs (keep other keys if any)
-        for k in list(dfs.keys()):
-            dfs.pop(k, None)
-        for k,v in dfs_local.items():
-            dfs[k] = v
-        # recompute some cached globals used later (safe minimal recompute)
+        # replace relevant keys in dfs
         try:
+            # keep other keys, but replace these
+            for k in ["ESTOQUE","VENDAS","COMPRAS"]:
+                if k in dfs: dfs.pop(k, None)
+            for k,v in dfs_local.items():
+                dfs[k] = v
+            # minimal normalizations
             if "ESTOQUE" in dfs:
                 df_e = dfs["ESTOQUE"].copy()
-                # normalizações simples (mantém compatibilidade)
-                df_e["EM ESTOQUE"] = parse_int_series(df_e.get("EM ESTOQUE", df_e.get("ESTOQUE", pd.Series(0)))).fillna(0).astype(int)
+                if "EM ESTOQUE" in df_e.columns:
+                    df_e["EM ESTOQUE"] = parse_int_series(df_e["EM ESTOQUE"]).fillna(0).astype(int)
                 dfs["ESTOQUE"] = df_e
         except Exception:
             pass
-        st.session_state["last_reload_ts"] = str(pd.Timestamp.now())
+        # indicate last reload
+        try:
+            st.session_state["last_reload_ts"] = str(pd.Timestamp.now())
+        except Exception:
+            pass
+        # notify user
+        try:
+            st.toast("Atualizado! ✅")
+        except Exception:
+            try:
+                st.success("Atualizado! ✅")
+            except:
+                pass
     except Exception as e:
-        st.error(f"Erro ao recarregar planilha: {e}")
-        return
+        try:
+            st.error(f"Falha ao recarregar: {e}")
+        except:
+            pass
+    return
 
-# If the front-end set this flag via the components message, trigger the reload
-if st.session_state.get("refresh_now", False):
-    # reset flag immediately to avoid loops
-    st.session_state["refresh_now"] = False
-    reload_dfs_only()
-    # inform user
-    try:
-        st.toast("Atualizado! ✅")
-    except Exception:
-        st.success("Atualizado! ✅")
-    # continue execution (no full page reload)
 def detectar_linha_cabecalho(df_raw,keywords):
     for i in range(min(len(df_raw),12)):
         linha=" ".join(df_raw.iloc[i].astype(str).str.upper().tolist())
@@ -1215,12 +1139,11 @@ with tabs[2]:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-
 # ============================================================
-# PREMIUM REFRESH BUTTON — Center bottom (small 60px) — triggers the hidden Streamlit button
+# PREMIUM REFRESH BUTTON — Center bottom (small 60px, 20px above border)
 # ============================================================
 import streamlit.components.v1 as components
-_components_html = r\"\"\"
+_components_html = """
 <style>
 #premium-refresh-btn{
   position: fixed !important;
@@ -1292,7 +1215,7 @@ _components_html = r\"\"\"
   }, false);
 })();
 </script>
-\"\"\"
-# height small so iframe minimal but covers bottom area
+"""
+# render component with small height
 components.html(_components_html, height=120, scrolling=False)
 
