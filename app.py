@@ -54,19 +54,6 @@ from io import BytesIO
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 # ============================
-# TOPBAR NOVE STORE + LOGO
-# ============================
-import streamlit as st
-from PIL import Image
-
-logo = Image.open("/mnt/data/D28E15F0-74A7-4E96-8A90-8A94FD0B867F.png")
-col1,col2 = st.columns([0.1,0.9])
-with col1:
-    st.image(logo, width=40)
-with col2:
-    st.markdown("<h1 style='display:flex; align-items:center;'>NOVE STORE — Dashboard</h1>", unsafe_allow_html=True)
-
-# ============================
 # 🔄 BOTÃO FLUTUANTE REAL
 # ============================
 def reload_dfs_only():
@@ -1194,78 +1181,5 @@ let timer = setInterval(()=>{
         clearInterval(timer);
     }
 }, 250);
-</script>
-""", unsafe_allow_html=True)
-
-
-
-# ============================
-# FLOATING REFRESH BUTTON NEXT TO HEADER + BADGE
-# ============================
-st.markdown("""
-<style>
-/* place floating button near header */
-.refresh-floating {
-    position: fixed !important;
-    top: 70px !important;
-    right: 40px !important;
-    z-index: 999999 !important;
-}
-.refresh-floating > button {
-    width: 55px !important;
-    height: 55px !important;
-    border-radius: 50% !important;
-    font-size:28px!important;
-}
-/* badge */
-.refresh-badge {
-    position:absolute;
-    top:-3px;
-    right:-3px;
-    background:#ff4444;
-    color:white;
-    width:18px;
-    height:18px;
-    font-size:13px;
-    border-radius:50%;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    box-shadow:0 0 6px #ff4444;
-    animation:pulse 1.2s infinite;
-}
-@keyframes pulse {
-  0% { transform: scale(1);}
-  50% { transform: scale(1.15);}
-  100%{ transform: scale(1);}
-}
-</style>
-
-<script>
-// Tag refresh button + inject badge
-function tagRefresh(){
-    const btns = Array.from(document.querySelectorAll('div[data-testid="stButton"]'));
-    for(const b of btns){
-        const inner = b.querySelector("button");
-        if(inner && inner.innerText.trim()=="🔄"){
-            b.classList.add("refresh-floating");
-            // add badge if not exists
-            if(!b.querySelector(".refresh-badge")){
-                const bd=document.createElement("div");
-                bd.className="refresh-badge";
-                bd.innerHTML="!";
-                b.style.position="relative";
-                b.appendChild(bd);
-            }
-            return true;
-        }
-    }
-    return false;
-}
-let tries=0, lim=20;
-let iv=setInterval(()=>{
-    tries++;
-    if(tagRefresh()||tries>lim) clearInterval(iv);
-},200);
 </script>
 """, unsafe_allow_html=True)
