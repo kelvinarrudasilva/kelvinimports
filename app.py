@@ -432,7 +432,7 @@ with col_kpis:
     st.markdown(f"""
     <div class="kpi-row">
       <div class="kpi"><h3>💵 Faturamento</h3><div class="value">{formatar_reais_sem_centavos(total_vendido)}</div></div>
-      <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Lucro Liquido/h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
+      <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Lucro Liquido</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
       <div class="kpi" style="border-left-color:#f59e0b;"><h3>💸 Compras</h3><div class="value">{formatar_reais_sem_centavos(total_compras)}</div></div>
       <div class="kpi" style="border-left-color:#8b5cf6;"><h3>📦 Custo Est.</h3><div class="value">{formatar_reais_sem_centavos(valor_custo_estoque)}</div></div>
       <div class="kpi" style="border-left-color:#a78bfa;"><h3>🏷️ Venda Est.</h3><div class="value">{formatar_reais_sem_centavos(valor_venda_estoque)}</div></div>
