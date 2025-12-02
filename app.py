@@ -1,5 +1,8 @@
-# app_final_corrigido_total_fixed.py
-# Versão corrigida e ajustada do dashboard - removidos trechos duplicados/soltos e corrigida indentação
+
+# app_final_com_compras.py
+# Versão final do dashboard com aba COMPRAS — pronta para rodar
+# Requer: streamlit, pandas, plotly, requests, openpyxl
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -293,7 +296,7 @@ st.markdown("""
   </div>
   <div>
     <div class="title">Loja Importados — Dashboard</div>
-    <div class="subtitle">Visão rápida de vendas e estoque</div>
+    <div class="subtitle">Visão rápida de vendas, compras e estoque</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -374,8 +377,9 @@ if "COMPRAS" in dfs:
     qcols = [c for c in df_c.columns if "QUANT" in c.upper()]
     if qcols:
         df_c["QUANTIDADE"] = parse_int_series(df_c[qcols[0]]).fillna(0).astype(int)
-    ccols = [c for c in df_c.columns if any(k in c.upper() for k in ("CUSTO", "UNIT"))]
+    ccols = [c for c in df_c.columns if any(k in c.upper() for k in ("CUSTO", "UNIT", "VALOR"))]
     if ccols:
+        # pick the best match for custo unitario
         df_c["CUSTO UNITÁRIO"] = parse_money_series(df_c[ccols[0]]).fillna(0)
     df_c["CUSTO TOTAL (RECALC)"] = df_c.get("QUANTIDADE", 0) * df_c.get("CUSTO UNITÁRIO", 0)
     if "DATA" in df_c.columns:
@@ -440,8 +444,8 @@ with col_kpis:
     </div>
     """, unsafe_allow_html=True)
 
-# Tabs
-tabs = st.tabs(["🛒 VENDAS", "📦 ESTOQUE", "🔍 PESQUISAR"])
+# Tabs (adicionada aba COMPRAS)
+tabs = st.tabs(["🛒 VENDAS", "📦 ESTOQUE", "🧾 COMPRAS", "🔍 PESQUISAR"])
 
 # ----------------------------
 # VENDAS TAB (clean + organized)
@@ -504,7 +508,7 @@ with tabs[0]:
         if "OBS" in cols:
             limite = cols.index("OBS") + 1
             tabela_vendas_exib = tabela_vendas_exib[cols[:limite]]
-        
+
         st.dataframe(tabela_vendas_exib, use_container_width=True)
 
         # 3) Top 5 — Produtos bombando (com sufixo)
@@ -597,9 +601,176 @@ with tabs[1]:
         st.dataframe(display_df, use_container_width=True)
 
 # ----------------------------
-# PESQUISAR TAB
+# COMPRAS TAB (NOVO) — panorama das últimas compras do mês selecionado
 # ----------------------------
 with tabs[2]:
+    st.subheader("Compras — panorama do mês selecionado")
+
+    df_c = dfs.get("COMPRAS", pd.DataFrame()).copy()
+    if df_c.empty:
+        st.info("Sem dados de compras na planilha.")
+    else:
+        # normalize column names
+        cols_lower = {c: c for c in df_c.columns}
+        # ensure date col exists
+        if "DATA" in df_c.columns:
+            df_c["DATA"] = pd.to_datetime(df_c["DATA"], errors="coerce")
+        # fallback detect produto
+        if "PRODUTO" not in df_c.columns:
+            for c in df_c.columns:
+                if df_c[c].dtype == object:
+                    df_c = df_c.rename(columns={c: "PRODUTO"})
+                    break
+        # fallback detect fornecedor
+        fornecedor_col = None
+        for c in df_c.columns:
+            if any(k in str(c).upper() for k in ("FORNEC", "SUPPLIER", "VENDOR")):
+                fornecedor_col = c
+                break
+        # fallback detect descricao/obs/finalidade
+        obs_col = None
+        for c in df_c.columns:
+            if any(k in str(c).upper() for k in ("OBS", "OBSERVA", "DESCR", "FINAL", "NOTAS", "MOTIVO", "FINALIDADE")):
+                obs_col = c
+                break
+
+        # already computed in normalization earlier, but ensure
+        if "QUANTIDADE" in df_c.columns:
+            df_c["QUANTIDADE"] = parse_int_series(df_c["QUANTIDADE"]).fillna(0).astype(int)
+        if "CUSTO UNITÁRIO" in df_c.columns:
+            df_c["CUSTO UNITÁRIO"] = parse_money_series(df_c["CUSTO UNITÁRIO"]).fillna(0)
+        if "CUSTO TOTAL (RECALC)" not in df_c.columns:
+            df_c["CUSTO TOTAL (RECALC)"] = df_c.get("QUANTIDADE", 0) * df_c.get("CUSTO UNITÁRIO", 0)
+
+        # apply month filter (mes_selecionado)
+        compras_mes = filtrar_mes_df(df_c, mes_selecionado)
+        compras_mes = compras_mes.sort_values("DATA", ascending=False).reset_index(drop=True)
+
+        # KPI
+        total_comp_mes = compras_mes["CUSTO TOTAL (RECALC)"].fillna(0).sum()
+        n_comp_mes = len(compras_mes)
+
+        # identify marketing-related purchases by keyword scan in obs/desc columns
+        marketing_keywords = ["ANUN", "DIVULG", "ADS", "FACEBOOK", "INSTAGRAM", "INSTA", "GOOGLE", "META", "PROMO", "CAMPANHA", "MARKETING", "INFLUENCIADOR", "PROPAGANDA", "ENCAMPA"]
+        def is_marketing_row(row):
+            text = ""
+            if obs_col and pd.notna(row.get(obs_col, "")):
+                text += " " + str(row.get(obs_col, ""))
+            for c in df_c.columns:
+                if any(k in str(c).upper() for k in ("DESCR", "OBS", "NOTA", "FINAL", "MOTIVO")) and pd.notna(row.get(c, "")):
+                    text += " " + str(row.get(c, ""))
+            text = text.upper()
+            return any(kw in text for kw in marketing_keywords)
+
+        compras_mes["_MARKETING"] = compras_mes.apply(is_marketing_row, axis=1)
+
+        marketing_total = compras_mes.loc[compras_mes["_MARKETING"], "CUSTO TOTAL (RECALC)"].fillna(0).sum()
+        marketing_count = compras_mes["_MARKETING"].sum()
+        marketing_pct = (marketing_total / total_comp_mes * 100) if total_comp_mes else 0
+
+        # top visualization: horizontal bar by fornecedor or produto
+        st.markdown("### 📈 Visão rápida das compras (gráfico por produto/fornecedor)")
+
+        group_by_for = fornecedor_col if fornecedor_col is not None else "PRODUTO"
+        group_col = group_by_for if group_by_for in compras_mes.columns else "PRODUTO"
+        pivot = compras_mes.groupby(group_col)["CUSTO TOTAL (RECALC)"].sum().reset_index().sort_values("CUSTO TOTAL (RECALC)", ascending=False)
+        pivot["CUSTO_FMT"] = pivot["CUSTO TOTAL (RECALC)"].map(formatar_reais_sem_centavos)
+
+        if not pivot.empty:
+            fig_bar = px.bar(pivot.head(12), x="CUSTO TOTAL (RECALC)", y=group_col, orientation="h", text="CUSTO_FMT", height=420)
+            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+            plotly_dark_config(fig_bar)
+            fig_bar.update_traces(textposition="inside")
+            st.plotly_chart(fig_bar, use_container_width=True, config=dict(displayModeBar=False))
+
+        # different chart: treemap to show distribuição por categoria/finalidade if exists, else by produto
+        st.markdown("### 🔹 Distribuição (treemap) — onde o dinheiro foi parar")
+        # try to find a category-like column
+        category_col = None
+        for c in df_c.columns:
+            if any(k in str(c).upper() for k in ("CATEG", "FINAL", "TIPO", "DEST", "USO")):
+                category_col = c
+                break
+        treemap_col = category_col if category_col in compras_mes.columns else "PRODUTO"
+        try:
+            tm = compras_mes.groupby(treemap_col)["CUSTO TOTAL (RECALC)"].sum().reset_index().sort_values("CUSTO TOTAL (RECALC)", ascending=False)
+            if not tm.empty:
+                fig_tm = px.treemap(tm, path=[treemap_col], values="CUSTO TOTAL (RECALC)", height=420)
+                plotly_dark_config(fig_tm)
+                st.plotly_chart(fig_tm, use_container_width=True, config=dict(displayModeBar=False))
+        except Exception:
+            st.write("Sem dados suficientes para treemap.")
+
+        # KPIs resumo e alerta para marketing
+        st.markdown("### 🧾 KPIs de Compras")
+        k1, k2, k3, k4 = st.columns([1,1,1,1])
+        k1.metric("Total compras (mês)", formatar_reais_sem_centavos(total_comp_mes))
+        k2.metric("Nº de compras", f"{n_comp_mes}")
+        k3.metric("Gasto marketing", formatar_reais_sem_centavos(marketing_total))
+        k4.metric("Pct marketing", f"{marketing_pct:.1f}%")
+
+        # mostra tabela das compras (com destaque para marketing)
+        st.markdown("### 📄 Últimas compras (tabela)")
+        display_cols = ["DATA", "PRODUTO", "QUANTIDADE", "CUSTO UNITÁRIO", "CUSTO TOTAL (RECALC)"]
+        display_cols = [c for c in display_cols if c in compras_mes.columns]
+        tbl = compras_mes.copy()
+        for c in ["CUSTO UNITÁRIO", "CUSTO TOTAL (RECALC)"]:
+            if c in tbl.columns:
+                tbl[c+"_FMT"] = tbl[c].map(formatar_reais_com_centavos)
+        fmt_cols = [c for c in tbl.columns if c.endswith("_FMT")]
+        # prefer showing formatted cols
+        show_cols = []
+        if "DATA" in tbl.columns:
+            tbl["DATA"] = tbl["DATA"].dt.strftime("%d/%m/%Y").fillna("—")
+            show_cols.append("DATA")
+        if "PRODUTO" in tbl.columns:
+            show_cols.append("PRODUTO")
+        if "QUANTIDADE" in tbl.columns:
+            show_cols.append("QUANTIDADE")
+        if "CUSTO UNITÁRIO_FMT" in tbl.columns:
+            show_cols.append("CUSTO UNITÁRIO_FMT")
+        if "CUSTO TOTAL (RECALC)_FMT" in tbl.columns:
+            show_cols.append("CUSTO TOTAL (RECALC)_FMT")
+        # include obs if present
+        if obs_col:
+            show_cols.append(obs_col)
+        # include fornecedor
+        if fornecedor_col:
+            show_cols.insert(2, fornecedor_col)
+        if show_cols:
+            # highlight marketing rows
+            def style_marketing(row):
+                return ['background-color: rgba(167,139,250,0.08);' if row["_MARKETING"] else '' for _ in row.index]
+            st.dataframe(tbl[show_cols + ["_MARKETING"]].rename(columns={c: c.replace("_FMT","") for c in show_cols}), use_container_width=True)
+        else:
+            st.dataframe(tbl.head(50), use_container_width=True)
+
+        # botão para baixar CSV das compras filtradas
+        st.markdown("### ⤓ Exportar")
+        csv_bytes = compras_mes.to_csv(index=False).encode('utf-8')
+        st.download_button("Baixar CSV das compras filtradas", data=csv_bytes, file_name=f"compras_{mes_selecionado}.csv", mime="text/csv")
+
+        # Sugestões rápidas focadas em anúncios/divulgação/estratégia (texto gerado automaticamente com base nos dados)
+        st.markdown("### 💡 Insights rápidos (meta-resumo)")
+        insights = []
+        if marketing_total > 0:
+            insights.append(f"Você gastou {formatar_reais_sem_centavos(marketing_total)} em itens relacionados a marketing neste mês — {marketing_count} compras identificadas.")
+        else:
+            insights.append("Nenhuma compra claramente marcada como 'marketing' encontrada — verifique colunas de descrição/observação para identificar gastos em anúncios/divulgação.")
+        # check if large spend concentrated in few fornecedores
+        if not pivot.empty:
+            top_conc = pivot["CUSTO TOTAL (RECALC)"].iloc[0]
+            if total_comp_mes > 0 and top_conc / total_comp_mes > 0.4:
+                insights.append("Alerta: >40% dos custos do mês concentrados em 1 fornecedor/produto — risco de dependência.")
+        # generic suggestions
+        insights.append("Sugestões: agrupe compras de anúncios em uma categoria 'Marketing', registre a finalidade em 'OBS' e monitore ROI por campanha.")
+        for ins in insights:
+            st.write("- " + ins)
+
+# ----------------------------
+# PESQUISAR TAB
+# ----------------------------
+with tabs[3]:
     # Controls + filters
     st.markdown("""
     <div class='glass-card' style='background: rgba(255,255,255,0.03); border-radius:14px; padding:10px; margin-bottom:8px;'>
