@@ -701,25 +701,6 @@ with tabs[0]:
 
         st.markdown("### 📄 Tabela de Vendas (mais recentes primeiro)")
         tabela_vendas_exib=preparar_tabela_vendas(df_sem)
-
-        # --- Ajuste: mostrar estoque discretamente ao lado do nome do produto na tabela de vendas ---
-        try:
-            if "Estoque" in tabela_vendas_exib.columns and "PRODUTO" in tabela_vendas_exib.columns:
-                def prod_com_estoque(row):
-                    try:
-                        estoque = int(row.get("Estoque", 0))
-                    except:
-                        estoque = 0
-                    if estoque == 1:
-                        sufixo = f"(Resta {estoque} produto)"
-                    else:
-                        sufixo = f"(Resta {estoque} produtos)"
-                    return f"{row.get('PRODUTO','')} {sufixo}"
-                tabela_vendas_exib["PRODUTO"] = tabela_vendas_exib.apply(prod_com_estoque, axis=1)
-        except Exception:
-            pass
-
-    
         st.dataframe(tabela_vendas_exib, use_container_width=True)
 
         # ---------------------
@@ -728,36 +709,13 @@ with tabs[0]:
         try:
             vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
             if not vendas_all.empty and "PRODUTO" in vendas_all.columns:
-                
                 top5 = vendas_all.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(5)
                 if not top5.empty:
-                    # juntar estoque atual (discreto)
-                    try:
-                        est = dfs.get("ESTOQUE", pd.DataFrame()).copy()
-                        if not est.empty and "PRODUTO" in est.columns:
-                            est_small = est[["PRODUTO","EM ESTOQUE"]].copy().rename(columns={"EM ESTOQUE":"Estoque"})
-                            top5 = top5.merge(est_small, on="PRODUTO", how="left")
-                        else:
-                            top5["Estoque"] = 0
-                    except Exception:
-                        top5["Estoque"] = 0
-
+                    st.markdown("""### 🔥 Top 5 — Produtos bombando (por unidades vendidas)
+""", unsafe_allow_html=True)
+                    # render as small table
                     top5["QTD"] = top5["QTD"].astype(int)
-
-                    # --- Ajuste: adicionar (Resta X produto(s)) ao lado do nome ---
-                    def nome_com_estoque(row):
-                        estoque = int(row.get("Estoque", 0)) if pd.notna(row.get("Estoque", 0)) else 0
-                        if estoque == 1:
-                            return f\"{row.get('PRODUTO','')} (Resta {estoque} produto)\"
-                        else:
-                            return f\"{row.get('PRODUTO','')} (Resta {estoque} produtos)\"
-
-                    top5_display = top5.copy()
-                    top5_display["Produto"] = top5_display.apply(nome_com_estoque, axis=1)
-                    top5_display = top5_display.rename(columns={"QTD":"Unidades"})
-                    st.markdown(\"\"\"### 🔥 Top 5 — Produtos bombando (por unidades vendidas)\"\"\", unsafe_allow_html=True)
-                    st.table(top5_display[["Produto","Unidades","Estoque"]])
-        )
+                    st.table(top5.rename(columns={"PRODUTO":"Produto","QTD":"Unidades"}))
         except Exception:
             pass
 
