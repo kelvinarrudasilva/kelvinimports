@@ -1,5 +1,4 @@
 # app.py — Dashboard Loja Importados (Roxo Minimalista) — Dark Theme Mobile
-# Atualizado: adiciona 'Estoque' na tabela de vendas e mostra estoque discreto no Top5 (Produtos bombando)
 import streamlit as st
 
 # ================================================
@@ -124,6 +123,75 @@ def compute_top5_global(dfs):
     top = vendas.groupby("PRODUTO")["QTD"].sum().sort_values(ascending=False).head(5)
     return list(top.index)
 
+
+# --- Cálculo GLOBAL Top 5 mais vendidos ---
+def compute_top5_global(dfs):
+    import pandas as _pd
+    vendas = dfs.get("VENDAS", _pd.DataFrame()).copy()
+    if vendas.empty or "PRODUTO" not in vendas.columns:
+        return []
+    if "QTD" not in vendas.columns:
+        # try to infer a quantity column
+        for c in vendas.columns:
+            if c.upper() in ("QTD","QUANTIDADE","QTY"):
+                vendas["QTD"] = vendas[c]
+                break
+    vendas["QTD"] = vendas.get("QTD", 0).fillna(0).astype(int)
+    top = vendas.groupby("PRODUTO")["QTD"].sum().sort_values(ascending=False).head(5)
+    return top.index.tolist()
+
+    _top5_list_global = []
+    import pandas as _pd
+    estoque_all = dfs.get("ESTOQUE", _pd.DataFrame()).copy()
+    vendas_all = dfs.get("VENDAS", _pd.DataFrame()).copy()
+    compras_all = dfs.get("COMPRAS", _pd.DataFrame()).copy()
+
+    if not compras_all.empty:
+        compras_all["DATA"] = _pd.to_datetime(compras_all["DATA"], errors="coerce")
+    if not vendas_all.empty:
+        vendas_all["DATA"] = _pd.to_datetime(vendas_all["DATA"], errors="coerce")
+
+    if estoque_all.empty:
+        return [], _pd.DataFrame()
+
+    # last sale
+    if not vendas_all.empty and "PRODUTO" in vendas_all.columns:
+        last_sale = vendas_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA":"ULT_VENDA"})
+    else:
+        last_sale = _pd.DataFrame(columns=["PRODUTO","ULT_VENDA"])
+    # last buy
+    if not compras_all.empty and "PRODUTO" in compras_all.columns:
+        last_buy = compras_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA":"ULT_COMPRA"})
+    else:
+        last_buy = _pd.DataFrame(columns=["PRODUTO","ULT_COMPRA"])
+
+    enc = estoque_all.merge(last_sale, how="left", on="PRODUTO").merge(last_buy, how="left", on="PRODUTO")
+    enc = enc[enc.get("EM ESTOQUE", 0) > 0].copy()
+
+    today = _pd.Timestamp.now()
+
+    def calc_days(row):
+        if _pd.notna(row.get("ULT_VENDA")):
+            return (today - row["ULT_VENDA"]).days
+        if _pd.notna(row.get("ULT_COMPRA")):
+            return (today - row["ULT_COMPRA"]).days
+        return 9999
+
+    enc["DIAS_PARADO"] = enc.apply(calc_days, axis=1)
+    enc_sorted = enc.sort_values("DIAS_PARADO", ascending=False).head(limit)
+    enc_list = enc_sorted["PRODUTO"].tolist()
+    return enc_list, enc_sorted
+
+# compute once and show alert
+try:
+    _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
+    if len(_enc_list_global) > 0:
+        st.warning(f"❄️ Produtos encalhados detectados: {len(_enc_list_global)} — vá em VENDAS > Produtos encalhados para ver a lista.")
+except Exception:
+    _enc_list_global, _enc_df_global = [], None
+
+
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # =============================
 # CSS - Dark Theme (tabelas incluídas)
@@ -421,8 +489,6 @@ def plotly_dark_config(fig):
 # =============================
 # Carregar planilha
 # =============================
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
-
 try:
     xls = carregar_xlsx_from_url(URL_PLANILHA)
 except Exception as e:
@@ -635,46 +701,21 @@ with tabs[0]:
 
         st.markdown("### 📄 Tabela de Vendas (mais recentes primeiro)")
         tabela_vendas_exib=preparar_tabela_vendas(df_sem)
-
-        # --- ADICIONA INFORMAÇÃO DISCRETA DE ESTOQUE NA TABELA DE VENDAS ---
-        try:
-            if not estoque_df.empty and "PRODUTO" in estoque_df.columns:
-                estoque_for_merge = estoque_df[["PRODUTO","EM ESTOQUE"]].copy()
-                estoque_for_merge = estoque_for_merge.rename(columns={"EM ESTOQUE":"Estoque"})
-                # merge sem bagunçar a ordem
-                tabela_vendas_exib = tabela_vendas_exib.merge(estoque_for_merge, on="PRODUTO", how="left")
-                tabela_vendas_exib["Estoque"] = tabela_vendas_exib["Estoque"].fillna(0).astype(int)
-        except Exception:
-            # se algo falhar, não interrompe exibição
-            pass
-
         st.dataframe(tabela_vendas_exib, use_container_width=True)
 
         # ---------------------
-        # TOP 5 PRODUTOS BOMBANDO (por quantidade vendida) — agora com estoque discreto
+        # TOP 5 PRODUTOS BOMBANDO (por quantidade vendida)
         # ---------------------
         try:
             vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
             if not vendas_all.empty and "PRODUTO" in vendas_all.columns:
                 top5 = vendas_all.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(5)
                 if not top5.empty:
-                    # juntar estoque atual (discreto)
-                    try:
-                        est = dfs.get("ESTOQUE", pd.DataFrame()).copy()
-                        if not est.empty and "PRODUTO" in est.columns:
-                            est_small = est[["PRODUTO","EM ESTOQUE"]].copy().rename(columns={"EM ESTOQUE":"Estoque"})
-                            top5 = top5.merge(est_small, on="PRODUTO", how="left")
-                        else:
-                            top5["Estoque"] = 0
-                    except Exception:
-                        top5["Estoque"] = 0
-
+                    st.markdown("""### 🔥 Top 5 — Produtos bombando (por unidades vendidas)
+""", unsafe_allow_html=True)
+                    # render as small table
                     top5["QTD"] = top5["QTD"].astype(int)
-                    top5_display = top5.rename(columns={"PRODUTO":"Produto","QTD":"Unidades"})
-                    # formatação discreta: coluna Estoque
-                    st.markdown("""### 🔥 Top 5 — Produtos bombando (por unidades vendidas)""", unsafe_allow_html=True)
-                    # mostrar tabela com Estoque à direita (discreto)
-                    st.table(top5_display[["Produto","Unidades","Estoque"]])
+                    st.table(top5.rename(columns={"PRODUTO":"Produto","QTD":"Unidades"}))
         except Exception:
             pass
 
@@ -1054,7 +1095,6 @@ with tabs[2]:
             f"{avatar_html}"
             f"<div style='flex:1;'>"
             f"<div class='card-title'>{nome}</div>"
-            # aqui mostramos estoque de forma discreta dentro do card
             f"<div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>"
             f"<div class='card-prices'><div class='card-price'>{venda}</div><div class='card-cost'>{custo}</div></div>"
             f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>🕒 Última compra: <b>{ultima}</b></div>"
@@ -1066,3 +1106,4 @@ with tabs[2]:
         st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
+
