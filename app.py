@@ -256,7 +256,17 @@ body, .stApp { background: var(--bg) !important; color:#f0f0f0 !important; font-
 .title { font-size:20px; font-weight:800; color:var(--accent-2); margin:0; line-height:1; }
 .subtitle { margin:0; font-size:12px; color:var(--muted); margin-top:2px; }
 .kpi-row { display:flex; gap:10px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
-.kpi { background:var(--card-bg); border-radius:10px; padding:10px 14px; border-left:6px solid var(--accent); min-width:160px; color:#f0f0f0; }
+.kpi {
+  background: var(--card-bg);
+  border-radius: 14px;
+  padding: 16px 20px;
+  border-left: 6px solid var(--accent);
+  min-width: 190px;
+  color: #f0f0f0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 .stDataFrame thead th { background: linear-gradient(90deg, rgba(139,92,246,0.16), rgba(167,139,250,0.06)) !important; color: #f0f0f0 !important; font-weight:700 !important; }
 .avatar{ width:64px;height:64px;border-radius:14px; background:linear-gradient(120deg,#a78bfa,#ec4899,#06b6d4); background-size:300% 300%; animation:neonMove 6s ease infinite; display:flex;align-items:center;justify-content:center; color:white;font-weight:900;font-size:22px; }
 @keyframes neonMove{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}
@@ -266,6 +276,17 @@ body, .stApp { background: var(--bg) !important; color:#f0f0f0 !important; font-
 .zero{background:rgba(255,255,255,0.1); color:#fff;}
 .card-ecom:hover{ transform:translateY(-2px); transition:.2s;}
 .suffix-muted { color:#9ca3af; font-style:italic; font-size:12px; margin-left:6px; }
+
+.kpi h3 {
+  font-size: 17px;
+  font-weight: 800;
+  margin: 0 0 6px 0;
+}
+.kpi .value {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -486,7 +507,13 @@ with tabs[0]:
         except Exception:
             pass
 
-        st.dataframe(tabela_vendas_exib, use_container_width=True)
+        # manter somente colunas até OBS
+cols = tabela_vendas_exib.columns.tolist()
+if "OBS" in cols:
+    limite = cols.index("OBS") + 1
+    tabela_vendas_exib = tabela_vendas_exib[cols[:limite]]
+
+st.dataframe(tabela_vendas_exib, use_container_width=True)
 
         # 3) Top 5 — Produtos bombando (com sufixo)
         try:
@@ -510,7 +537,7 @@ with tabs[0]:
                     top5_display["Produto"] = top5_display.apply(_nome_top5, axis=1)
                     top5_display = top5_display.rename(columns={"QTD": "Unidades"})
                     st.markdown("### 🔥 Top 5 — Produtos bombando (por unidades vendidas)")
-                    st.table(top5_display[["Produto", "Unidades", "Estoque"]])
+                    st.table(top5_display[["Produto","Unidades"]])
         except Exception:
             pass
 
@@ -590,7 +617,18 @@ with tabs[2]:
     .card-ecom{ background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:14px; display:flex; gap:12px; align-items:center; }
     .card-title{font-weight:900;font-size:15px;margin-bottom:4px;color:#fff;}
     .card-meta{font-size:12px;color:#cfcfe0;margin-bottom:6px;}
-    </style>
+    
+.kpi h3 {
+  font-size: 17px;
+  font-weight: 800;
+  margin: 0 0 6px 0;
+}
+.kpi .value {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+</style>
     """, unsafe_allow_html=True)
 
     st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
@@ -682,7 +720,18 @@ with tabs[2]:
     fim = inicio + itens_pagina
     df_page = df.iloc[inicio:fim].reset_index(drop=True)
 
-    st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}
+.kpi h3 {
+  font-size: 17px;
+  font-weight: 800;
+  margin: 0 0 6px 0;
+}
+.kpi .value {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+</style>", unsafe_allow_html=True)
     st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
 
     for _, r in df_page.iterrows():
