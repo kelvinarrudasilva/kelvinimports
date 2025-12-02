@@ -573,9 +573,9 @@ with tabs[0]:
         except Exception as e:
             st.write("Erro encalhados:", e)
 
-# ----------------------------
-# ESTOQUE TAB
-# ----------------------------
+    # ----------------------------
+    # ESTOQUE TAB
+    # ----------------------------
 with tabs[1]:
     if estoque_df.empty:
         st.info("Sem dados de estoque.")
