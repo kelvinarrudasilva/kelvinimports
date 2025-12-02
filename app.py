@@ -530,63 +530,112 @@ with tabs[0]:
                     top5_display = top5_display.rename(columns={"QTD": "Unidades"})
                     st.markdown("### 🔥 Top 5 — Produtos bombando (por unidades vendidas)")
                     # ----- NOVO VISUAL PREMIUM DO TOP 5 -----
-top5_html = """
-<style>
-.top5-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-}
-.top5-table th {
-    text-align: left;
-    padding: 10px;
-    background: rgba(139,92,246,0.15);
-    color: #e5d4ff;
-    font-size: 14px;
-    font-weight: 900;
-}
-.top5-table td {
-    padding: 10px;
-    font-size: 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-.badge-qtd {
-    display: inline-block;
-    padding: 6px 12px;
-    border-radius: 10px;
-    font-weight: 900;
-    color: white;
-    font-size: 14px;
-}
-</style>
 
-<table class="top5-table">
-<tr>
-    <th>Produto</th>
-    <th>Unidades</th>
-</tr>
-"""
+                    top5_html = """
 
-cores = ["#a78bfa", "#34d399", "#3b82f6", "#f59e0b", "#6b7280"]
-emoji = ["🟣", "🟢", "🔵", "🟠", "⚫"]
+                    <style>
 
-for i, row in top5_display.iterrows():
-    produto = row["Produto"]
-    qtd = row["Unidades"]
-    cor = cores[i]
-    ico = emoji[i]
+                    .top5-table {
 
-    top5_html += f"""
-    <tr>
-        <td>{produto}</td>
-        <td><span class='badge-qtd' style='background:{cor}'>{ico} {qtd} vendidas</span></td>
-    </tr>
-    """
+                        width: 100%;
 
-top5_html += "</table>"
+                        border-collapse: collapse;
 
-st.markdown("### 🔥 Top 5 — Produtos bombando (por unidades vendidas)")
-st.markdown(top5_html, unsafe_allow_html=True)
+                        margin-top: 10px;
+
+                    }
+
+                    .top5-table th {
+
+                        text-align: left;
+
+                        padding: 10px;
+
+                        background: rgba(139,92,246,0.15);
+
+                        color: #e5d4ff;
+
+                        font-size: 14px;
+
+                        font-weight: 900;
+
+                    }
+
+                    .top5-table td {
+
+                        padding: 10px;
+
+                        font-size: 14px;
+
+                        border-bottom: 1px solid rgba(255,255,255,0.1);
+
+                    }
+
+                    .badge-qtd {
+
+                        display: inline-block;
+
+                        padding: 6px 12px;
+
+                        border-radius: 10px;
+
+                        font-weight: 900;
+
+                        color: white;
+
+                        font-size: 14px;
+
+                    }
+
+                    </style>
+
+
+                    <table class="top5-table">
+
+                    <tr>
+
+                        <th>Produto</th>
+
+                        <th>Unidades</th>
+
+                    </tr>
+
+                    """
+
+
+                    cores = ["#a78bfa", "#34d399", "#3b82f6", "#f59e0b", "#6b7280"]
+
+                    emoji = ["🟣", "🟢", "🔵", "🟠", "⚫"]
+
+
+                    for i, row in top5_display.iterrows():
+
+                        produto = row["Produto"]
+
+                        qtd = row["Unidades"]
+
+                        cor = cores[i]
+
+                        ico = emoji[i]
+
+                        top5_html += f"""
+
+                        <tr>
+
+                            <td>{produto}</td>
+
+                            <td><span class='badge-qtd' style='background:{cor}'>{ico} {qtd} vendidas</span></td>
+
+                        </tr>
+
+                        """
+
+
+                    top5_html += "</table>"
+
+                    st.markdown("### 🔥 Top 5 — Produtos bombando (por unidades vendidas)")
+
+                    st.markdown(top5_html, unsafe_allow_html=True)
         except Exception:
             pass
 
