@@ -1,14 +1,5 @@
-# app.py — Loja Importados — Versão final completa, corrigida e otimizada
-# Recursos implementados:
-# - Tabela de VENDAS com coluna "Estoque" e nome do produto exibindo "(📦 Resta X produto(s))"
-# - Top 5 — Produtos bombando com o mesmo sufixo de estoque (singular/plural)
-# - Produtos encalhados
-# - Aba ESTOQUE com gráficos e tabela
-# - Aba PESQUISAR com grid e filtros
-# - Estilo dark, botões, e floating refresh
-# Autor: Gerado por assistente (Kelvin requested)
-# NOTA: ajuste URL_PLANILHA para apontar à sua planilha, se necessário.
-
+# app_final_corrigido_total_fixed.py
+# Versão corrigida e ajustada do dashboard - removidos trechos duplicados/soltos e corrigida indentação
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -241,7 +232,7 @@ def plotly_dark_config(fig):
 # ------------------------
 # CSS + topbar + floating button
 # ------------------------
-st.markdown("""
+GLOBAL_CSS = """
 <style>
 :root{
   --bg:#0b0b0b;
@@ -288,7 +279,8 @@ body, .stApp { background: var(--bg) !important; color:#f0f0f0 !important; font-
   letter-spacing: -0.5px;
 }
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
 st.markdown("""
 <div class="topbar">
@@ -573,9 +565,9 @@ with tabs[0]:
         except Exception as e:
             st.write("Erro encalhados:", e)
 
-    # ----------------------------
-    # ESTOQUE TAB
-    # ----------------------------
+# ----------------------------
+# ESTOQUE TAB
+# ----------------------------
 with tabs[1]:
     if estoque_df.empty:
         st.info("Sem dados de estoque.")
@@ -608,30 +600,10 @@ with tabs[1]:
 # PESQUISAR TAB
 # ----------------------------
 with tabs[2]:
+    # Controls + filters
     st.markdown("""
-    <style>
-    .glass-card { background: rgba(255,255,255,0.03); border-radius:14px; padding:10px; }
-        st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
-        st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
-    @media(max-width:720px){ .card-grid-ecom{grid-template-columns:1fr;} }
-    .card-ecom{ background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:14px; display:flex; gap:12px; align-items:center; }
-    .card-title{font-weight:900;font-size:15px;margin-bottom:4px;color:#fff;}
-    .card-meta{font-size:12px;color:#cfcfe0;margin-bottom:6px;}
-    
-.kpi h3 {
-  font-size: 17px;
-  font-weight: 800;
-  margin: 0 0 6px 0;
-}
-.kpi .value {
-  font-size: 26px;
-  font-weight: 900;
-  letter-spacing: -0.5px;
-}
-</style>
+    <div class='glass-card' style='background: rgba(255,255,255,0.03); border-radius:14px; padding:10px; margin-bottom:8px;'>
     """, unsafe_allow_html=True)
-
-    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
     col_a, col_b = st.columns([3,2])
     with col_a:
         termo = st.text_input("🔎 Buscar produto", value="", placeholder="Digite o nome do produto...")
@@ -647,6 +619,7 @@ with tabs[2]:
             ver_tudo = st.checkbox("Ver tudo (sem paginação)", value=False)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # filtros rápidos
     filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)", value=False)
     filtro_alto = st.checkbox("📦 Alto estoque (≥20)", value=False)
     filtro_vendidos = st.checkbox("🔥 Com vendas", value=False)
@@ -720,18 +693,20 @@ with tabs[2]:
     fim = inicio + itens_pagina
     df_page = df.iloc[inicio:fim].reset_index(drop=True)
 
-        st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
-.kpi h3 {
-  font-size: 17px;
-  font-weight: 800;
-  margin: 0 0 6px 0;
-}
-.kpi .value {
-  font-size: 26px;
-  font-weight: 900;
-  letter-spacing: -0.5px;
-}
-</style>", unsafe_allow_html=True)
+    # Inject dynamic CSS for grid columns chosen
+    css_grid = f"""
+    <style>
+    .card-grid-ecom{{ display:grid; grid-template-columns: repeat({grid_cols},1fr); gap:12px; }}
+    @media(max-width:720px){{
+        .card-grid-ecom{{grid-template-columns:1fr;}}
+    }}
+    .card-ecom{{ background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:14px; display:flex; gap:12px; align-items:center; }}
+    .card-title{{font-weight:900;font-size:15px;margin-bottom:4px;color:#fff;}}
+    .card-meta{{font-size:12px;color:#cfcfe0;margin-bottom:6px;}}
+    </style>
+    """
+    st.markdown(css_grid, unsafe_allow_html=True)
+
     st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
 
     for _, r in df_page.iterrows():
