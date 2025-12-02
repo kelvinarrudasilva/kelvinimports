@@ -755,7 +755,12 @@ with tabs[2]:
             f"<div style='flex:1;'>"
             f"<div class='card-title'>{nome}</div>"
             f"<div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>"
-            f"<div class='card-prices'><div class='card-price'>{venda}</div><div class='card-cost'>{custo}</div></div>"
+            f"""
+<div style='margin-top:6px; line-height:1.25;'>
+    <div style='font-size:13px; color:#ffffff; font-weight:700;'>💲 Venda: <span style='color:#a78bfa;'>{venda}</span></div>
+    <div style='font-size:12px; color:#cfcfe0;'>💰 Custo: <span style='color:#ffb4b4;'>{custo}</span></div>
+</div>
+"""
             f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>🕒 Última compra: <b>{ultima}</b></div>"
             f"{vendas_badges_html}"
             f"</div>"
