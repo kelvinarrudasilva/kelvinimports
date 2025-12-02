@@ -707,14 +707,14 @@ try:
     if "PRODUTO" in tabela_vendas_exib.columns and "Estoque" in tabela_vendas_exib.columns:
         def _nome_prod(row):
             est = int(row.get("Estoque",0)) if row.get("Estoque") not in (None, "") else 0
-            suf = f"(Resta {est} produto)" if est==1 else f"(Resta {est} produtos)"
+            suf = f"(📦 Resta {est} produto)" if est==1 else f"(📦 Resta {est} produtos)"
             return f"{row['PRODUTO']} {suf}"
         tabela_vendas_exib["PRODUTO"] = tabela_vendas_exib.apply(_nome_prod, axis=1)
 except Exception as e:
     pass
 
 
-        st.dataframe(tabela_vendas_exib, use_container_width=True)
+st.dataframe(tabela_vendas_exib, use_container_width=True)
 
         # ---------------------
         # TOP 5 PRODUTOS BOMBANDO (por quantidade vendida)
@@ -1119,4 +1119,3 @@ with tabs[2]:
         st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
-
