@@ -542,31 +542,31 @@ top5_html = '''
     text-align: left;
     padding: 10px;
     background: rgba(139,92,246,0.15);
-    color: #e5d4ff;
-    font-size: 14px;
-    font-weight: 900;
-}
-.top5-table td {
-    padding: 10px;
-    font-size: 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-.badge-qtd {
-    display: inline-block;
-    padding: 6px 12px;
-    border-radius: 10px;
-    font-weight: 900;
-    color: white;
-    font-size: 14px;
-}
-</style>
-
-<table class="top5-table">
-<tr>
-    <th>Produto</th>
-    <th>Unidades</th>
-</tr>
-'''
+            color: #e5d4ff;
+            font-size: 14px;
+            font-weight: 900;
+            }
+            .top5-table td {
+            padding: 10px;
+            font-size: 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            .badge-qtd {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-weight: 900;
+            color: white;
+            font-size: 14px;
+            }
+            </style>
+            
+            <table class="top5-table">
+            <tr>
+            <th>Produto</th>
+            <th>Unidades</th>
+            </tr>
+            '''
 
 cores = ["#a78bfa", "#34d399", "#3b82f6", "#f59e0b", "#6b7280"]
 emoji = ["🟣","🟢","🔵","🟠","⚫"]
