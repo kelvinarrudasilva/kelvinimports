@@ -701,6 +701,19 @@ with tabs[0]:
 
         st.markdown("### 📄 Tabela de Vendas (mais recentes primeiro)")
         tabela_vendas_exib=preparar_tabela_vendas(df_sem)
+
+# --- Inject: modify product name to add remaining stock ---
+try:
+    if "PRODUTO" in tabela_vendas_exib.columns and "Estoque" in tabela_vendas_exib.columns:
+        def _nome_prod(row):
+            est = int(row.get("Estoque",0)) if row.get("Estoque") not in (None, "") else 0
+            suf = f"(Resta {est} produto)" if est==1 else f"(Resta {est} produtos)"
+            return f"{row['PRODUTO']} {suf}"
+        tabela_vendas_exib["PRODUTO"] = tabela_vendas_exib.apply(_nome_prod, axis=1)
+except Exception as e:
+    pass
+
+
         st.dataframe(tabela_vendas_exib, use_container_width=True)
 
         # ---------------------
