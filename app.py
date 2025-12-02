@@ -611,8 +611,8 @@ with tabs[2]:
     st.markdown("""
     <style>
     .glass-card { background: rgba(255,255,255,0.03); border-radius:14px; padding:10px; }
-    .card-grid-ecom { display:grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:12px; }
-    @media(max-width:1200px){ .card-grid-ecom{grid-template-columns:repeat(2,1fr);} }
+        st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
+        st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
     @media(max-width:720px){ .card-grid-ecom{grid-template-columns:1fr;} }
     .card-ecom{ background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:14px; display:flex; gap:12px; align-items:center; }
     .card-title{font-weight:900;font-size:15px;margin-bottom:4px;color:#fff;}
@@ -720,7 +720,7 @@ with tabs[2]:
     fim = inicio + itens_pagina
     df_page = df.iloc[inicio:fim].reset_index(drop=True)
 
-    st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}
+        st.markdown(f"<style>.card-grid-ecom{{grid-template-columns: repeat({grid_cols},1fr);}}</style>", unsafe_allow_html=True)
 .kpi h3 {
   font-size: 17px;
   font-weight: 800;
