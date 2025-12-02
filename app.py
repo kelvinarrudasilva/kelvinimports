@@ -529,7 +529,64 @@ with tabs[0]:
                     top5_display["Produto"] = top5_display.apply(_nome_top5, axis=1)
                     top5_display = top5_display.rename(columns={"QTD": "Unidades"})
                     st.markdown("### 🔥 Top 5 — Produtos bombando (por unidades vendidas)")
-                    st.table(top5_display[["Produto","Unidades"]])
+                    # ----- NOVO VISUAL PREMIUM DO TOP 5 -----
+top5_html = """
+<style>
+.top5-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+.top5-table th {
+    text-align: left;
+    padding: 10px;
+    background: rgba(139,92,246,0.15);
+    color: #e5d4ff;
+    font-size: 14px;
+    font-weight: 900;
+}
+.top5-table td {
+    padding: 10px;
+    font-size: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.badge-qtd {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-weight: 900;
+    color: white;
+    font-size: 14px;
+}
+</style>
+
+<table class="top5-table">
+<tr>
+    <th>Produto</th>
+    <th>Unidades</th>
+</tr>
+"""
+
+cores = ["#a78bfa", "#34d399", "#3b82f6", "#f59e0b", "#6b7280"]
+emoji = ["🟣", "🟢", "🔵", "🟠", "⚫"]
+
+for i, row in top5_display.iterrows():
+    produto = row["Produto"]
+    qtd = row["Unidades"]
+    cor = cores[i]
+    ico = emoji[i]
+
+    top5_html += f"""
+    <tr>
+        <td>{produto}</td>
+        <td><span class='badge-qtd' style='background:{cor}'>{ico} {qtd} vendidas</span></td>
+    </tr>
+    """
+
+top5_html += "</table>"
+
+st.markdown("### 🔥 Top 5 — Produtos bombando (por unidades vendidas)")
+st.markdown(top5_html, unsafe_allow_html=True)
         except Exception:
             pass
 
@@ -755,12 +812,7 @@ with tabs[2]:
             f"<div style='flex:1;'>"
             f"<div class='card-title'>{nome}</div>"
             f"<div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>"
-            f"""
-<div style='margin-top:6px; line-height:1.25;'>
-    <div style='font-size:13px; color:#ffffff; font-weight:700;'>💲 Venda: <span style='color:#a78bfa;'>{venda}</span></div>
-    <div style='font-size:12px; color:#cfcfe0;'>💰 Custo: <span style='color:#ffb4b4;'>{custo}</span></div>
-</div>
-"""
+            f"<div class='card-prices'><div class='card-price'>{venda}</div><div class='card-cost'>{custo}</div></div>"
             f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>🕒 Última compra: <b>{ultima}</b></div>"
             f"{vendas_badges_html}"
             f"</div>"
