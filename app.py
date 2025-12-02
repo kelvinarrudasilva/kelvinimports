@@ -513,7 +513,7 @@ with tabs[0]:
             limite = cols.index("OBS") + 1
             tabela_vendas_exib = tabela_vendas_exib[cols[:limite]]
         
-st.dataframe(tabela_vendas_exib, use_container_width=True)
+        st.dataframe(tabela_vendas_exib, use_container_width=True)
 
         # 3) Top 5 — Produtos bombando (com sufixo)
         try:
