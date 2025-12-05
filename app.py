@@ -1,6 +1,6 @@
-
-# app_final_com_compras.py
+# app.py
 # Versão final do dashboard com aba COMPRAS — pronta para rodar
+# Loja: NOVE STORE
 # Requer: streamlit, pandas, plotly, requests, openpyxl
 
 import streamlit as st
@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import requests
 from io import BytesIO
 
-st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="NOVE STORE — Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 # ------------------------
 # Config
@@ -80,6 +80,7 @@ def formatar_reais_com_centavos(v):
     s = f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"R$ {s}"
 
+@st.cache_data(show_spinner=False)
 def carregar_xlsx_from_url(url):
     r = requests.get(url, timeout=25)
     r.raise_for_status()
@@ -295,7 +296,7 @@ st.markdown("""
     </svg>
   </div>
   <div>
-    <div class="title">Loja Importados — Dashboard</div>
+    <div class="title">NOVE STORE — Dashboard</div>
     <div class="subtitle">Visão rápida de vendas, compras e estoque</div>
   </div>
 </div>
@@ -346,10 +347,12 @@ if "ESTOQUE" in dfs:
 if "VENDAS" in dfs:
     df_v = dfs["VENDAS"].copy()
     df_v.columns = [str(c).strip() for c in df_v.columns]
-    money_map = {"VALOR VENDA": ["VALOR VENDA", "VALOR_VENDA", "VALORVENDA"],
-               "VALOR TOTAL": ["VALOR TOTAL", "VALOR_TOTAL", "VALORTOTAL"],
-               "MEDIA CUSTO UNITARIO": ["MEDIA C. UNITARIO", "MEDIA CUSTO UNITARIO", "MEDIA CUSTO"],
-               "LUCRO UNITARIO": ["LUCRO UNITARIO", "LUCRO_UNITARIO"]}
+    money_map = {
+        "VALOR VENDA": ["VALOR VENDA", "VALOR_VENDA", "VALORVENDA"],
+        "VALOR TOTAL": ["VALOR TOTAL", "VALOR_TOTAL", "VALORTOTAL"],
+        "MEDIA CUSTO UNITARIO": ["MEDIA C. UNITARIO", "MEDIA CUSTO UNITARIO", "MEDIA CUSTO"],
+        "LUCRO UNITARIO": ["LUCRO UNITARIO", "LUCRO_UNITARIO"],
+    }
     for target, vars_ in money_map.items():
         for v in vars_:
             if v in df_v.columns:
@@ -379,7 +382,6 @@ if "COMPRAS" in dfs:
         df_c["QUANTIDADE"] = parse_int_series(df_c[qcols[0]]).fillna(0).astype(int)
     ccols = [c for c in df_c.columns if any(k in c.upper() for k in ("CUSTO", "UNIT", "VALOR"))]
     if ccols:
-        # pick the best match for custo unitario
         df_c["CUSTO UNITÁRIO"] = parse_money_series(df_c[ccols[0]]).fillna(0)
     df_c["CUSTO TOTAL (RECALC)"] = df_c.get("QUANTIDADE", 0) * df_c.get("CUSTO UNITÁRIO", 0)
     if "DATA" in df_c.columns:
@@ -433,14 +435,42 @@ total_lucro = (vendas_filtradas.get("LUCRO UNITARIO", 0).fillna(0) * vendas_filt
 total_compras = compras_filtradas.get("CUSTO TOTAL (RECALC)", pd.Series()).fillna(0).sum()
 
 with col_kpis:
+    # Toggle tipo app de banco (por padrão oculto)
+    mostrar_saldos = st.toggle("👁‍🗨 Mostrar faturamento e lucro", value=False)
+
+    if mostrar_saldos:
+        fat_display = formatar_reais_sem_centavos(total_vendido)
+        lucro_display = formatar_reais_sem_centavos(total_lucro)
+    else:
+        fat_display = "••••"
+        lucro_display = "••••"
+
     st.markdown(f"""
     <div class="kpi-row">
-      <div class="kpi"><h3>💵 Faturamento</h3><div class="value">{formatar_reais_sem_centavos(total_vendido)}</div></div>
-      <div class="kpi" style="border-left-color:#34d399;"><h3>🧾 Lucro Liq.</h3><div class="value">{formatar_reais_sem_centavos(total_lucro)}</div></div>
-      <div class="kpi" style="border-left-color:#f59e0b;"><h3>💸 Compras</h3><div class="value">{formatar_reais_sem_centavos(total_compras)}</div></div>
-      <div class="kpi" style="border-left-color:#8b5cf6;"><h3>📦 Custo Est.</h3><div class="value">{formatar_reais_sem_centavos(valor_custo_estoque)}</div></div>
-      <div class="kpi" style="border-left-color:#a78bfa;"><h3>🏷️ Venda Est.</h3><div class="value">{formatar_reais_sem_centavos(valor_venda_estoque)}</div></div>
-      <div class="kpi" style="border-left-color:#6ee7b7;"><h3>🔢 Itens</h3><div class="value">{quantidade_total_itens}</div></div>
+      <div class="kpi">
+        <h3>💵 Faturamento</h3>
+        <div class="value">{fat_display}</div>
+      </div>
+      <div class="kpi" style="border-left-color:#34d399;">
+        <h3>🧾 Lucro Liq.</h3>
+        <div class="value">{lucro_display}</div>
+      </div>
+      <div class="kpi" style="border-left-color:#f59e0b;">
+        <h3>💸 Compras</h3>
+        <div class="value">{formatar_reais_sem_centavos(total_compras)}</div>
+      </div>
+      <div class="kpi" style="border-left-color:#8b5cf6;">
+        <h3>📦 Custo Est.</h3>
+        <div class="value">{formatar_reais_sem_centavos(valor_custo_estoque)}</div>
+      </div>
+      <div class="kpi" style="border-left-color:#a78bfa;">
+        <h3>🏷️ Venda Est.</h3>
+        <div class="value">{formatar_reais_sem_centavos(valor_venda_estoque)}</div>
+      </div>
+      <div class="kpi" style="border-left-color:#6ee7b7;">
+        <h3>🔢 Itens</h3>
+        <div class="value">{quantidade_total_itens}</div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -565,7 +595,13 @@ with tabs[0]:
                     enc_display["ULT_VENDA"] = enc_display["ULT_VENDA"].dt.strftime("%d/%m/%Y").fillna("—")
                     enc_display["ULT_COMPRA"] = enc_display["ULT_COMPRA"].dt.strftime("%d/%m/%Y").fillna("—")
                     st.markdown("### ❄️ Produtos encalhados (global) — baseado em última venda / compra e estoque atual")
-                    st.table(enc_display.rename(columns={"PRODUTO": "Produto", "EM ESTOQUE": "Estoque", "ULT_VENDA": "Última venda", "ULT_COMPRA": "Última compra", "DIAS_PARADO": "Dias parado"}))
+                    st.table(enc_display.rename(columns={
+                        "PRODUTO": "Produto",
+                        "EM ESTOQUE": "Estoque",
+                        "ULT_VENDA": "Última venda",
+                        "ULT_COMPRA": "Última compra",
+                        "DIAS_PARADO": "Dias parado"
+                    }))
         except Exception as e:
             st.write("Erro encalhados:", e)
 
@@ -584,8 +620,17 @@ with tabs[1]:
         top_for_pie = estoque_display.sort_values("EM ESTOQUE", ascending=False).head(10)
         if not top_for_pie.empty:
             fig_pie = px.pie(top_for_pie, names="PRODUTO", values="EM ESTOQUE", hole=0.40)
-            fig_pie.update_traces(textinfo="label+value", textposition="inside", pull=[0.05 if i == 0 else 0 for i in range(len(top_for_pie))], marker=dict(line=dict(color="#0b0b0b", width=1)))
-            fig_pie.update_layout(title={"text": "Top itens por quantidade em estoque", "y":0.96, "x":0.5, "xanchor":"center"}, showlegend=False, margin=dict(t=60,b=10,l=10,r=10))
+            fig_pie.update_traces(
+                textinfo="label+value",
+                textposition="inside",
+                pull=[0.05 if i == 0 else 0 for i in range(len(top_for_pie))],
+                marker=dict(line=dict(color="#0b0b0b", width=1))
+            )
+            fig_pie.update_layout(
+                title={"text": "Top itens por quantidade em estoque", "y":0.96, "x":0.5, "xanchor":"center"},
+                showlegend=False,
+                margin=dict(t=60,b=10,l=10,r=10)
+            )
             plotly_dark_config(fig_pie)
             st.plotly_chart(fig_pie, use_container_width=True, config=dict(displayModeBar=False))
 
@@ -595,7 +640,19 @@ with tabs[1]:
         estoque_clas["VALOR_TOTAL_CUSTO_FMT"] = estoque_clas["VALOR_CUSTO_TOTAL_RAW"].map(formatar_reais_sem_centavos)
         estoque_clas["VALOR_TOTAL_VENDA_FMT"] = estoque_clas["VALOR_VENDA_TOTAL_RAW"].map(formatar_reais_sem_centavos)
 
-        display_df = estoque_clas[["PRODUTO", "EM ESTOQUE", "CUSTO_UNITARIO_FMT", "VENDA_SUGERIDA_FMT", "VALOR_TOTAL_CUSTO_FMT", "VALOR_TOTAL_VENDA_FMT"]].rename(columns={"CUSTO_UNITARIO_FMT": "CUSTO UNITÁRIO", "VENDA_SUGERIDA_FMT": "VENDA SUGERIDA", "VALOR_TOTAL_CUSTO_FMT": "VALOR TOTAL CUSTO", "VALOR_TOTAL_VENDA_FMT": "VALOR TOTAL VENDA"})
+        display_df = estoque_clas[[
+            "PRODUTO",
+            "EM ESTOQUE",
+            "CUSTO_UNITARIO_FMT",
+            "VENDA_SUGERIDA_FMT",
+            "VALOR_TOTAL_CUSTO_FMT",
+            "VALOR_TOTAL_VENDA_FMT"
+        ]].rename(columns={
+            "CUSTO_UNITARIO_FMT": "CUSTO UNITÁRIO",
+            "VENDA_SUGERIDA_FMT": "VENDA SUGERIDA",
+            "VALOR_TOTAL_CUSTO_FMT": "VALOR TOTAL CUSTO",
+            "VALOR_TOTAL_VENDA_FMT": "VALOR TOTAL VENDA"
+        })
         display_df = display_df.sort_values("EM ESTOQUE", ascending=False).reset_index(drop=True)
         st.markdown("### 📋 Estoque — visão detalhada")
         st.dataframe(display_df, use_container_width=True)
@@ -611,30 +668,26 @@ with tabs[2]:
         st.info("Sem dados de compras na planilha.")
     else:
         # normalize column names
-        cols_lower = {c: c for c in df_c.columns}
-        # ensure date col exists
         if "DATA" in df_c.columns:
             df_c["DATA"] = pd.to_datetime(df_c["DATA"], errors="coerce")
-        # fallback detect produto
         if "PRODUTO" not in df_c.columns:
             for c in df_c.columns:
                 if df_c[c].dtype == object:
                     df_c = df_c.rename(columns={c: "PRODUTO"})
                     break
-        # fallback detect fornecedor
+
         fornecedor_col = None
         for c in df_c.columns:
             if any(k in str(c).upper() for k in ("FORNEC", "SUPPLIER", "VENDOR")):
                 fornecedor_col = c
                 break
-        # fallback detect descricao/obs/finalidade
+
         obs_col = None
         for c in df_c.columns:
             if any(k in str(c).upper() for k in ("OBS", "OBSERVA", "DESCR", "FINAL", "NOTAS", "MOTIVO", "FINALIDADE")):
                 obs_col = c
                 break
 
-        # already computed in normalization earlier, but ensure
         if "QUANTIDADE" in df_c.columns:
             df_c["QUANTIDADE"] = parse_int_series(df_c["QUANTIDADE"]).fillna(0).astype(int)
         if "CUSTO UNITÁRIO" in df_c.columns:
@@ -642,16 +695,17 @@ with tabs[2]:
         if "CUSTO TOTAL (RECALC)" not in df_c.columns:
             df_c["CUSTO TOTAL (RECALC)"] = df_c.get("QUANTIDADE", 0) * df_c.get("CUSTO UNITÁRIO", 0)
 
-        # apply month filter (mes_selecionado)
         compras_mes = filtrar_mes_df(df_c, mes_selecionado)
         compras_mes = compras_mes.sort_values("DATA", ascending=False).reset_index(drop=True)
 
-        # KPI
         total_comp_mes = compras_mes["CUSTO TOTAL (RECALC)"].fillna(0).sum()
         n_comp_mes = len(compras_mes)
 
-        # identify marketing-related purchases by keyword scan in obs/desc columns
-        marketing_keywords = ["ANUN", "DIVULG", "ADS", "FACEBOOK", "INSTAGRAM", "INSTA", "GOOGLE", "META", "PROMO", "CAMPANHA", "MARKETING", "INFLUENCIADOR", "PROPAGANDA", "ENCAMPA"]
+        marketing_keywords = [
+            "ANUN", "DIVULG", "ADS", "FACEBOOK", "INSTAGRAM", "INSTA", "GOOGLE",
+            "META", "PROMO", "CAMPANHA", "MARKETING", "INFLUENCIADOR", "PROPAGANDA", "ENCAMPA"
+        ]
+
         def is_marketing_row(row):
             text = ""
             if obs_col and pd.notna(row.get(obs_col, "")):
@@ -668,7 +722,6 @@ with tabs[2]:
         marketing_count = compras_mes["_MARKETING"].sum()
         marketing_pct = (marketing_total / total_comp_mes * 100) if total_comp_mes else 0
 
-        # top visualization: horizontal bar by fornecedor or produto
         st.markdown("### 📈 Visão rápida das compras (gráfico por produto/fornecedor)")
 
         group_by_for = fornecedor_col if fornecedor_col is not None else "PRODUTO"
@@ -677,15 +730,21 @@ with tabs[2]:
         pivot["CUSTO_FMT"] = pivot["CUSTO TOTAL (RECALC)"].map(formatar_reais_sem_centavos)
 
         if not pivot.empty:
-            fig_bar = px.bar(pivot.head(12), x="CUSTO TOTAL (RECALC)", y=group_col, orientation="h", text="CUSTO_FMT", height=420)
+            fig_bar = px.bar(
+                pivot.head(12),
+                x="CUSTO TOTAL (RECALC)",
+                y=group_col,
+                orientation="h",
+                text="CUSTO_FMT",
+                height=420
+            )
             fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
             plotly_dark_config(fig_bar)
             fig_bar.update_traces(textposition="inside")
             st.plotly_chart(fig_bar, use_container_width=True, config=dict(displayModeBar=False))
 
-        # different chart: treemap to show distribuição por categoria/finalidade if exists, else by produto
         st.markdown("### 🔹 Distribuição (treemap) — onde o dinheiro foi parar")
-        # try to find a category-like column
+
         category_col = None
         for c in df_c.columns:
             if any(k in str(c).upper() for k in ("CATEG", "FINAL", "TIPO", "DEST", "USO")):
@@ -701,7 +760,6 @@ with tabs[2]:
         except Exception:
             st.write("Sem dados suficientes para treemap.")
 
-        # KPIs resumo e alerta para marketing
         st.markdown("### 🧾 KPIs de Compras")
         k1, k2, k3, k4 = st.columns([1,1,1,1])
         k1.metric("Total compras (mês)", formatar_reais_sem_centavos(total_comp_mes))
@@ -709,7 +767,6 @@ with tabs[2]:
         k3.metric("Gasto marketing", formatar_reais_sem_centavos(marketing_total))
         k4.metric("Pct marketing", f"{marketing_pct:.1f}%")
 
-        # mostra tabela das compras (com destaque para marketing)
         st.markdown("### 📄 Últimas compras (tabela)")
         display_cols = ["DATA", "PRODUTO", "QUANTIDADE", "CUSTO UNITÁRIO", "CUSTO TOTAL (RECALC)"]
         display_cols = [c for c in display_cols if c in compras_mes.columns]
@@ -717,52 +774,59 @@ with tabs[2]:
         for c in ["CUSTO UNITÁRIO", "CUSTO TOTAL (RECALC)"]:
             if c in tbl.columns:
                 tbl[c+"_FMT"] = tbl[c].map(formatar_reais_com_centavos)
-        fmt_cols = [c for c in tbl.columns if c.endswith("_FMT")]
-        # prefer showing formatted cols
-        show_cols = []
         if "DATA" in tbl.columns:
             tbl["DATA"] = tbl["DATA"].dt.strftime("%d/%m/%Y").fillna("—")
+
+        show_cols = []
+        if "DATA" in tbl.columns:
             show_cols.append("DATA")
         if "PRODUTO" in tbl.columns:
             show_cols.append("PRODUTO")
+        if fornecedor_col:
+            show_cols.append(fornecedor_col)
         if "QUANTIDADE" in tbl.columns:
             show_cols.append("QUANTIDADE")
         if "CUSTO UNITÁRIO_FMT" in tbl.columns:
             show_cols.append("CUSTO UNITÁRIO_FMT")
         if "CUSTO TOTAL (RECALC)_FMT" in tbl.columns:
             show_cols.append("CUSTO TOTAL (RECALC)_FMT")
-        # include obs if present
         if obs_col:
             show_cols.append(obs_col)
-        # include fornecedor
-        if fornecedor_col:
-            show_cols.insert(2, fornecedor_col)
+
         if show_cols:
-            # highlight marketing rows
-            def style_marketing(row):
-                return ['background-color: rgba(167,139,250,0.08);' if row["_MARKETING"] else '' for _ in row.index]
-            st.dataframe(tbl[show_cols + ["_MARKETING"]].rename(columns={c: c.replace("_FMT","") for c in show_cols}), use_container_width=True)
+            st.dataframe(
+                tbl[show_cols + ["_MARKETING"]].rename(columns={
+                    "CUSTO UNITÁRIO_FMT": "CUSTO UNITÁRIO",
+                    "CUSTO TOTAL (RECALC)_FMT": "CUSTO TOTAL (RECALC)"
+                }),
+                use_container_width=True
+            )
         else:
             st.dataframe(tbl.head(50), use_container_width=True)
 
-        # botão para baixar CSV das compras filtradas
         st.markdown("### ⤓ Exportar")
         csv_bytes = compras_mes.to_csv(index=False).encode('utf-8')
-        st.download_button("Baixar CSV das compras filtradas", data=csv_bytes, file_name=f"compras_{mes_selecionado}.csv", mime="text/csv")
+        st.download_button(
+            "Baixar CSV das compras filtradas",
+            data=csv_bytes,
+            file_name=f"compras_{mes_selecionado}.csv",
+            mime="text/csv"
+        )
 
-        # Sugestões rápidas focadas em anúncios/divulgação/estratégia (texto gerado automaticamente com base nos dados)
         st.markdown("### 💡 Insights rápidos (meta-resumo)")
         insights = []
         if marketing_total > 0:
-            insights.append(f"Você gastou {formatar_reais_sem_centavos(marketing_total)} em itens relacionados a marketing neste mês — {marketing_count} compras identificadas.")
+            insights.append(
+                f"Você gastou {formatar_reais_sem_centavos(marketing_total)} em itens relacionados a marketing neste mês — {marketing_count} compras identificadas."
+            )
         else:
-            insights.append("Nenhuma compra claramente marcada como 'marketing' encontrada — verifique colunas de descrição/observação para identificar gastos em anúncios/divulgação.")
-        # check if large spend concentrated in few fornecedores
+            insights.append(
+                "Nenhuma compra claramente marcada como 'marketing' encontrada — verifique colunas de descrição/observação para identificar gastos em anúncios/divulgação."
+            )
         if not pivot.empty:
             top_conc = pivot["CUSTO TOTAL (RECALC)"].iloc[0]
             if total_comp_mes > 0 and top_conc / total_comp_mes > 0.4:
                 insights.append("Alerta: >40% dos custos do mês concentrados em 1 fornecedor/produto — risco de dependência.")
-        # generic suggestions
         insights.append("Sugestões: agrupe compras de anúncios em uma categoria 'Marketing', registre a finalidade em 'OBS' e monitore ROI por campanha.")
         for ins in insights:
             st.write("- " + ins)
@@ -771,7 +835,6 @@ with tabs[2]:
 # PESQUISAR TAB
 # ----------------------------
 with tabs[3]:
-    # Controls + filters
     st.markdown("""
     <div class='glass-card' style='background: rgba(255,255,255,0.03); border-radius:14px; padding:10px; margin-bottom:8px;'>
     """, unsafe_allow_html=True)
@@ -783,14 +846,26 @@ with tabs[3]:
         with cols[0]:
             itens_pagina = st.selectbox("Itens/pg", [6,9,12,24,36,48,60,100,200], index=2)
         with cols[1]:
-            ordenar = st.selectbox("Ordenar por", ["Nome A–Z","Nome Z–A","Menor preço","Maior preço","Mais vendidos","Maior estoque","Última compra (recente)","Última compra (antiga)"], index=0)
+            ordenar = st.selectbox(
+                "Ordenar por",
+                [
+                    "Nome A–Z",
+                    "Nome Z–A",
+                    "Menor preço",
+                    "Maior preço",
+                    "Mais vendidos",
+                    "Maior estoque",
+                    "Última compra (recente)",
+                    "Última compra (antiga)"
+                ],
+                index=0
+            )
         with cols[2]:
             grid_cols = st.selectbox("Colunas", [2,3,4], index=1)
         with cols[3]:
             ver_tudo = st.checkbox("Ver tudo (sem paginação)", value=False)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # filtros rápidos
     filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)", value=False)
     filtro_alto = st.checkbox("📦 Alto estoque (≥20)", value=False)
     filtro_vendidos = st.checkbox("🔥 Com vendas", value=False)
@@ -839,6 +914,8 @@ with tabs[3]:
             df = df.sort_values("TOTAL_QTD", ascending=False)
     elif ordenar == "Maior estoque":
         df = df.sort_values("EM ESTOQUE", ascending=False)
+    # (Última compra ordenação pode ser implementada se quiser,
+    # mas manterei como estava no seu código base.)
 
     total = len(df)
     if ver_tudo:
@@ -864,7 +941,6 @@ with tabs[3]:
     fim = inicio + itens_pagina
     df_page = df.iloc[inicio:fim].reset_index(drop=True)
 
-    # Inject dynamic CSS for grid columns chosen
     css_grid = f"""
     <style>
     .card-grid-ecom{{ display:grid; grid-template-columns: repeat({grid_cols},1fr); gap:12px; }}
@@ -918,7 +994,6 @@ with tabs[3]:
         except Exception:
             pass
 
-        vendas_badges_html = f"<div style='margin-top:6px;'>{badges_html}</div>"
         avatar_html = f"<div class='avatar'>{iniciais}</div>"
         card_html = (
             f"<div class='card-ecom' {enc_style}>"
@@ -933,7 +1008,7 @@ with tabs[3]:
 </div>
 """
             f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>🕒 Última compra: <b>{ultima}</b></div>"
-            f"{vendas_badges_html}"
+            f"<div style='margin-top:6px;'>{badges_html}</div>"
             f"</div>"
             f"</div>"
         )
