@@ -1,6 +1,5 @@
-
-# app_final_com_compras.py
-# Versão final do dashboard com aba COMPRAS — pronta para rodar
+# app.py
+# Versão final do dashboard com aba COMPRAS ajustada
 # Requer: streamlit, pandas, plotly, requests, openpyxl
 
 import streamlit as st
@@ -93,7 +92,9 @@ def detectar_linha_cabecalho(df_raw, keywords):
     return None
 
 def limpar_aba_raw(df_raw, nome):
-    busca = {"ESTOQUE": ["PRODUTO", "EM ESTOQUE"], "VENDAS": ["DATA", "PRODUTO"], "COMPRAS": ["DATA", "CUSTO"]}.get(nome, ["PRODUTO"])
+    busca = {"ESTOQUE": ["PRODUTO", "EM ESTOQUE"],
+             "VENDAS": ["DATA", "PRODUTO"],
+             "COMPRAS": ["DATA", "CUSTO"]}.get(nome, ["PRODUTO"])
     linha = detectar_linha_cabecalho(df_raw, busca)
     if linha is None:
         return None
@@ -233,7 +234,7 @@ def plotly_dark_config(fig):
     return fig
 
 # ------------------------
-# CSS + topbar + floating button
+# CSS + topbar
 # ------------------------
 GLOBAL_CSS = """
 <style>
@@ -379,7 +380,6 @@ if "COMPRAS" in dfs:
         df_c["QUANTIDADE"] = parse_int_series(df_c[qcols[0]]).fillna(0).astype(int)
     ccols = [c for c in df_c.columns if any(k in c.upper() for k in ("CUSTO", "UNIT", "VALOR"))]
     if ccols:
-        # pick the best match for custo unitario
         df_c["CUSTO UNITÁRIO"] = parse_money_series(df_c[ccols[0]]).fillna(0)
     df_c["CUSTO TOTAL (RECALC)"] = df_c.get("QUANTIDADE", 0) * df_c.get("CUSTO UNITÁRIO", 0)
     if "DATA" in df_c.columns:
@@ -411,7 +411,7 @@ if "VENDAS" in dfs:
     meses += sorted(dfs["VENDAS"]["MES_ANO"].dropna().unique().tolist(), reverse=True)
 mes_atual = datetime.now().strftime("%Y-%m")
 index_padrao = meses.index(mes_atual) if mes_atual in meses else 0
-col_filter, col_kpis = st.columns([1,3])
+col_filter, col_kpis = st.columns([1, 3])
 with col_filter:
     mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", meses, index=index_padrao)
 
@@ -427,7 +427,7 @@ if not vendas_filtradas.empty and "DATA" in vendas_filtradas.columns:
     vendas_filtradas = vendas_filtradas.sort_values("DATA", ascending=False).reset_index(drop=True)
 compras_filtradas = filtrar_mes_df(dfs.get("COMPRAS", pd.DataFrame()), mes_selecionado)
 
-# KPIs
+# KPIs topo
 total_vendido = vendas_filtradas.get("VALOR TOTAL", pd.Series()).fillna(0).sum()
 total_lucro = (vendas_filtradas.get("LUCRO UNITARIO", 0).fillna(0) * vendas_filtradas.get("QTD", 0).fillna(0)).sum()
 total_compras = compras_filtradas.get("CUSTO TOTAL (RECALC)", pd.Series()).fillna(0).sum()
@@ -444,11 +444,10 @@ with col_kpis:
     </div>
     """, unsafe_allow_html=True)
 
-# Tabs (adicionada aba COMPRAS)
+# Tabs
 tabs = st.tabs(["🛒 VENDAS", "📦 ESTOQUE", "🧾 COMPRAS", "🔍 PESQUISAR"])
-
 # ----------------------------
-# VENDAS TAB (clean + organized)
+# VENDAS TAB
 # ----------------------------
 with tabs[0]:
     st.subheader("Vendas — período selecionado")
@@ -456,14 +455,12 @@ with tabs[0]:
     if vendas_filtradas.empty:
         st.info("Sem dados de vendas.")
     else:
-        # prepare dataset
         df_sem = vendas_filtradas.copy()
         df_sem["DATA"] = pd.to_datetime(df_sem["DATA"], errors="coerce")
         df_sem = df_sem.sort_values("DATA", ascending=False).reset_index(drop=True)
         df_sem["SEMANA"] = df_sem["DATA"].dt.isocalendar().week
         df_sem["ANO"] = df_sem["DATA"].dt.year
 
-        # 1) Faturamento semanal
         def semana_intervalo(row):
             try:
                 inicio = datetime.fromisocalendar(int(row["ANO"]), int(row["SEMANA"]), 1)
@@ -477,18 +474,25 @@ with tabs[0]:
             df_sem_group["INTERVALO"] = df_sem_group.apply(semana_intervalo, axis=1)
             df_sem_group["LABEL"] = df_sem_group["VALOR TOTAL"].apply(formatar_reais_com_centavos)
             st.markdown("### 📊 Faturamento Semanal do Mês")
-            fig_sem = px.bar(df_sem_group, x="INTERVALO", y="VALOR TOTAL", text="LABEL", color_discrete_sequence=["#8b5cf6"], height=380)
+            fig_sem = px.bar(
+                df_sem_group,
+                x="INTERVALO",
+                y="VALOR TOTAL",
+                text="LABEL",
+                color_discrete_sequence=["#8b5cf6"],
+                height=380
+            )
             plotly_dark_config(fig_sem)
             fig_sem.update_traces(textposition="inside", textfont_size=12)
             st.plotly_chart(fig_sem, use_container_width=True, config=dict(displayModeBar=False))
 
-        # 2) Tabela de Vendas (com sufixo de estoque no nome)
         st.markdown("### 📄 Tabela de Vendas (mais recentes primeiro)")
         tabela_vendas_exib = preparar_tabela_vendas(df_sem, estoque_df=estoque_df)
 
-        # apply stock suffix inline (PRODUTO column) when available
         try:
-            if not tabela_vendas_exib.empty and "PRODUTO" in tabela_vendas_exib.columns and "Estoque" in tabela_vendas_exib.columns:
+            if (not tabela_vendas_exib.empty
+                and "PRODUTO" in tabela_vendas_exib.columns
+                and "Estoque" in tabela_vendas_exib.columns):
                 def _nome_prod(row):
                     try:
                         est = int(row.get("Estoque", 0))
@@ -503,7 +507,6 @@ with tabs[0]:
         except Exception:
             pass
 
-        # manter somente colunas até OBS
         cols = tabela_vendas_exib.columns.tolist()
         if "OBS" in cols:
             limite = cols.index("OBS") + 1
@@ -511,33 +514,43 @@ with tabs[0]:
 
         st.dataframe(tabela_vendas_exib, use_container_width=True)
 
-        # 3) Top 5 — Produtos bombando (com sufixo)
+        # Top 5
         try:
             vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
             if not vendas_all.empty and "PRODUTO" in vendas_all.columns:
-                top5 = vendas_all.groupby("PRODUTO")["QTD"].sum().reset_index().sort_values("QTD", ascending=False).head(5)
+                top5 = (vendas_all.groupby("PRODUTO")["QTD"]
+                        .sum()
+                        .reset_index()
+                        .sort_values("QTD", ascending=False)
+                        .head(5))
                 if not top5.empty:
                     est = dfs.get("ESTOQUE", pd.DataFrame()).copy()
                     if not est.empty and "PRODUTO" in est.columns:
-                        top5 = top5.merge(est[["PRODUTO", "EM ESTOQUE"]].rename(columns={"EM ESTOQUE": "Estoque"}), on="PRODUTO", how="left")
+                        top5 = top5.merge(
+                            est[["PRODUTO", "EM ESTOQUE"]].rename(columns={"EM ESTOQUE": "Estoque"}),
+                            on="PRODUTO",
+                            how="left"
+                        )
                     else:
                         top5["Estoque"] = 0
                     top5["QTD"] = top5["QTD"].fillna(0).astype(int)
+
                     def _nome_top5(row):
                         estv = int(row.get("Estoque", 0)) if pd.notna(row.get("Estoque", 0)) else 0
                         if estv == 1:
                             return f"{row.get('PRODUTO','')} (📦 Resta 1 produto)"
                         else:
                             return f"{row.get('PRODUTO','')} (📦 Resta {estv} produtos)"
+
                     top5_display = top5.copy()
                     top5_display["Produto"] = top5_display.apply(_nome_top5, axis=1)
                     top5_display = top5_display.rename(columns={"QTD": "Unidades"})
                     st.markdown("### 🔥 Top 5 — Produtos bombando (por unidades vendidas)")
-                    st.table(top5_display[["Produto","Unidades"]])
+                    st.table(top5_display[["Produto", "Unidades"]])
         except Exception:
             pass
 
-        # 4) Produtos encalhados
+        # Encalhados
         try:
             estoque_all = dfs.get("ESTOQUE", pd.DataFrame()).copy()
             vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
@@ -547,25 +560,39 @@ with tabs[0]:
             if not vendas_all.empty:
                 vendas_all["DATA"] = pd.to_datetime(vendas_all["DATA"], errors="coerce")
             if not estoque_all.empty:
-                last_sale = vendas_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA": "ULT_VENDA"}) if not vendas_all.empty else pd.DataFrame(columns=["PRODUTO", "ULT_VENDA"])
-                last_buy = compras_all.groupby("PRODUTO")["DATA"].max().reset_index().rename(columns={"DATA": "ULT_COMPRA"}) if not compras_all.empty else pd.DataFrame(columns=["PRODUTO", "ULT_COMPRA"])
+                last_sale = (vendas_all.groupby("PRODUTO")["DATA"].max()
+                             .reset_index()
+                             .rename(columns={"DATA": "ULT_VENDA"})) if not vendas_all.empty else pd.DataFrame(columns=["PRODUTO", "ULT_VENDA"])
+                last_buy = (compras_all.groupby("PRODUTO")["DATA"].max()
+                            .reset_index()
+                            .rename(columns={"DATA": "ULT_COMPRA"})) if not compras_all.empty else pd.DataFrame(columns=["PRODUTO", "ULT_COMPRA"])
                 enc = estoque_all.merge(last_sale, how="left", on="PRODUTO").merge(last_buy, how="left", on="PRODUTO")
                 enc = enc[enc["EM ESTOQUE"] > 0].copy()
                 today = pd.Timestamp.now()
+
                 def calc_days(row):
                     if pd.notna(row.get("ULT_VENDA")):
                         return (today - row["ULT_VENDA"]).days
                     if pd.notna(row.get("ULT_COMPRA")):
                         return (today - row["ULT_COMPRA"]).days
                     return 9999
+
                 enc["DIAS_PARADO"] = enc.apply(calc_days, axis=1)
                 enc = enc.sort_values("DIAS_PARADO", ascending=False).head(10)
                 if not enc.empty:
                     enc_display = enc[["PRODUTO", "EM ESTOQUE", "ULT_VENDA", "ULT_COMPRA", "DIAS_PARADO"]].copy()
                     enc_display["ULT_VENDA"] = enc_display["ULT_VENDA"].dt.strftime("%d/%m/%Y").fillna("—")
                     enc_display["ULT_COMPRA"] = enc_display["ULT_COMPRA"].dt.strftime("%d/%m/%Y").fillna("—")
-                    st.markdown("### ❄️ Produtos encalhados (global) — baseado em última venda / compra e estoque atual")
-                    st.table(enc_display.rename(columns={"PRODUTO": "Produto", "EM ESTOQUE": "Estoque", "ULT_VENDA": "Última venda", "ULT_COMPRA": "Última compra", "DIAS_PARADO": "Dias parado"}))
+                    st.markdown("### ❄️ Produtos encalhados (global)")
+                    st.table(
+                        enc_display.rename(columns={
+                            "PRODUTO": "Produto",
+                            "EM ESTOQUE": "Estoque",
+                            "ULT_VENDA": "Última venda",
+                            "ULT_COMPRA": "Última compra",
+                            "DIAS_PARADO": "Dias parado"
+                        })
+                    )
         except Exception as e:
             st.write("Erro encalhados:", e)
 
@@ -577,15 +604,33 @@ with tabs[1]:
         st.info("Sem dados de estoque.")
     else:
         estoque_display = estoque_df.copy()
-        estoque_display["VALOR_CUSTO_TOTAL_RAW"] = (estoque_display["Media C. UNITARIO"] * estoque_display["EM ESTOQUE"]).fillna(0)
-        estoque_display["VALOR_VENDA_TOTAL_RAW"] = (estoque_display["Valor Venda Sugerido"] * estoque_display["EM ESTOQUE"]).fillna(0)
+        estoque_display["VALOR_CUSTO_TOTAL_RAW"] = (
+            estoque_display["Media C. UNITARIO"] * estoque_display["EM ESTOQUE"]
+        ).fillna(0)
+        estoque_display["VALOR_VENDA_TOTAL_RAW"] = (
+            estoque_display["Valor Venda Sugerido"] * estoque_display["EM ESTOQUE"]
+        ).fillna(0)
 
         st.markdown("### 🥧 Distribuição de estoque — fatias com quantidade")
         top_for_pie = estoque_display.sort_values("EM ESTOQUE", ascending=False).head(10)
         if not top_for_pie.empty:
-            fig_pie = px.pie(top_for_pie, names="PRODUTO", values="EM ESTOQUE", hole=0.40)
-            fig_pie.update_traces(textinfo="label+value", textposition="inside", pull=[0.05 if i == 0 else 0 for i in range(len(top_for_pie))], marker=dict(line=dict(color="#0b0b0b", width=1)))
-            fig_pie.update_layout(title={"text": "Top itens por quantidade em estoque", "y":0.96, "x":0.5, "xanchor":"center"}, showlegend=False, margin=dict(t=60,b=10,l=10,r=10))
+            fig_pie = px.pie(
+                top_for_pie,
+                names="PRODUTO",
+                values="EM ESTOQUE",
+                hole=0.40
+            )
+            fig_pie.update_traces(
+                textinfo="label+value",
+                textposition="inside",
+                pull=[0.05 if i == 0 else 0 for i in range(len(top_for_pie))],
+                marker=dict(line=dict(color="#0b0b0b", width=1))
+            )
+            fig_pie.update_layout(
+                title={"text": "Top itens por quantidade em estoque", "y": 0.96, "x": 0.5, "xanchor": "center"},
+                showlegend=False,
+                margin=dict(t=60, b=10, l=10, r=10)
+            )
             plotly_dark_config(fig_pie)
             st.plotly_chart(fig_pie, use_container_width=True, config=dict(displayModeBar=False))
 
@@ -595,16 +640,19 @@ with tabs[1]:
         estoque_clas["VALOR_TOTAL_CUSTO_FMT"] = estoque_clas["VALOR_CUSTO_TOTAL_RAW"].map(formatar_reais_sem_centavos)
         estoque_clas["VALOR_TOTAL_VENDA_FMT"] = estoque_clas["VALOR_VENDA_TOTAL_RAW"].map(formatar_reais_sem_centavos)
 
-        display_df = estoque_clas[["PRODUTO", "EM ESTOQUE", "CUSTO_UNITARIO_FMT", "VENDA_SUGERIDA_FMT", "VALOR_TOTAL_CUSTO_FMT", "VALOR_TOTAL_VENDA_FMT"]].rename(columns={"CUSTO_UNITARIO_FMT": "CUSTO UNITÁRIO", "VENDA_SUGERIDA_FMT": "VENDA SUGERIDA", "VALOR_TOTAL_CUSTO_FMT": "VALOR TOTAL CUSTO", "VALOR_TOTAL_VENDA_FMT": "VALOR TOTAL VENDA"})
+        display_df = estoque_clas[
+            ["PRODUTO", "EM ESTOQUE", "CUSTO_UNITARIO_FMT", "VENDA_SUGERIDA_FMT", "VALOR_TOTAL_CUSTO_FMT", "VALOR_TOTAL_VENDA_FMT"]
+        ].rename(columns={
+            "CUSTO_UNITARIO_FMT": "CUSTO UNITÁRIO",
+            "VENDA_SUGERIDA_FMT": "VENDA SUGERIDA",
+            "VALOR_TOTAL_CUSTO_FMT": "VALOR TOTAL CUSTO",
+            "VALOR_TOTAL_VENDA_FMT": "VALOR TOTAL VENDA"
+        })
         display_df = display_df.sort_values("EM ESTOQUE", ascending=False).reset_index(drop=True)
         st.markdown("### 📋 Estoque — visão detalhada")
         st.dataframe(display_df, use_container_width=True)
-
 # ----------------------------
-# COMPRAS TAB (NOVO) — panorama das últimas compras do mês selecionado
-# ----------------------------
-# ----------------------------
-# COMPRAS TAB (NOVO) — panorama das últimas compras do mês selecionado
+# COMPRAS TAB — panorama do mês selecionado (com Estoque Atual)
 # ----------------------------
 with tabs[2]:
     st.subheader("Compras — panorama do mês selecionado")
@@ -613,31 +661,29 @@ with tabs[2]:
     if df_c.empty:
         st.info("Sem dados de compras na planilha.")
     else:
-        # normalize column names
         cols_lower = {c: c for c in df_c.columns}
-        # ensure date col exists
+
         if "DATA" in df_c.columns:
             df_c["DATA"] = pd.to_datetime(df_c["DATA"], errors="coerce")
-        # fallback detect produto
+
         if "PRODUTO" not in df_c.columns:
             for c in df_c.columns:
                 if df_c[c].dtype == object:
                     df_c = df_c.rename(columns={c: "PRODUTO"})
                     break
-        # fallback detect fornecedor
+
         fornecedor_col = None
         for c in df_c.columns:
             if any(k in str(c).upper() for k in ("FORNEC", "SUPPLIER", "VENDOR")):
                 fornecedor_col = c
                 break
-        # fallback detect descricao/obs/finalidade
+
         obs_col = None
         for c in df_c.columns:
             if any(k in str(c).upper() for k in ("OBS", "OBSERVA", "DESCR", "FINAL", "NOTAS", "MOTIVO", "FINALIDADE")):
                 obs_col = c
                 break
 
-        # already computed in normalization earlier, but ensure
         if "QUANTIDADE" in df_c.columns:
             df_c["QUANTIDADE"] = parse_int_series(df_c["QUANTIDADE"]).fillna(0).astype(int)
         if "CUSTO UNITÁRIO" in df_c.columns:
@@ -645,32 +691,29 @@ with tabs[2]:
         if "CUSTO TOTAL (RECALC)" not in df_c.columns:
             df_c["CUSTO TOTAL (RECALC)"] = df_c.get("QUANTIDADE", 0) * df_c.get("CUSTO UNITÁRIO", 0)
 
-        # apply month filter (mes_selecionado)
         compras_mes = filtrar_mes_df(df_c, mes_selecionado)
         compras_mes = compras_mes.sort_values("DATA", ascending=False).reset_index(drop=True)
 
-        # --- MERGE ESTOQUE ATUAL (📦 Estoque Atual) VINDO DA ABA ESTOQUE ---
+        # 🔹 MERGE ESTOQUE ATUAL VINDO DA ABA ESTOQUE
         try:
-            if not estoque_df.empty and "PRODUTO" in compras_mes.columns and "PRODUTO" in estoque_df.columns:
+            if (not estoque_df.empty
+                and "PRODUTO" in compras_mes.columns
+                and "PRODUTO" in estoque_df.columns):
                 compras_mes = compras_mes.merge(
                     estoque_df[["PRODUTO", "EM ESTOQUE"]],
                     on="PRODUTO",
                     how="left"
                 )
-                # renomeia para já sair com emoji no CSV e na tabela
-                compras_mes = compras_mes.rename(columns={"EM ESTOQUE": "📦 Estoque Atual"})
-                # onde não tiver estoque cadastrado -> mostrar "—"
-                compras_mes["📦 Estoque Atual"] = compras_mes["📦 Estoque Atual"].where(
-                    compras_mes["📦 Estoque Atual"].notna(), "—"
+                compras_mes = compras_mes.rename(columns={"EM ESTOQUE": "Estoque Atual"})
+                compras_mes["Estoque Atual"] = compras_mes["Estoque Atual"].where(
+                    compras_mes["Estoque Atual"].notna(), "—"
                 )
         except Exception:
             pass
 
-        # KPI
         total_comp_mes = compras_mes["CUSTO TOTAL (RECALC)"].fillna(0).sum()
         n_comp_mes = len(compras_mes)
 
-        # identify marketing-related purchases by keyword scan in obs/desc columns
         marketing_keywords = [
             "ANUN", "DIVULG", "ADS", "FACEBOOK", "INSTAGRAM", "INSTA",
             "GOOGLE", "META", "PROMO", "CAMPANHA", "MARKETING",
@@ -693,12 +736,14 @@ with tabs[2]:
         marketing_count = compras_mes["_MARKETING"].sum()
         marketing_pct = (marketing_total / total_comp_mes * 100) if total_comp_mes else 0
 
-        # top visualization: horizontal bar by fornecedor or produto
         st.markdown("### 📈 Visão rápida das compras (gráfico por produto/fornecedor)")
 
         group_by_for = fornecedor_col if fornecedor_col is not None else "PRODUTO"
         group_col = group_by_for if group_by_for in compras_mes.columns else "PRODUTO"
-        pivot = compras_mes.groupby(group_col)["CUSTO TOTAL (RECALC)"].sum().reset_index().sort_values("CUSTO TOTAL (RECALC)", ascending=False)
+        pivot = (compras_mes.groupby(group_col)["CUSTO TOTAL (RECALC)"]
+                 .sum()
+                 .reset_index()
+                 .sort_values("CUSTO TOTAL (RECALC)", ascending=False))
         pivot["CUSTO_FMT"] = pivot["CUSTO TOTAL (RECALC)"].map(formatar_reais_sem_centavos)
 
         if not pivot.empty:
@@ -711,32 +756,130 @@ with tabs[2]:
                 height=420
             )
             fig_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
-            p
+            plotly_dark_config(fig_bar)
+            fig_bar.update_traces(textposition="inside")
+            st.plotly_chart(fig_bar, use_container_width=True, config=dict(displayModeBar=False))
+
+        st.markdown("### 🔹 Distribuição (treemap) — onde o dinheiro foi parar")
+        category_col = None
+        for c in df_c.columns:
+            if any(k in str(c).upper() for k in ("CATEG", "FINAL", "TIPO", "DEST", "USO")):
+                category_col = c
+                break
+        treemap_col = category_col if category_col in compras_mes.columns else "PRODUTO"
+        try:
+            tm = (compras_mes.groupby(treemap_col)["CUSTO TOTAL (RECALC)"]
+                  .sum()
+                  .reset_index()
+                  .sort_values("CUSTO TOTAL (RECALC)", ascending=False))
+            if not tm.empty:
+                fig_tm = px.treemap(tm, path=[treemap_col], values="CUSTO TOTAL (RECALC)", height=420)
+                plotly_dark_config(fig_tm)
+                st.plotly_chart(fig_tm, use_container_width=True, config=dict(displayModeBar=False))
+        except Exception:
+            st.write("Sem dados suficientes para treemap.")
+
+        st.markdown("### 🧾 KPIs de Compras")
+        k1, k2, k3, k4 = st.columns([1, 1, 1, 1])
+        k1.metric("Total compras (mês)", formatar_reais_sem_centavos(total_comp_mes))
+        k2.metric("Nº de compras", f"{n_comp_mes}")
+        k3.metric("Gasto marketing", formatar_reais_sem_centavos(marketing_total))
+        k4.metric("Pct marketing", f"{marketing_pct:.1f}%")
+
+        st.markdown("### 📄 Últimas compras (tabela)")
+        tbl = compras_mes.copy()
+
+        for c in ["CUSTO UNITÁRIO", "CUSTO TOTAL (RECALC)"]:
+            if c in tbl.columns:
+                tbl[c + "_FMT"] = tbl[c].map(formatar_reais_com_centavos)
+
+        show_cols = []
+        if "DATA" in tbl.columns:
+            tbl["DATA"] = tbl["DATA"].dt.strftime("%d/%m/%Y").fillna("—")
+            show_cols.append("DATA")
+        if fornecedor_col and fornecedor_col in tbl.columns:
+            show_cols.append(fornecedor_col)
+        if "PRODUTO" in tbl.columns:
+            show_cols.append("PRODUTO")
+        if "Estoque Atual" in tbl.columns:
+            show_cols.append("Estoque Atual")
+        if "QUANTIDADE" in tbl.columns:
+            show_cols.append("QUANTIDADE")
+        if "CUSTO UNITÁRIO_FMT" in tbl.columns:
+            show_cols.append("CUSTO UNITÁRIO_FMT")
+        if "CUSTO TOTAL (RECALC)_FMT" in tbl.columns:
+            show_cols.append("CUSTO TOTAL (RECALC)_FMT")
+        if obs_col and obs_col in tbl.columns:
+            show_cols.append(obs_col)
+
+        if show_cols:
+            st.dataframe(
+                tbl[show_cols + ["_MARKETING"]].rename(
+                    columns={
+                        "CUSTO UNITÁRIO_FMT": "CUSTO UNITÁRIO",
+                        "CUSTO TOTAL (RECALC)_FMT": "CUSTO TOTAL (RECALC)"
+                    }
+                ),
+                use_container_width=True
+            )
+        else:
+            st.dataframe(tbl.head(50), use_container_width=True)
+
+        st.markdown("### ⤓ Exportar")
+        csv_bytes = compras_mes.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "Baixar CSV das compras filtradas",
+            data=csv_bytes,
+            file_name=f"compras_{mes_selecionado}.csv",
+            mime="text/csv"
+        )
+
+        st.markdown("### 💡 Insights rápidos (meta-resumo)")
+        insights = []
+        if marketing_total > 0:
+            insights.append(
+                f"Você gastou {formatar_reais_sem_centavos(marketing_total)} em itens relacionados a marketing neste mês — {marketing_count} compras identificadas."
+            )
+        else:
+            insights.append(
+                "Nenhuma compra claramente marcada como 'marketing' encontrada — verifique colunas de descrição/observação para identificar gastos em anúncios/divulgação."
+            )
+        if not pivot.empty:
+            top_conc = pivot["CUSTO TOTAL (RECALC)"].iloc[0]
+            if total_comp_mes > 0 and top_conc / total_comp_mes > 0.4:
+                insights.append("Alerta: >40% dos custos do mês concentrados em 1 fornecedor/produto — risco de dependência.")
+        insights.append(
+            "Sugestões: agrupe compras de anúncios em uma categoria 'Marketing', registre a finalidade em 'OBS' e monitore ROI por campanha."
+        )
+        for ins in insights:
+            st.write("- " + ins)
 
 # ----------------------------
 # PESQUISAR TAB
 # ----------------------------
 with tabs[3]:
-    # Controls + filters
     st.markdown("""
     <div class='glass-card' style='background: rgba(255,255,255,0.03); border-radius:14px; padding:10px; margin-bottom:8px;'>
     """, unsafe_allow_html=True)
-    col_a, col_b = st.columns([3,2])
+    col_a, col_b = st.columns([3, 2])
     with col_a:
         termo = st.text_input("🔎 Buscar produto", value="", placeholder="Digite o nome do produto...")
     with col_b:
-        cols = st.columns([1,1,1,1])
+        cols = st.columns([1, 1, 1, 1])
         with cols[0]:
-            itens_pagina = st.selectbox("Itens/pg", [6,9,12,24,36,48,60,100,200], index=2)
+            itens_pagina = st.selectbox("Itens/pg", [6, 9, 12, 24, 36, 48, 60, 100, 200], index=2)
         with cols[1]:
-            ordenar = st.selectbox("Ordenar por", ["Nome A–Z","Nome Z–A","Menor preço","Maior preço","Mais vendidos","Maior estoque","Última compra (recente)","Última compra (antiga)"], index=0)
+            ordenar = st.selectbox(
+                "Ordenar por",
+                ["Nome A–Z", "Nome Z–A", "Menor preço", "Maior preço", "Mais vendidos", "Maior estoque"],
+                index=0
+            )
         with cols[2]:
-            grid_cols = st.selectbox("Colunas", [2,3,4], index=1)
+            grid_cols = st.selectbox("Colunas", [2, 3, 4], index=1)
         with cols[3]:
             ver_tudo = st.checkbox("Ver tudo (sem paginação)", value=False)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # filtros rápidos
     filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)", value=False)
     filtro_alto = st.checkbox("📦 Alto estoque (≥20)", value=False)
     filtro_vendidos = st.checkbox("🔥 Com vendas", value=False)
@@ -745,14 +888,16 @@ with tabs[3]:
     df = estoque_df.copy()
     vendas_df = dfs.get("VENDAS", pd.DataFrame()).copy()
     if not vendas_df.empty and "QTD" in vendas_df.columns:
-        vend = vendas_df.groupby("PRODUTO")["QTD"].sum().reset_index().rename(columns={"QTD":"TOTAL_QTD"})
-        df = df.merge(vend, how="left", on="PRODUTO").fillna({"TOTAL_QTD":0})
+        vend = vendas_df.groupby("PRODUTO")["QTD"].sum().reset_index().rename(columns={"QTD": "TOTAL_QTD"})
+        df = df.merge(vend, how="left", on="PRODUTO").fillna({"TOTAL_QTD": 0})
     else:
         df["TOTAL_QTD"] = 0
 
     compras_df = dfs.get("COMPRAS", pd.DataFrame()).copy()
     ultima_compra = {}
-    if not compras_df.empty and "DATA" in compras_df.columns and "PRODUTO" in compras_df.columns:
+    if (not compras_df.empty
+        and "DATA" in compras_df.columns
+        and "PRODUTO" in compras_df.columns):
         compras_df = compras_df.dropna(subset=["PRODUTO"])
         compras_df["DATA"] = pd.to_datetime(compras_df["DATA"], errors="coerce")
         tmp = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
@@ -788,29 +933,29 @@ with tabs[3]:
 
     total = len(df)
     if ver_tudo:
-        itens_pagina = total if total>0 else 1
+        itens_pagina = total if total > 0 else 1
     else:
         itens_pagina = int(itens_pagina)
-    total_paginas = max(1, (total + itens_pagina - 1)//itens_pagina)
+    total_paginas = max(1, (total + itens_pagina - 1) // itens_pagina)
     if "pagina" not in st.session_state:
         st.session_state["pagina"] = 1
     st.session_state["pagina"] = max(1, min(st.session_state["pagina"], total_paginas))
-    coln1, coln2, coln3 = st.columns([1,2,1])
+
+    coln1, coln2, coln3 = st.columns([1, 2, 1])
     with coln1:
         if st.button("⬅️ Voltar"):
-            st.session_state["pagina"] = max(1, st.session_state["pagina"]-1)
+            st.session_state["pagina"] = max(1, st.session_state["pagina"] - 1)
     with coln2:
         st.markdown(f"**Página {st.session_state['pagina']} de {total_paginas} — {total} resultados**")
     with coln3:
         if st.button("Avançar ➡️"):
-            st.session_state["pagina"] = min(total_paginas, st.session_state["pagina"]+1)
+            st.session_state["pagina"] = min(total_paginas, st.session_state["pagina"] + 1)
 
     pagina = st.session_state["pagina"]
-    inicio = (pagina-1)*itens_pagina
+    inicio = (pagina - 1) * itens_pagina
     fim = inicio + itens_pagina
     df_page = df.iloc[inicio:fim].reset_index(drop=True)
 
-    # Inject dynamic CSS for grid columns chosen
     css_grid = f"""
     <style>
     .card-grid-ecom{{ display:grid; grid-template-columns: repeat({grid_cols},1fr); gap:12px; }}
@@ -835,9 +980,9 @@ with tabs[3]:
         iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
         badges = []
         if estoque <= 3:
-            badges.append(f"<span class='badge low'>⚠️ Baixo</span>")
+            badges.append("<span class='badge low'>⚠️ Baixo</span>")
         if vendidos >= 15:
-            badges.append(f"<span class='badge hot'>🔥 Saindo</span>")
+            badges.append("<span class='badge hot'>🔥 Saindo</span>")
         if nome in ultima_compra and vendidos == 0:
             vendas_produto = vendas_df[vendas_df['PRODUTO'] == nome] if not vendas_df.empty else pd.DataFrame()
             if vendas_produto.empty:
@@ -858,13 +1003,12 @@ with tabs[3]:
         enc_style = ""
         try:
             if nome in _enc_list_global:
-                enc_style = "style='border-left:6px solid #ef4444; animation:pulseRed 2s infinite;'"
+                enc_style = "style='border-left:6px solid #ef4444;'"
             elif nome in _top5_list_global:
                 enc_style = "style='border-left:6px solid #22c55e;'"
         except Exception:
             pass
 
-        vendas_badges_html = f"<div style='margin-top:6px;'>{badges_html}</div>"
         avatar_html = f"<div class='avatar'>{iniciais}</div>"
         card_html = (
             f"<div class='card-ecom' {enc_style}>"
@@ -874,17 +1018,15 @@ with tabs[3]:
             f"<div class='card-meta'>Estoque: <b>{estoque}</b> • Vendidos: <b>{vendidos}</b></div>"
             f"""
 <div style='margin-top:6px; line-height:1.25;'>
-    <div style='font-size:13px; color:#ffffff; font-weight:700;'>💲 Venda: <span style='color:#a78bfa;'>{venda}</span></div>
-    <div style='font-size:12px; color:#cfcfe0;'>💰 Custo: <span style='color:#ffb4b4;'>{custo}</span></div>
+  <div style='font-size:13px; color:#ffffff; font-weight:700;'>💲 Venda: <span style='color:#a78bfa;'>{venda}</span></div>
+  <div style='font-size:12px; color:#cfcfe0;'>💰 Custo: <span style='color:#ffb4b4;'>{custo}</span></div>
 </div>
 """
             f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>🕒 Última compra: <b>{ultima}</b></div>"
-            f"{vendas_badges_html}"
+            f"<div style='margin-top:6px;'>{badges_html}</div>"
             f"</div>"
             f"</div>"
         )
         st.markdown(card_html, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
-
-# EOF
