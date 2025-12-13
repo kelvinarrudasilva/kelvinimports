@@ -988,8 +988,11 @@ with tabs[3]:
         vendidos = int(r.get("TOTAL_QTD", 0)) if pd.notna(r.get("TOTAL_QTD", 0)) else 0
         iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
         badges = []
-        if estoque <= 3:
-            badges.append("<span class='badge low'>⚠️ Baixo</span>")
+      if estoque == 0:
+    badges.append("<span class='badge zero'>⛔ Sem estoque</span>")
+elif estoque <= 3:
+    badges.append("<span class='badge low'>⚠️ Baixo</span>")
+
         if vendidos >= 15:
             badges.append("<span class='badge hot'>🔥 Saindo</span>")
         if nome in ultima_compra and vendidos == 0:
