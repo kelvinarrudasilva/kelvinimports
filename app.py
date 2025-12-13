@@ -869,11 +869,20 @@ with tabs[3]:
         with cols[0]:
             itens_pagina = st.selectbox("Itens/pg", [6, 9, 12, 24, 36, 48, 60, 100, 200], index=2)
         with cols[1]:
-            ordenar = st.selectbox(
-                "Ordenar por",
-                ["Nome A–Z", "Nome Z–A", "Menor preço", "Maior preço", "Mais vendidos", "Maior estoque"],
-                index=0
-            )
+           ordenar = st.selectbox(
+    "Ordenar por",
+    [
+        "Estoque primeiro + Nome A–Z",
+        "Nome A–Z",
+        "Nome Z–A",
+        "Menor preço",
+        "Maior preço",
+        "Mais vendidos",
+        "Maior estoque"
+    ],
+    index=0
+)
+
         with cols[2]:
             grid_cols = st.selectbox("Colunas", [2, 3, 4], index=1)
         with cols[3]:
