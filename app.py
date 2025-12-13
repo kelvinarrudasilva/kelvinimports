@@ -869,20 +869,11 @@ with tabs[3]:
         with cols[0]:
             itens_pagina = st.selectbox("Itens/pg", [6, 9, 12, 24, 36, 48, 60, 100, 200], index=2)
         with cols[1]:
-           ordenar = st.selectbox(
-    "Ordenar por",
-    [
-        "Estoque primeiro + Nome A–Z",
-        "Nome A–Z",
-        "Nome Z–A",
-        "Menor preço",
-        "Maior preço",
-        "Mais vendidos",
-        "Maior estoque"
-    ],
-    index=0
-)
-
+            ordenar = st.selectbox(
+                "Ordenar por",
+                ["Nome A–Z", "Nome Z–A", "Menor preço", "Maior preço", "Mais vendidos", "Maior estoque"],
+                index=0
+            )
         with cols[2]:
             grid_cols = st.selectbox("Colunas", [2, 3, 4], index=1)
         with cols[3]:
@@ -986,21 +977,10 @@ with tabs[3]:
         venda = r.get("VENDA_FMT", "R$ 0")
         custo = r.get("CUSTO_FMT", "R$ 0")
         vendidos = int(r.get("TOTAL_QTD", 0)) if pd.notna(r.get("TOTAL_QTD", 0)) else 0
-    # ---- BADGES DE ESTOQUE (corrigido) ----
-    badges = []
-
-    if estoque == 0:
-        badges.append("<span class='badge zero'>⛔ Sem estoque</span>")
-    elif estoque <= 3:
-        badges.append("<span class='badge low'>⚠️ Baixo</span>")
-
         iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
         badges = []
-      if estoque == 0:
-    badges.append("<span class='badge zero'>⛔ Sem estoque</span>")
-elif estoque <= 3:
-    badges.append("<span class='badge low'>⚠️ Baixo</span>")
-
+        if estoque <= 3:
+            badges.append("<span class='badge low'>⚠️ Baixo</span>")
         if vendidos >= 15:
             badges.append("<span class='badge hot'>🔥 Saindo</span>")
         if nome in ultima_compra and vendidos == 0:
