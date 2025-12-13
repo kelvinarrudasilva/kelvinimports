@@ -986,6 +986,14 @@ with tabs[3]:
         venda = r.get("VENDA_FMT", "R$ 0")
         custo = r.get("CUSTO_FMT", "R$ 0")
         vendidos = int(r.get("TOTAL_QTD", 0)) if pd.notna(r.get("TOTAL_QTD", 0)) else 0
+    # ---- BADGES DE ESTOQUE (corrigido) ----
+    badges = []
+
+    if estoque == 0:
+        badges.append("<span class='badge zero'>⛔ Sem estoque</span>")
+    elif estoque <= 3:
+        badges.append("<span class='badge low'>⚠️ Baixo</span>")
+
         iniciais = "".join([p[0].upper() for p in str(nome).split()[:2] if p]) or "—"
         badges = []
       if estoque == 0:
