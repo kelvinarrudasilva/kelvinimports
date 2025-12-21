@@ -445,7 +445,13 @@ with col_kpis:
     """, unsafe_allow_html=True)
 
 # Tabs
-tabs = st.tabs(["🛒 VENDAS", "📦 ESTOQUE", "🧾 COMPRAS", "🔍 PESQUISAR"])
+tabs = st.tabs([
+    "🛒 VENDAS",
+    "📦 ESTOQUE",
+    "🗺️ MAPA ESTOQUE",
+    "🧾 COMPRAS",
+    "🔍 PESQUISAR"
+])
 # ----------------------------
 # VENDAS TAB
 # ----------------------------
@@ -853,6 +859,83 @@ with tabs[2]:
         )
         for ins in insights:
             st.write("- " + ins)
+with tabs[2]:
+    st.subheader("🗺️ Mapa do Estoque — dinheiro parado em tempo real")
+
+    if estoque_df.empty:
+        st.info("Sem dados de estoque.")
+    else:
+        mapa = estoque_df.copy()
+        mapa = mapa[mapa["EM ESTOQUE"] > 0]
+
+        # Última venda por produto
+        vendas_all = dfs.get("VENDAS", pd.DataFrame()).copy()
+        if not vendas_all.empty and "DATA" in vendas_all.columns:
+            vendas_all["DATA"] = pd.to_datetime(vendas_all["DATA"], errors="coerce")
+            ult_venda = (
+                vendas_all.groupby("PRODUTO")["DATA"]
+                .max()
+                .reset_index()
+                .rename(columns={"DATA": "ULTIMA_VENDA"})
+            )
+            mapa = mapa.merge(ult_venda, on="PRODUTO", how="left")
+        else:
+            mapa["ULTIMA_VENDA"] = pd.NaT
+
+        # Métricas financeiras
+        mapa["CUSTO_UNIT"] = mapa["Media C. UNITARIO"].fillna(0)
+        mapa["CUSTO_TOTAL"] = mapa["CUSTO_UNIT"] * mapa["EM ESTOQUE"]
+
+        hoje = pd.Timestamp.now()
+        mapa["DIAS_SEM_VENDER"] = mapa["ULTIMA_VENDA"].apply(
+            lambda x: (hoje - x).days if pd.notna(x) else 999
+        )
+
+        # KPIs rápidos
+        col1, col2, col3 = st.columns(3)
+        col1.metric("📦 Produtos com estoque", len(mapa))
+        col2.metric("💰 Dinheiro parado", formatar_reais_sem_centavos(mapa["CUSTO_TOTAL"].sum()))
+        col3.metric(
+            "⚠️ Itens sem venda +30 dias",
+            int((mapa["DIAS_SEM_VENDER"] > 30).sum())
+        )
+
+        st.markdown("### 🔵 Mapa visual do estoque (impacto financeiro)")
+        fig = px.scatter(
+            mapa,
+            x="EM ESTOQUE",
+            y="CUSTO_UNIT",
+            size="CUSTO_TOTAL",
+            color="DIAS_SEM_VENDER",
+            hover_name="PRODUTO",
+            size_max=60,
+            labels={
+                "EM ESTOQUE": "Quantidade em estoque",
+                "CUSTO_UNIT": "Custo unitário",
+                "DIAS_SEM_VENDER": "Dias sem vender"
+            }
+        )
+        plotly_dark_config(fig)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### 💸 Ranking — onde o dinheiro está preso")
+        ranking = mapa.sort_values("CUSTO_TOTAL", ascending=False).head(15)
+        ranking_display = ranking.copy()
+        ranking_display["CUSTO TOTAL"] = ranking_display["CUSTO_TOTAL"].map(formatar_reais_sem_centavos)
+        ranking_display["CUSTO UNIT"] = ranking_display["CUSTO_UNIT"].map(formatar_reais_com_centavos)
+        ranking_display["ULTIMA VENDA"] = ranking_display["ULTIMA_VENDA"].dt.strftime("%d/%m/%Y").fillna("—")
+
+        st.dataframe(
+            ranking_display[[
+                "PRODUTO",
+                "EM ESTOQUE",
+                "CUSTO UNIT",
+                "CUSTO TOTAL",
+                "ULTIMA VENDA",
+                "DIAS_SEM_VENDER"
+            ]],
+            use_container_width=True
+        )
 
 # ----------------------------
 # PESQUISAR TAB
