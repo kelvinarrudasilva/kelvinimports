@@ -853,8 +853,7 @@ with tabs[2]:
         )
         for ins in insights:
             st.write("- " + ins)
-
-# ----------------------------
+            # ----------------------------
 # PESQUISAR TAB
 # ----------------------------
 with tabs[3]:
