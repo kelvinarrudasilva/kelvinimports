@@ -854,6 +854,7 @@ with tabs[2]:
         for ins in insights:
             st.write("- " + ins)
             # ----------------------------
+# ----------------------------
 # PESQUISAR TAB
 # ----------------------------
 with tabs[3]:
@@ -886,7 +887,7 @@ with tabs[3]:
     filtro_alto = st.checkbox("📦 Alto estoque (≥20)", value=False)
     filtro_vendidos = st.checkbox("🔥 Com vendas", value=False)
     filtro_sem_venda = st.checkbox("❄️ Sem vendas", value=False)
-    filtro_com_estoque = st.checkbox("✅ Com estoque", value=False)  # NOVO
+    filtro_com_estoque = st.checkbox("✅ Com estoque", value=True)  # PRÉ-MARCADO
 
     # ------------------------
     # PREPARAR DATAFRAME
@@ -923,7 +924,7 @@ with tabs[3]:
     if filtro_sem_venda:
         df = df[df["TOTAL_QTD"] == 0]
     if filtro_com_estoque:
-        df = df[df["EM ESTOQUE"] > 0]  # NOVO
+        df = df[df["EM ESTOQUE"] > 0]
 
     # ------------------------
     # FORMATAR MOEDA
