@@ -880,11 +880,18 @@ with tabs[3]:
             ver_tudo = st.checkbox("Ver tudo (sem paginação)", value=False)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # ------------------------
+    # FILTROS
+    # ------------------------
     filtro_baixo = st.checkbox("⚠️ Baixo estoque (≤3)", value=False)
     filtro_alto = st.checkbox("📦 Alto estoque (≥20)", value=False)
     filtro_vendidos = st.checkbox("🔥 Com vendas", value=False)
     filtro_sem_venda = st.checkbox("❄️ Sem vendas", value=False)
+    filtro_com_estoque = st.checkbox("✅ Com estoque", value=False)  # NOVO
 
+    # ------------------------
+    # PREPARAR DATAFRAME
+    # ------------------------
     df = estoque_df.copy()
     vendas_df = dfs.get("VENDAS", pd.DataFrame()).copy()
     if not vendas_df.empty and "QTD" in vendas_df.columns:
@@ -903,6 +910,9 @@ with tabs[3]:
         tmp = compras_df.groupby("PRODUTO")["DATA"].max().reset_index()
         ultima_compra = dict(zip(tmp["PRODUTO"], tmp["DATA"].dt.strftime("%d/%m/%Y")))
 
+    # ------------------------
+    # APLICAR FILTROS
+    # ------------------------
     if termo and termo.strip():
         df = df[df["PRODUTO"].str.contains(termo, case=False, na=False)]
     if filtro_baixo:
@@ -913,10 +923,18 @@ with tabs[3]:
         df = df[df["TOTAL_QTD"] > 0]
     if filtro_sem_venda:
         df = df[df["TOTAL_QTD"] == 0]
+    if filtro_com_estoque:
+        df = df[df["EM ESTOQUE"] > 0]  # NOVO
 
+    # ------------------------
+    # FORMATAR MOEDA
+    # ------------------------
     df["CUSTO_FMT"] = df.get("Media C. UNITARIO", 0).map(formatar_reais_com_centavos)
     df["VENDA_FMT"] = df.get("Valor Venda Sugerido", 0).map(formatar_reais_com_centavos)
 
+    # ------------------------
+    # ORDENAR
+    # ------------------------
     if ordenar == "Nome A–Z":
         df = df.sort_values("PRODUTO", ascending=True)
     elif ordenar == "Nome Z–A":
@@ -931,6 +949,9 @@ with tabs[3]:
     elif ordenar == "Maior estoque":
         df = df.sort_values("EM ESTOQUE", ascending=False)
 
+    # ------------------------
+    # PAGINAÇÃO
+    # ------------------------
     total = len(df)
     if ver_tudo:
         itens_pagina = total if total > 0 else 1
@@ -956,6 +977,9 @@ with tabs[3]:
     fim = inicio + itens_pagina
     df_page = df.iloc[inicio:fim].reset_index(drop=True)
 
+    # ------------------------
+    # ESTILO GRID
+    # ------------------------
     css_grid = f"""
     <style>
     .card-grid-ecom{{ display:grid; grid-template-columns: repeat({grid_cols},1fr); gap:12px; }}
@@ -968,9 +992,11 @@ with tabs[3]:
     </style>
     """
     st.markdown(css_grid, unsafe_allow_html=True)
-
     st.markdown("<div class='card-grid-ecom'>", unsafe_allow_html=True)
 
+    # ------------------------
+    # CARDS
+    # ------------------------
     for _, r in df_page.iterrows():
         nome = r.get("PRODUTO", "")
         estoque = int(r.get("EM ESTOQUE", 0)) if pd.notna(r.get("EM ESTOQUE", 0)) else 0
