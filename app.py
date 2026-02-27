@@ -1,6 +1,6 @@
-# app_fifo_integrado.py
-# Versão com cálculo FIFO integrado automaticamente
-# Mantém TODAS as funções originais e adiciona custo real FIFO
+# app.py
+# Versão final do dashboard com aba COMPRAS ajustada
+# Requer: streamlit, pandas, plotly, requests, openpyxl
 
 import streamlit as st
 import pandas as pd
@@ -9,125 +9,69 @@ import re
 from datetime import datetime, timedelta
 import requests
 from io import BytesIO
+# ==============================
+# FUNÇÃO FIFO (cole aqui)
+# ==============================
+def calcular_fifo_estoque(df_compras, df_vendas):
+
+    compras = df_compras.copy()
+    vendas = df_vendas.copy()
+
+    if compras.empty:
+        return pd.DataFrame()
+
+    compras = compras.sort_values("DATA").reset_index(drop=True)
+
+    compras["SALDO"] = compras["QUANTIDADE"].astype(float)
+    compras["CUSTO UNITÁRIO"] = compras["CUSTO UNITÁRIO"].astype(float)
+
+    vendas = vendas.sort_values("DATA")
+
+    for _, venda in vendas.iterrows():
+
+        produto = venda["PRODUTO"]
+        qtd = float(venda["QTD"])
+
+        lotes = compras[compras["PRODUTO"] == produto]
+
+        for i in lotes.index:
+
+            saldo = compras.at[i, "SALDO"]
+
+            if saldo <= 0:
+                continue
+
+            consumir = min(saldo, qtd)
+
+            compras.at[i, "SALDO"] -= consumir
+
+            qtd -= consumir
+
+            if qtd <= 0:
+                break
+
+    restante = compras[compras["SALDO"] > 0].copy()
+
+    if restante.empty:
+        return pd.DataFrame()
+
+    restante["VALOR_TOTAL"] = restante["SALDO"] * restante["CUSTO UNITÁRIO"]
+
+    resumo = restante.groupby("PRODUTO").agg({
+        "SALDO": "sum",
+        "VALOR_TOTAL": "sum"
+    }).reset_index()
+
+    resumo["CUSTO_FIFO"] = resumo["VALOR_TOTAL"] / resumo["SALDO"]
+
+    return resumo
 
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 # ------------------------
 # Config
 # ------------------------
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/..."  # mantido original
-
-# ------------------------
-# Business functions
-# ------------------------
-
-# ------------------------
-# FIFO COST CALCULATION
-# ------------------------
-def calcular_fifo_estoque(df_compras, df_vendas):
-
-    if df_compras is None or df_compras.empty:
-        return pd.DataFrame()
-
-    compras = df_compras.copy()
-    vendas = df_vendas.copy() if df_vendas is not None else pd.DataFrame()
-
-    if "DATA" in compras.columns:
-        compras = compras.sort_values("DATA").reset_index(drop=True)
-
-    compras["SALDO"] = compras.get("QUANTIDADE", 0).astype(float)
-    compras["CUSTO UNITÁRIO"] = compras.get("CUSTO UNITÁRIO", 0).astype(float)
-
-    if not vendas.empty:
-
-        if "DATA" in vendas.columns:
-            vendas = vendas.sort_values("DATA")
-
-        for _, venda in vendas.iterrows():
-
-            produto = venda.get("PRODUTO")
-            qtd_vender = float(venda.get("QTD", 0))
-
-            if qtd_vender <= 0:
-                continue
-
-            mask = compras["PRODUTO"] == produto
-
-            for i in compras[mask].index:
-
-                saldo = compras.at[i, "SALDO"]
-
-                if saldo <= 0:
-                    continue
-
-                consumir = min(saldo, qtd_vender)
-
-                compras.at[i, "SALDO"] -= consumir
-                qtd_vender -= consumir
-
-                if qtd_vender <= 0:
-                    break
-
-    estoque_restante = compras[compras["SALDO"] > 0].copy()
-
-    if estoque_restante.empty:
-        return pd.DataFrame()
-
-    estoque_restante["VALOR_TOTAL"] = (
-        estoque_restante["SALDO"] * estoque_restante["CUSTO UNITÁRIO"]
-    )
-
-    resumo = (
-        estoque_restante
-        .groupby("PRODUTO")
-        .agg({
-            "SALDO": "sum",
-            "VALOR_TOTAL": "sum"
-        })
-        .reset_index()
-    )
-
-    resumo["CUSTO_MEDIO_FIFO"] = (
-        resumo["VALOR_TOTAL"] / resumo["SALDO"]
-    )
-
-    return resumo
-
-# ==============================
-# RESTANTE DO SEU APP ORIGINAL
-# ==============================
-# (todo restante permanece igual, incluindo carregamento, parsing e dashboard)
-
-# IMPORTANTE: após normalizar COMPRAS:
-
-# APPLY FIFO
-fifo_df = calcular_fifo_estoque(
-    dfs.get("COMPRAS", pd.DataFrame()),
-    dfs.get("VENDAS", pd.DataFrame())
-)
-
-if not fifo_df.empty and "ESTOQUE" in dfs:
-
-    estoque_fifo = dfs["ESTOQUE"].copy()
-
-    estoque_fifo = estoque_fifo.merge(
-        fifo_df[["PRODUTO", "CUSTO_MEDIO_FIFO"]],
-        on="PRODUTO",
-        how="left"
-    )
-
-    if "Media C. UNITARIO" in estoque_fifo.columns:
-        estoque_fifo["Media C. UNITARIO"] = (
-            estoque_fifo["CUSTO_MEDIO_FIFO"]
-            .fillna(estoque_fifo["Media C. UNITARIO"])
-        )
-    else:
-        estoque_fifo["Media C. UNITARIO"] = estoque_fifo["CUSTO_MEDIO_FIFO"]
-
-    dfs["ESTOQUE"] = estoque_fifo
-
-# resto do app continua igual
-
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # ------------------------
 # Helpers / parsing
@@ -498,7 +442,29 @@ if "COMPRAS" in dfs:
         df_c["DATA"] = pd.to_datetime(df_c["DATA"], errors="coerce")
         df_c["MES_ANO"] = df_c["DATA"].dt.strftime("%Y-%m")
     dfs["COMPRAS"] = df_c
+# ==============================
+# APLICAR FIFO NO ESTOQUE
+# ==============================
+fifo = calcular_fifo_estoque(
+    dfs.get("COMPRAS", pd.DataFrame()),
+    dfs.get("VENDAS", pd.DataFrame())
+)
 
+if not fifo.empty and "ESTOQUE" in dfs:
+
+    estoque = dfs["ESTOQUE"].copy()
+
+    estoque = estoque.merge(
+        fifo[["PRODUTO", "CUSTO_FIFO"]],
+        on="PRODUTO",
+        how="left"
+    )
+
+    estoque["Media C. UNITARIO"] = estoque["CUSTO_FIFO"].fillna(
+        estoque["Media C. UNITARIO"]
+    )
+
+    dfs["ESTOQUE"] = estoque
 # compute globals
 _top5_list_global = compute_top5_global(dfs)
 _enc_list_global, _enc_df_global = compute_encalhados_global(dfs, limit=10)
