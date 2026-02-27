@@ -9,63 +9,89 @@ import re
 from datetime import datetime, timedelta
 import requests
 from io import BytesIO
-# ==============================
-# FUNÇÃO FIFO (cole aqui)
-# ==============================
 def calcular_fifo_estoque(df_compras, df_vendas):
 
-    compras = df_compras.copy()
-    vendas = df_vendas.copy()
-
-    if compras.empty:
+    if df_compras is None or df_compras.empty:
         return pd.DataFrame()
 
-    compras = compras.sort_values("DATA").reset_index(drop=True)
+    compras = df_compras.copy()
+    vendas = df_vendas.copy() if df_vendas is not None else pd.DataFrame()
 
-    compras["SALDO"] = compras["QUANTIDADE"].astype(float)
-    compras["CUSTO UNITÁRIO"] = compras["CUSTO UNITÁRIO"].astype(float)
+    # ---------- detectar coluna de data automaticamente ----------
+    coluna_data_compras = None
+    for col in compras.columns:
+        if "data" in col.lower():
+            coluna_data_compras = col
+            break
 
-    vendas = vendas.sort_values("DATA")
+    coluna_data_vendas = None
+    for col in vendas.columns:
+        if "data" in col.lower():
+            coluna_data_vendas = col
+            break
 
-    for _, venda in vendas.iterrows():
+    # ordenar se existir coluna de data
+    if coluna_data_compras:
+        compras = compras.sort_values(coluna_data_compras).reset_index(drop=True)
+    else:
+        compras = compras.reset_index(drop=True)
 
-        produto = venda["PRODUTO"]
-        qtd = float(venda["QTD"])
+    if coluna_data_vendas:
+        vendas = vendas.sort_values(coluna_data_vendas).reset_index(drop=True)
 
-        lotes = compras[compras["PRODUTO"] == produto]
+    # ---------- garantir nomes ----------
+    col_produto = [c for c in compras.columns if "produto" in c.lower()][0]
+    col_qtd = [c for c in compras.columns if "quant" in c.lower()][0]
+    col_custo = [c for c in compras.columns if "custo" in c.lower()][0]
 
-        for i in lotes.index:
+    compras["SALDO"] = compras[col_qtd].astype(float)
+    compras["CUSTO_UNIT"] = compras[col_custo].astype(float)
 
-            saldo = compras.at[i, "SALDO"]
+    # ---------- aplicar FIFO ----------
+    if not vendas.empty:
 
-            if saldo <= 0:
-                continue
+        col_prod_venda = [c for c in vendas.columns if "produto" in c.lower()][0]
+        col_qtd_venda = [c for c in vendas.columns if "qtd" in c.lower() or "quant" in c.lower()][0]
 
-            consumir = min(saldo, qtd)
+        for _, venda in vendas.iterrows():
 
-            compras.at[i, "SALDO"] -= consumir
+            produto = venda[col_prod_venda]
+            qtd_vender = float(venda[col_qtd_venda])
 
-            qtd -= consumir
+            mask = compras[col_produto] == produto
 
-            if qtd <= 0:
-                break
+            for i in compras[mask].index:
+
+                saldo = compras.at[i, "SALDO"]
+
+                if saldo <= 0:
+                    continue
+
+                consumir = min(saldo, qtd_vender)
+
+                compras.at[i, "SALDO"] -= consumir
+                qtd_vender -= consumir
+
+                if qtd_vender <= 0:
+                    break
 
     restante = compras[compras["SALDO"] > 0].copy()
 
     if restante.empty:
         return pd.DataFrame()
 
-    restante["VALOR_TOTAL"] = restante["SALDO"] * restante["CUSTO UNITÁRIO"]
+    restante["VALOR_TOTAL"] = restante["SALDO"] * restante["CUSTO_UNIT"]
 
-    resumo = restante.groupby("PRODUTO").agg({
+    resumo = restante.groupby(col_produto).agg({
         "SALDO": "sum",
         "VALOR_TOTAL": "sum"
     }).reset_index()
 
     resumo["CUSTO_FIFO"] = resumo["VALOR_TOTAL"] / resumo["SALDO"]
 
-    return resumo
-st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
+    resumo.rename(columns={col_produto: "PRODUTO"}, inplace=True)
+
+    return resumost.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 # ------------------------
 # Config
