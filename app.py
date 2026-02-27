@@ -15,27 +15,38 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 # ============================================
 
 def parse_money(x):
-    """Converte 'R$ 20,70' ou '1,00' -> 20.70 (float)."""
+    """
+    Converte 'R$ 20,70' ou '1,00' -> 20.70 (float).
+    Ignora números gigantes só de dígitos (ex: código de barras).
+    """
     if pd.isna(x):
         return 0.0
+
     s = str(x).strip()
     if s == "":
         return 0.0
+
+    # tira símbolo de moeda e espaços
     s = s.replace("R$", "").replace("r$", "").replace(" ", "")
+
+    # se for um número só de dígitos MUITO longo (12+), provavel código de barras -> não tratar como dinheiro
+    digitos = "".join(ch for ch in s if ch.isdigit())
+    if len(digitos) >= 12 and ("," not in s and "." not in s):
+        return 0.0
+
     # formato BR: 1.234,56
     s = s.replace(".", "").replace(",", ".")
+
     try:
         return float(s)
     except Exception:
-        try:
-            return float(str(x))
-        except Exception:
-            return 0.0
+        return 0.0
 
 
 def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
     """
-    Acha a linha onde está o cabeçalho verdadeiro (DATA, PRODUTO, QTD, etc.)
+    Acha a linha onde está o cabeçalho verdadeiro (DATA, PRODUTO, QTD, etc.).
+    must_have = lista de palavras que devem aparecer na linha.
     """
     max_linhas = min(20, len(df_raw))
     for i in range(max_linhas):
@@ -61,7 +72,7 @@ def limpar_aba(xls, nome_aba):
     linha_header = detectar_linha_cabecalho(df_raw, must_have)
 
     if linha_header is None:
-        st.error(f"Não encontrei cabeçalho claro na aba {nome_aba}. Colunas lidas: {list(df_raw.columns)}")
+        st.error(f"Não encontrei cabeçalho claro na aba {nome_aba}. Primeiras linhas lidas:\n{df_raw.head(5)}")
         st.stop()
 
     # linha do cabeçalho
@@ -101,11 +112,10 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     compras.columns = [c.strip().upper() for c in compras.columns]
     vendas.columns = [c.strip().upper() for c in vendas.columns]
 
-    # nomes esperados depois da limpeza, pela sua planilha:
-    # COMPRAS: DATA | PRODUTO | STATUS | QUANTIDADE | CUSTO UNITÁRIO | CUSTO TOTAL | OBSERVAÇÃO
+    # Pela sua planilha (prints):
+    # COMPRAS: DATA | PRODUTO | STATUS | QUANTIDADE | CUSTO UNITÁRIO | CUSTO TOTAL | ...
     # VENDAS:  DATA | PRODUTO | QTD | VALOR VENDA | VALOR TOTAL | ...
 
-    # conferir se tudo existe
     cols_compras_obrig = ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO", "CUSTO TOTAL"]
     cols_vendas_obrig = ["DATA", "PRODUTO", "QTD", "VALOR TOTAL"]
 
@@ -143,9 +153,14 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
 
     # se custo total veio 0, recalcula
     mask_zero = compras["CUSTO TOTAL"] == 0
-    compras.loc[mask_zero, "CUSTO TOTAL"] = compras.loc[mask_zero, "QUANTIDADE"] * compras.loc[mask_zero, "CUSTO UNITÁRIO"]
+    compras.loc[mask_zero, "CUSTO TOTAL"] = (
+        compras.loc[mask_zero, "QUANTIDADE"] * compras.loc[mask_zero, "CUSTO UNITÁRIO"]
+    )
 
-    # ---------- montar estoque (lotes) ----------
+    # sanity check: descartar custos unitários totalmente fora da realidade (provável lixo/código de barras que escapou)
+    compras = compras[(compras["CUSTO UNITÁRIO"] >= 0) & (compras["CUSTO UNITÁRIO"] < 10000)]
+
+    # ---------- montar estoque (lotes FIFO) ----------
     estoque = {}  # produto -> [ {qtd, custo}, ... ]
 
     for _, row in compras.iterrows():
@@ -159,7 +174,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
             estoque[produto] = []
         estoque[produto].append({"qtd": qtd, "custo": custo_unit})
 
-    # ---------- processar vendas em FIFO ----------
+    # ---------- processar vendas consumindo lotes FIFO ----------
     registros_venda = []
 
     for _, row in vendas.iterrows():
