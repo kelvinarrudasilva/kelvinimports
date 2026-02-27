@@ -29,9 +29,9 @@ def parse_money(x):
     # tira símbolo de moeda e espaços
     s = s.replace("R$", "").replace("r$", "").replace(" ", "")
 
-    # se for um número só de dígitos MUITO longo (12+), provavel código de barras -> não tratar como dinheiro
+    # se for um número só de dígitos MUITO longo (12+), provável código de barras → não tratar como dinheiro
     digitos = "".join(ch for ch in s if ch.isdigit())
-    if len(digitos) >= 12 and ("," not in s and "." not in s):
+    if len(digitos) >= 12:
         return 0.0
 
     # formato BR: 1.234,56
@@ -116,7 +116,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     # COMPRAS: DATA | PRODUTO | STATUS | QUANTIDADE | CUSTO UNITÁRIO | CUSTO TOTAL | ...
     # VENDAS:  DATA | PRODUTO | QTD | VALOR VENDA | VALOR TOTAL | ...
 
-    cols_compras_obrig = ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO", "CUSTO TOTAL"]
+    cols_compras_obrig = ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO"]
     cols_vendas_obrig = ["DATA", "PRODUTO", "QTD", "VALOR TOTAL"]
 
     faltando_compras = [c for c in cols_compras_obrig if c not in compras.columns]
@@ -143,22 +143,19 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     compras = compras.sort_values("DATA")
     vendas = vendas.sort_values("DATA")
 
-    # ---------- números ----------
+    # ---------- números (COMPRAS) ----------
     compras["QUANTIDADE"] = compras["QUANTIDADE"].apply(parse_money).astype(float)
     compras["CUSTO UNITÁRIO"] = compras["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
-    compras["CUSTO TOTAL"] = compras["CUSTO TOTAL"].apply(parse_money).astype(float)
 
-    vendas["QTD"] = vendas["QTD"].apply(parse_money).astype(float)
-    vendas["VALOR TOTAL"] = vendas["VALOR TOTAL"].apply(parse_money).astype(float)
-
-    # se custo total veio 0, recalcula
-    mask_zero = compras["CUSTO TOTAL"] == 0
-    compras.loc[mask_zero, "CUSTO TOTAL"] = (
-        compras.loc[mask_zero, "QUANTIDADE"] * compras.loc[mask_zero, "CUSTO UNITÁRIO"]
-    )
+    # recalcula SEMPRE o CUSTO TOTAL a partir de qtd * custo unitário
+    compras["CUSTO TOTAL"] = compras["QUANTIDADE"] * compras["CUSTO UNITÁRIO"]
 
     # sanity check: descartar custos unitários totalmente fora da realidade (provável lixo/código de barras que escapou)
     compras = compras[(compras["CUSTO UNITÁRIO"] >= 0) & (compras["CUSTO UNITÁRIO"] < 10000)]
+
+    # ---------- números (VENDAS) ----------
+    vendas["QTD"] = vendas["QTD"].apply(parse_money).astype(float)
+    vendas["VALOR TOTAL"] = vendas["VALOR TOTAL"].apply(parse_money).astype(float)
 
     # ---------- montar estoque (lotes FIFO) ----------
     estoque = {}  # produto -> [ {qtd, custo}, ... ]
