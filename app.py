@@ -31,8 +31,15 @@ def calcular_fifo_estoque(df_compras, df_vendas):
             break
 
     # ordenar se existir coluna de data
-    if coluna_data_compras:
-        compras = compras.sort_values(coluna_data_compras).reset_index(drop=True)
+  if coluna_data_compras:
+
+    compras[coluna_data_compras] = pd.to_datetime(
+        compras[coluna_data_compras],
+        errors="coerce",
+        dayfirst=True
+    )
+
+    compras = compras.sort_values(coluna_data_compras, na_position="last").reset_index(drop=True)
     else:
         compras = compras.reset_index(drop=True)
 
