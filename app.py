@@ -9,7 +9,62 @@ import re
 from datetime import datetime, timedelta
 import requests
 from io import BytesIO
+# ==============================
+# FUNÇÃO FIFO (cole aqui)
+# ==============================
+def calcular_fifo_estoque(df_compras, df_vendas):
 
+    compras = df_compras.copy()
+    vendas = df_vendas.copy()
+
+    if compras.empty:
+        return pd.DataFrame()
+
+    compras = compras.sort_values("DATA").reset_index(drop=True)
+
+    compras["SALDO"] = compras["QUANTIDADE"].astype(float)
+    compras["CUSTO UNITÁRIO"] = compras["CUSTO UNITÁRIO"].astype(float)
+
+    vendas = vendas.sort_values("DATA")
+
+    for _, venda in vendas.iterrows():
+
+        produto = venda["PRODUTO"]
+        qtd = float(venda["QTD"])
+
+        lotes = compras[compras["PRODUTO"] == produto]
+
+        for i in lotes.index:
+
+            saldo = compras.at[i, "SALDO"]
+
+            if saldo <= 0:
+                continue
+
+            consumir = min(saldo, qtd)
+
+            compras.at[i, "SALDO"] -= consumir
+
+            qtd -= consumir
+
+            if qtd <= 0:
+                break
+
+    restante = compras[compras["SALDO"] > 0].copy()
+
+    if restante.empty:
+        return pd.DataFrame()
+
+    restante["VALOR_TOTAL"] = restante["SALDO"] * restante["CUSTO UNITÁRIO"]
+
+    resumo = restante.groupby("PRODUTO").agg({
+        "SALDO": "sum",
+        "VALOR_TOTAL": "sum"
+    }).reset_index()
+
+    resumo["CUSTO_FIFO"] = resumo["VALOR_TOTAL"] / resumo["SALDO"]
+
+    return resumo
 st.set_page_config(page_title="Loja Importados – Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
 # ------------------------
@@ -371,7 +426,32 @@ if "VENDAS" in dfs:
     if "DATA" in df_v.columns:
         df_v = df_v.sort_values("DATA", ascending=False).reset_index(drop=True)
     dfs["VENDAS"] = df_v
+# ==============================
+# CALCULAR CUSTO REAL E LUCRO REAL POR PRODUTO (FIFO)
+# ==============================
 
+fifo = calcular_fifo_estoque(
+    dfs.get("COMPRAS", pd.DataFrame()),
+    dfs.get("VENDAS", pd.DataFrame())
+)
+
+if not fifo.empty:
+
+    df_vendas = dfs["VENDAS"].copy()
+
+    df_vendas = df_vendas.merge(
+        fifo[["PRODUTO", "CUSTO_FIFO"]],
+        on="PRODUTO",
+        how="left"
+    )
+
+    # custo real da venda
+    df_vendas["CUSTO_REAL"] = df_vendas["CUSTO_FIFO"] * df_vendas["QTD"]
+
+    # lucro real
+    df_vendas["LUCRO_REAL"] = df_vendas["VALOR"] - df_vendas["CUSTO_REAL"]
+
+    dfs["VENDAS"] = df_vendas
 # normalize COMPRAS
 if "COMPRAS" in dfs:
     df_c = dfs["COMPRAS"].copy()
@@ -386,6 +466,29 @@ if "COMPRAS" in dfs:
         df_c["DATA"] = pd.to_datetime(df_c["DATA"], errors="coerce")
         df_c["MES_ANO"] = df_c["DATA"].dt.strftime("%Y-%m")
     dfs["COMPRAS"] = df_c
+# ==============================
+# APLICAR FIFO NO ESTOQUE
+# ==============================
+fifo = calcular_fifo_estoque(
+    dfs.get("COMPRAS", pd.DataFrame()),
+    dfs.get("VENDAS", pd.DataFrame())
+)
+
+if not fifo.empty and "ESTOQUE" in dfs:
+
+    estoque = dfs["ESTOQUE"].copy()
+
+    estoque = estoque.merge(
+        fifo[["PRODUTO", "CUSTO_FIFO"]],
+        on="PRODUTO",
+        how="left"
+    )
+
+    estoque["Media C. UNITARIO"] = estoque["CUSTO_FIFO"].fillna(
+        estoque["Media C. UNITARIO"]
+    )
+
+    dfs["ESTOQUE"] = estoque
 
 # compute globals
 _top5_list_global = compute_top5_global(dfs)
@@ -487,6 +590,30 @@ with tabs[0]:
             st.plotly_chart(fig_sem, use_container_width=True, config=dict(displayModeBar=False))
 
         st.markdown("### 📄 Tabela de Vendas (mais recentes primeiro)")
+# ==============================
+# LUCRO REAL POR PRODUTO
+# ==============================
+
+if "VENDAS" in dfs and not dfs["VENDAS"].empty:
+
+    lucro_produto = (
+        dfs["VENDAS"]
+        .groupby("PRODUTO")
+        .agg({
+            "QTD": "sum",
+            "VALOR": "sum",
+            "CUSTO_REAL": "sum",
+            "LUCRO_REAL": "sum"
+        })
+        .reset_index()
+    )
+
+    st.subheader("💰 Lucro real por produto")
+
+    st.dataframe(
+        lucro_produto.sort_values("LUCRO_REAL", ascending=False),
+        use_container_width=True
+    )
         tabela_vendas_exib = preparar_tabela_vendas(df_sem, estoque_df=estoque_df)
 
         try:
