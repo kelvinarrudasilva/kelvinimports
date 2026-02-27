@@ -590,30 +590,6 @@ with tabs[0]:
             st.plotly_chart(fig_sem, use_container_width=True, config=dict(displayModeBar=False))
 
         st.markdown("### 📄 Tabela de Vendas (mais recentes primeiro)")
-# ==============================
-# LUCRO REAL POR PRODUTO
-# ==============================
-
-if "VENDAS" in dfs and not dfs["VENDAS"].empty:
-
-    lucro_produto = (
-        dfs["VENDAS"]
-        .groupby("PRODUTO")
-        .agg({
-            "QTD": "sum",
-            "VALOR": "sum",
-            "CUSTO_REAL": "sum",
-            "LUCRO_REAL": "sum"
-        })
-        .reset_index()
-    )
-
-    st.subheader("💰 Lucro real por produto")
-
-    st.dataframe(
-        lucro_produto.sort_values("LUCRO_REAL", ascending=False),
-        use_container_width=True
-    )
         tabela_vendas_exib = preparar_tabela_vendas(df_sem, estoque_df=estoque_df)
 
         try:
@@ -722,6 +698,30 @@ if "VENDAS" in dfs and not dfs["VENDAS"].empty:
                     )
         except Exception as e:
             st.write("Erro encalhados:", e)
+# ==============================
+# LUCRO REAL POR PRODUTO
+# ==============================
+
+if "VENDAS" in dfs and not dfs["VENDAS"].empty:
+
+    lucro_produto = (
+        dfs["VENDAS"]
+        .groupby("PRODUTO")
+        .agg({
+            "QTD": "sum",
+            "VALOR": "sum",
+            "CUSTO_REAL": "sum",
+            "LUCRO_REAL": "sum"
+        })
+        .reset_index()
+    )
+
+    st.subheader("💰 Lucro real por produto")
+
+    st.dataframe(
+        lucro_produto.sort_values("LUCRO_REAL", ascending=False),
+        use_container_width=True
+    )
 
 # ----------------------------
 # ESTOQUE TAB
