@@ -15,13 +15,12 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 # ============================================
 
 def parse_money(x):
-    """Converte coisas tipo 'R$ 20,70' para float 20.70."""
+    """Converte 'R$ 20,70' ou '1,00' -> 20.70 (float)."""
     if pd.isna(x):
         return 0.0
     s = str(x).strip()
     if s == "":
         return 0.0
-    # remove R$, espaços etc
     s = s.replace("R$", "").replace("r$", "").replace(" ", "")
     # formato BR: 1.234,56
     s = s.replace(".", "").replace(",", ".")
@@ -34,17 +33,58 @@ def parse_money(x):
             return 0.0
 
 
+def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
+    """
+    Acha a linha onde está o cabeçalho verdadeiro (DATA, PRODUTO, QTD, etc.)
+    """
+    max_linhas = min(20, len(df_raw))
+    for i in range(max_linhas):
+        linha = " ".join([str(x).upper() for x in df_raw.iloc[i].tolist()])
+        if all(pal in linha for pal in must_have):
+            return i
+    return None
+
+
+def limpar_aba(xls, nome_aba):
+    """
+    Lê aba com header=None, detecta cabeçalho real e retorna df limpo.
+    """
+    df_raw = pd.read_excel(xls, sheet_name=nome_aba, header=None)
+
+    if nome_aba.upper() == "COMPRAS":
+        must_have = ["DATA", "PRODUTO", "STATUS", "QUANT", "CUSTO"]
+    elif nome_aba.upper() == "VENDAS":
+        must_have = ["DATA", "PRODUTO", "QTD", "VALOR"]
+    else:
+        must_have = ["DATA", "PRODUTO"]
+
+    linha_header = detectar_linha_cabecalho(df_raw, must_have)
+
+    if linha_header is None:
+        st.error(f"Não encontrei cabeçalho claro na aba {nome_aba}. Colunas lidas: {list(df_raw.columns)}")
+        st.stop()
+
+    # linha do cabeçalho
+    cabecalho = df_raw.iloc[linha_header]
+    df = df_raw.iloc[linha_header + 1:].copy()
+    df.columns = [str(c).strip().upper() for c in cabecalho]
+
+    # remove colunas totalmente vazias
+    df = df.loc[:, ~df.isna().all()]
+
+    # drop linhas totalmente vazias
+    df = df.dropna(how="all").reset_index(drop=True)
+
+    return df
+
+
 @st.cache_data
 def carregar_dados():
-    """Lê as abas COMPRAS e VENDAS da planilha."""
+    """Lê as abas COMPRAS e VENDAS já limpas, com cabeçalho certo."""
     xls = pd.ExcelFile(URL_PLANILHA)
 
-    df_compras = pd.read_excel(xls, "COMPRAS")
-    df_vendas = pd.read_excel(xls, "VENDAS")
-
-    # normaliza cabeçalhos
-    df_compras.columns = df_compras.columns.str.strip().str.upper()
-    df_vendas.columns = df_vendas.columns.str.strip().str.upper()
+    df_compras = limpar_aba(xls, "COMPRAS")
+    df_vendas = limpar_aba(xls, "VENDAS")
 
     return df_compras, df_vendas
 
@@ -57,7 +97,15 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     compras = df_compras_raw.copy()
     vendas = df_vendas_raw.copy()
 
-    # ---------- conferir colunas obrigatórias ----------
+    # ---------- normalizar nomes ----------
+    compras.columns = [c.strip().upper() for c in compras.columns]
+    vendas.columns = [c.strip().upper() for c in vendas.columns]
+
+    # nomes esperados depois da limpeza, pela sua planilha:
+    # COMPRAS: DATA | PRODUTO | STATUS | QUANTIDADE | CUSTO UNITÁRIO | CUSTO TOTAL | OBSERVAÇÃO
+    # VENDAS:  DATA | PRODUTO | QTD | VALOR VENDA | VALOR TOTAL | ...
+
+    # conferir se tudo existe
     cols_compras_obrig = ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO", "CUSTO TOTAL"]
     cols_vendas_obrig = ["DATA", "PRODUTO", "QTD", "VALOR TOTAL"]
 
@@ -65,10 +113,10 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     faltando_vendas = [c for c in cols_vendas_obrig if c not in vendas.columns]
 
     if faltando_compras:
-        st.error(f"Na aba COMPRAS estão faltando as colunas: {faltando_compras}. Colunas encontradas: {list(compras.columns)}")
+        st.error(f"Aba COMPRAS após limpeza ainda está sem colunas: {faltando_compras}. Colunas: {list(compras.columns)}")
         st.stop()
     if faltando_vendas:
-        st.error(f"Na aba VENDAS estão faltando as colunas: {faltando_vendas}. Colunas encontradas: {list(vendas.columns)}")
+        st.error(f"Aba VENDAS após limpeza ainda está sem colunas: {faltando_vendas}. Colunas: {list(vendas.columns)}")
         st.stop()
 
     # ---------- filtrar apenas STATUS = ENTREGUE ----------
@@ -78,14 +126,14 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
         st.warning("Nenhuma compra com STATUS = ENTREGUE encontrada.")
         return pd.DataFrame(), pd.DataFrame()
 
-    # ---------- tratar datas ----------
+    # ---------- datas ----------
     compras["DATA"] = pd.to_datetime(compras["DATA"], errors="coerce", dayfirst=True)
     vendas["DATA"] = pd.to_datetime(vendas["DATA"], errors="coerce", dayfirst=True)
 
     compras = compras.sort_values("DATA")
     vendas = vendas.sort_values("DATA")
 
-    # ---------- garantir numéricos ----------
+    # ---------- números ----------
     compras["QUANTIDADE"] = compras["QUANTIDADE"].apply(parse_money).astype(float)
     compras["CUSTO UNITÁRIO"] = compras["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
     compras["CUSTO TOTAL"] = compras["CUSTO TOTAL"].apply(parse_money).astype(float)
@@ -93,13 +141,12 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     vendas["QTD"] = vendas["QTD"].apply(parse_money).astype(float)
     vendas["VALOR TOTAL"] = vendas["VALOR TOTAL"].apply(parse_money).astype(float)
 
-    # se CUSTO TOTAL vier zerado, recalcula
-    compras.loc[compras["CUSTO TOTAL"] == 0, "CUSTO TOTAL"] = (
-        compras["QUANTIDADE"] * compras["CUSTO UNITÁRIO"]
-    )
+    # se custo total veio 0, recalcula
+    mask_zero = compras["CUSTO TOTAL"] == 0
+    compras.loc[mask_zero, "CUSTO TOTAL"] = compras.loc[mask_zero, "QUANTIDADE"] * compras.loc[mask_zero, "CUSTO UNITÁRIO"]
 
-    # ---------- montar estoque por produto (lotes) ----------
-    estoque = {}  # produto -> lista de {qtd, custo}
+    # ---------- montar estoque (lotes) ----------
+    estoque = {}  # produto -> [ {qtd, custo}, ... ]
 
     for _, row in compras.iterrows():
         produto = str(row["PRODUTO"])
@@ -107,11 +154,12 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
         if qtd <= 0:
             continue
         custo_unit = float(row["CUSTO TOTAL"]) / qtd if qtd else 0.0
+
         if produto not in estoque:
             estoque[produto] = []
         estoque[produto].append({"qtd": qtd, "custo": custo_unit})
 
-    # ---------- processar vendas consumindo lotes FIFO ----------
+    # ---------- processar vendas em FIFO ----------
     registros_venda = []
 
     for _, row in vendas.iterrows():
@@ -125,7 +173,6 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
 
         if produto in estoque:
             lotes = estoque[produto]
-            # consome lotes na ordem
             while restante > 0 and lotes:
                 lote = lotes[0]
                 if lote["qtd"] <= restante:
@@ -137,7 +184,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
                     lote["qtd"] -= restante
                     restante = 0
         else:
-            # se não tem estoque registrado, custo 0 (pode ser venda de produto antigo)
+            # sem estoque registrado desse produto
             custo_total = 0.0
 
         lucro = valor_total - custo_total
@@ -153,7 +200,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
 
     df_fifo = pd.DataFrame(registros_venda)
 
-    # ---------- calcular estoque atual remanescente ----------
+    # ---------- estoque atual remanescente ----------
     estoque_reg = []
     for produto, lotes in estoque.items():
         saldo = sum(l["qtd"] for l in lotes)
