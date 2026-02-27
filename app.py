@@ -7,7 +7,7 @@ st.set_page_config(layout="wide")
 # CONFIG
 # ============================================
 
-URL_PLANILHA = "COLE_AQUI_SUA_URL_DA_PLANILHA"
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # ============================================
 # FUNÇÕES
