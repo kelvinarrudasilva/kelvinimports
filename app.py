@@ -4,96 +4,74 @@ import pandas as pd
 st.set_page_config(layout="wide")
 
 # ============================================
-# CONFIG
+# SUA PLANILHA (já configurada)
 # ============================================
 
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
+
 # ============================================
-# FUNÇÕES
+# CARREGAR PLANILHA
 # ============================================
 
 @st.cache_data
-def carregar_planilha(url):
+def carregar_planilha():
 
-    xls = pd.ExcelFile(url)
+    xls = pd.ExcelFile(URL_PLANILHA)
 
     compras = pd.read_excel(xls, "COMPRAS")
     vendas = pd.read_excel(xls, "VENDAS")
 
-    # normalizar nomes
     compras.columns = compras.columns.str.strip().str.upper()
     vendas.columns = vendas.columns.str.strip().str.upper()
 
     return compras, vendas
 
 
-def detectar_coluna(df, nome):
+# ============================================
+# DETECTAR COLUNAS
+# ============================================
+
+def detectar(df, nome):
 
     for col in df.columns:
         if nome in col:
             return col
-
     return None
 
 
-def preparar_dados(compras, vendas):
+# ============================================
+# FIFO REAL
+# ============================================
 
-    col_data_compra = detectar_coluna(compras, "DATA")
-    col_produto_compra = detectar_coluna(compras, "PRODUTO")
-    col_qtd_compra = detectar_coluna(compras, "QUANT")
-    col_custo_total = detectar_coluna(compras, "CUSTO")
+def calcular_fifo(compras, vendas):
 
-    col_data_venda = detectar_coluna(vendas, "DATA")
-    col_produto_venda = detectar_coluna(vendas, "PRODUTO")
-    col_qtd_venda = detectar_coluna(vendas, "QTD")
-    col_valor_venda = detectar_coluna(vendas, "VALOR")
+    col_data_c = detectar(compras, "DATA")
+    col_prod_c = detectar(compras, "PRODUTO")
+    col_qtd_c = detectar(compras, "QUANT")
+    col_custo = detectar(compras, "CUSTO")
 
-    if col_data_compra:
-        compras[col_data_compra] = pd.to_datetime(
-            compras[col_data_compra],
-            errors="coerce",
-            dayfirst=True
-        )
-        compras = compras.sort_values(col_data_compra)
+    col_data_v = detectar(vendas, "DATA")
+    col_prod_v = detectar(vendas, "PRODUTO")
+    col_qtd_v = detectar(vendas, "QTD")
+    col_valor_v = detectar(vendas, "VALOR")
 
-    if col_data_venda:
-        vendas[col_data_venda] = pd.to_datetime(
-            vendas[col_data_venda],
-            errors="coerce",
-            dayfirst=True
-        )
-        vendas = vendas.sort_values(col_data_venda)
+    if col_data_c:
+        compras[col_data_c] = pd.to_datetime(compras[col_data_c], dayfirst=True, errors="coerce")
+        compras = compras.sort_values(col_data_c)
 
-    return {
-        "compras": compras,
-        "vendas": vendas,
-        "col_data_compra": col_data_compra,
-        "col_produto_compra": col_produto_compra,
-        "col_qtd_compra": col_qtd_compra,
-        "col_custo_total": col_custo_total,
-        "col_data_venda": col_data_venda,
-        "col_produto_venda": col_produto_venda,
-        "col_qtd_venda": col_qtd_venda,
-        "col_valor_venda": col_valor_venda,
-    }
-
-
-def calcular_fifo(dados):
-
-    compras = dados["compras"]
-    vendas = dados["vendas"]
+    if col_data_v:
+        vendas[col_data_v] = pd.to_datetime(vendas[col_data_v], dayfirst=True, errors="coerce")
+        vendas = vendas.sort_values(col_data_v)
 
     estoque = {}
 
-    # montar estoque
+    # construir estoque
     for _, row in compras.iterrows():
 
-        produto = row[dados["col_produto_compra"]]
-        qtd = float(row[dados["col_qtd_compra"]])
-        custo_total = float(row[dados["col_custo_total"]])
-
-        custo_unit = custo_total / qtd if qtd else 0
+        produto = row[col_prod_c]
+        qtd = float(row[col_qtd_c])
+        custo_unit = float(row[col_custo]) / qtd
 
         if produto not in estoque:
             estoque[produto] = []
@@ -108,15 +86,14 @@ def calcular_fifo(dados):
     # processar vendas
     for _, row in vendas.iterrows():
 
-        produto = row[dados["col_produto_venda"]]
-        qtd_venda = float(row[dados["col_qtd_venda"]])
-        valor_venda = float(row[dados["col_valor_venda"]])
+        produto = row[col_prod_v]
+        qtd_venda = float(row[col_qtd_v])
+        valor = float(row[col_valor_v])
 
+        restante = qtd_venda
         custo_total = 0
 
         if produto in estoque:
-
-            restante = qtd_venda
 
             while restante > 0 and estoque[produto]:
 
@@ -134,15 +111,13 @@ def calcular_fifo(dados):
                     lote["qtd"] -= restante
                     restante = 0
 
-        lucro = valor_venda - custo_total
-
         resultado.append({
-            "DATA": row[dados["col_data_venda"]] if dados["col_data_venda"] else None,
+            "DATA": row[col_data_v] if col_data_v else None,
             "PRODUTO": produto,
             "QTD": qtd_venda,
-            "VALOR": valor_venda,
+            "VALOR": valor,
             "CUSTO": custo_total,
-            "LUCRO": lucro
+            "LUCRO": valor - custo_total
         })
 
     return pd.DataFrame(resultado)
@@ -152,52 +127,46 @@ def calcular_fifo(dados):
 # EXECUÇÃO
 # ============================================
 
-compras, vendas = carregar_planilha(URL_PLANILHA)
+compras, vendas = carregar_planilha()
 
-dados = preparar_dados(compras, vendas)
-
-fifo = calcular_fifo(dados)
+fifo = calcular_fifo(compras, vendas)
 
 
 # ============================================
 # DASHBOARD
 # ============================================
 
-st.title("📦 Sistema de Estoque FIFO")
+st.title("📦 Controle Financeiro FIFO")
 
 total_vendido = fifo["VALOR"].sum()
 total_custo = fifo["CUSTO"].sum()
 total_lucro = fifo["LUCRO"].sum()
 
-col1, col2, col3 = st.columns(3)
+c1, c2, c3 = st.columns(3)
 
-col1.metric("💰 Total vendido", f"R$ {total_vendido:,.2f}")
-col2.metric("📉 Custo", f"R$ {total_custo:,.2f}")
-col3.metric("📈 Lucro", f"R$ {total_lucro:,.2f}")
+c1.metric("Total vendido", f"R$ {total_vendido:,.2f}")
+c2.metric("Custo total", f"R$ {total_custo:,.2f}")
+c3.metric("Lucro total", f"R$ {total_lucro:,.2f}")
 
 
 # ============================================
-# LUCRO POR PRODUTO
+# POR PRODUTO
 # ============================================
 
-st.subheader("Lucro por produto")
+st.subheader("Resultado por produto")
 
-resumo = (
-    fifo.groupby("PRODUTO")
-    .agg({
-        "QTD": "sum",
-        "VALOR": "sum",
-        "CUSTO": "sum",
-        "LUCRO": "sum"
-    })
-    .reset_index()
-)
+resumo = fifo.groupby("PRODUTO").agg(
+    QTD=("QTD", "sum"),
+    RECEITA=("VALOR", "sum"),
+    CUSTO=("CUSTO", "sum"),
+    LUCRO=("LUCRO", "sum")
+).reset_index()
 
 st.dataframe(resumo, use_container_width=True)
 
 
 # ============================================
-# VENDAS DETALHADAS
+# DETALHADO
 # ============================================
 
 st.subheader("Vendas detalhadas")
