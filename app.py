@@ -398,7 +398,30 @@ if "ESTOQUE" in dfs:
                 df_e = df_e.rename(columns={c: "PRODUTO"})
                 break
     dfs["ESTOQUE"] = df_e
+# ==============================
+# LUCRO REAL POR PRODUTO
+# ==============================
 
+if "VENDAS" in dfs and not dfs["VENDAS"].empty:
+
+    lucro_produto = (
+        dfs["VENDAS"]
+        .groupby("PRODUTO")
+        .agg({
+            "QTD": "sum",
+            "VALOR": "sum",
+            "CUSTO_REAL": "sum",
+            "LUCRO_REAL": "sum"
+        })
+        .reset_index()
+    )
+
+    st.subheader("💰 Lucro real por produto")
+
+    st.dataframe(
+        lucro_produto.sort_values("LUCRO_REAL", ascending=False),
+        use_container_width=True
+    )
 # normalize VENDAS
 if "VENDAS" in dfs:
     df_v = dfs["VENDAS"].copy()
@@ -427,6 +450,32 @@ if "VENDAS" in dfs:
     if "DATA" in df_v.columns:
         df_v = df_v.sort_values("DATA", ascending=False).reset_index(drop=True)
     dfs["VENDAS"] = df_v
+# ==============================
+# CALCULAR CUSTO REAL E LUCRO REAL POR PRODUTO (FIFO)
+# ==============================
+
+fifo = calcular_fifo_estoque(
+    dfs.get("COMPRAS", pd.DataFrame()),
+    dfs.get("VENDAS", pd.DataFrame())
+)
+
+if not fifo.empty:
+
+    df_vendas = dfs["VENDAS"].copy()
+
+    df_vendas = df_vendas.merge(
+        fifo[["PRODUTO", "CUSTO_FIFO"]],
+        on="PRODUTO",
+        how="left"
+    )
+
+    # custo real da venda
+    df_vendas["CUSTO_REAL"] = df_vendas["CUSTO_FIFO"] * df_vendas["QTD"]
+
+    # lucro real
+    df_vendas["LUCRO_REAL"] = df_vendas["VALOR"] - df_vendas["CUSTO_REAL"]
+
+    dfs["VENDAS"] = df_vendas
 
 # normalize COMPRAS
 if "COMPRAS" in dfs:
