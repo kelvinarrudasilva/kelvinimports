@@ -9,6 +9,9 @@ st.set_page_config(page_title="📦 Dashboard FIFO – Loja Importados", layout=
 
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
+# limite máximo plausível de custo unitário (qualquer coisa acima disso é lixo)
+CUSTO_MAX_PLAUSIVEL = 500.0
+
 
 # ============================================
 # HELPERS
@@ -150,8 +153,19 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     # recalcula SEMPRE o CUSTO TOTAL a partir de qtd * custo unitário
     compras["CUSTO TOTAL"] = compras["QUANTIDADE"] * compras["CUSTO UNITÁRIO"]
 
-    # sanity check: descartar custos unitários totalmente fora da realidade (provável lixo/código de barras que escapou)
-    compras = compras[(compras["CUSTO UNITÁRIO"] >= 0) & (compras["CUSTO UNITÁRIO"] < 10000)]
+    # custo unitário calculado para sanity check
+    compras["CUSTO_UNIT_CALC"] = compras["CUSTO TOTAL"] / compras["QUANTIDADE"].replace(0, pd.NA)
+
+    # descartar linhas com custo unitário absurdo (provável lixo)
+    compras = compras[
+        (compras["CUSTO_UNIT_CALC"].notna()) &
+        (compras["CUSTO_UNIT_CALC"] >= 0) &
+        (compras["CUSTO_UNIT_CALC"] <= CUSTO_MAX_PLAUSIVEL)
+    ].copy()
+
+    if compras.empty:
+        st.warning("Todas as linhas de COMPRAS ficaram com custo unitário inválido após filtro.")
+        return pd.DataFrame(), pd.DataFrame()
 
     # ---------- números (VENDAS) ----------
     vendas["QTD"] = vendas["QTD"].apply(parse_money).astype(float)
@@ -165,7 +179,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
         qtd = float(row["QUANTIDADE"])
         if qtd <= 0:
             continue
-        custo_unit = float(row["CUSTO TOTAL"]) / qtd if qtd else 0.0
+        custo_unit = float(row["CUSTO_UNIT_CALC"])
 
         if produto not in estoque:
             estoque[produto] = []
@@ -199,18 +213,24 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
             # sem estoque registrado desse produto
             custo_total = 0.0
 
-        lucro = valor_total - custo_total
-
         registros_venda.append({
             "DATA": data_venda,
             "PRODUTO": produto,
             "QTD": qtd_venda,
             "VALOR_TOTAL": valor_total,
             "CUSTO_TOTAL": custo_total,
-            "LUCRO": lucro,
         })
 
     df_fifo = pd.DataFrame(registros_venda)
+
+    # ---------- sanity no resultado: cortar custos insanos ----------
+    df_fifo["CUSTO_UNIT"] = df_fifo["CUSTO_TOTAL"] / df_fifo["QTD"].replace(0, pd.NA)
+    mask_insano = df_fifo["CUSTO_UNIT"] > CUSTO_MAX_PLAUSIVEL
+    # qualquer linha com custo unitário insano → zera custo e recalcula lucro
+    df_fifo.loc[mask_insano, "CUSTO_TOTAL"] = 0.0
+
+    # lucro final
+    df_fifo["LUCRO"] = df_fifo["VALOR_TOTAL"] - df_fifo["CUSTO_TOTAL"]
 
     # ---------- estoque atual remanescente ----------
     estoque_reg = []
@@ -243,7 +263,7 @@ df_compras, df_vendas = carregar_dados()
 df_fifo, df_estoque = calcular_fifo(df_compras, df_vendas)
 
 if df_fifo.empty:
-    st.warning("Não foi possível calcular FIFO (sem vendas ou sem compras ENTREGUE).")
+    st.warning("Não foi possível calcular FIFO (sem vendas ou sem compras ENTREGUE válidas).")
     st.stop()
 
 # ============================================
