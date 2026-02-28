@@ -18,35 +18,31 @@ URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5
 CUSTO_MAX_PLAUSIVEL = 500.0
 
 # --------------------------------------------------
-# ESTILO GLOBAL (CSS) - versão mais "glass" e colorida
+# ESTILO GLOBAL (CSS) – preto básico, elegante, sem neon
 # --------------------------------------------------
 GLOBAL_CSS = """
 <style>
 :root{
-  --bg:#020617;
-  --bg-elevated:#020617;
-  --bg-card:rgba(15,23,42,0.90);
-  --bg-card-soft:rgba(15,23,42,0.78);
-  --border-soft:rgba(148,163,184,0.25);
-  --accent:#22d3ee;
-  --accent-soft:#0ea5e9;
-  --accent-soft2:#a855f7;
+  --bg:#050505;
+  --bg-page:#050505;
+  --bg-card:#101010;
+  --bg-card-soft:#111111;
+  --border-soft:#262626;
+  --accent:#22c55e;
+  --accent-soft:#14b8a6;
   --accent-warm:#f97316;
-  --text:#e5e7eb;
+  --text:#e5e5e5;
   --muted:#9ca3af;
 }
 
 html, body, [class*="css"] {
-  background-color: var(--bg) !important;
+  background-color: var(--bg-page) !important;
   color: var(--text) !important;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
 }
 
 .stApp {
-  background:
-    radial-gradient(circle at top left, rgba(56,189,248,0.18) 0, transparent 50%),
-    radial-gradient(circle at top right, rgba(244,114,182,0.18) 0, transparent 55%),
-    radial-gradient(circle at bottom, rgba(15,23,42,0.8) 0, #020617 70%);
+  background-color: var(--bg-page) !important;
 }
 
 /* TOP BAR */
@@ -54,44 +50,29 @@ html, body, [class*="css"] {
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:18px;
-  padding:16px 20px;
-  border-radius:22px;
-  background: radial-gradient(circle at top left, rgba(56,189,248,0.28), rgba(15,23,42,0.96));
-  border:1px solid rgba(148,163,184,0.55);
-  box-shadow:0 26px 70px rgba(15,23,42,0.95);
-  margin-bottom:22px;
-  position:relative;
-  overflow:hidden;
-}
-.topbar::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  border-radius:inherit;
-  background:radial-gradient(circle at 120% -10%, rgba(248,250,252,0.32), transparent 55%);
-  opacity:0.45;
-  mix-blend-mode:soft-light;
-  pointer-events:none;
+  gap:16px;
+  padding:14px 18px;
+  border-radius:18px;
+  background:#050505;
+  border:1px solid var(--border-soft);
+  margin-bottom:20px;
 }
 .logo-pill {
-  width:58px;
-  height:58px;
-  border-radius:20px;
-  background:
-    conic-gradient(from 210deg, #22d3ee, #a855f7, #f97316, #22d3ee);
+  width:52px;
+  height:52px;
+  border-radius:16px;
+  background:#111827;
   display:flex;
   align-items:center;
   justify-content:center;
   color:white;
-  font-weight:900;
-  font-size:24px;
-  box-shadow:0 18px 45px rgba(15,23,42,0.85);
+  font-weight:800;
+  font-size:22px;
 }
 .top-title {
-  font-size:22px;
+  font-size:20px;
   font-weight:800;
-  letter-spacing:-0.04em;
+  letter-spacing:-0.03em;
 }
 .top-subtitle {
   font-size:12px;
@@ -101,23 +82,23 @@ html, body, [class*="css"] {
   display:flex;
   flex-direction:column;
   align-items:flex-end;
-  gap:6px;
+  gap:4px;
   font-size:11px;
 }
 .top-chip {
-  padding:5px 11px;
+  padding:4px 10px;
   border-radius:999px;
-  border:1px solid rgba(148,163,184,0.7);
-  background:rgba(15,23,42,0.9);
+  border:1px solid var(--border-soft);
+  background:#050505;
 }
 .top-chip span {
-  color:#a5b4fc;
+  color:var(--accent-soft);
 }
 
 /* KPI CARDS */
 .kpi-row {
   display:flex;
-  gap:12px;
+  gap:10px;
   flex-wrap:wrap;
   margin-bottom:10px;
 }
@@ -125,43 +106,27 @@ html, body, [class*="css"] {
   flex:1 1 180px;
   min-width:0;
   padding:14px 16px;
-  border-radius:18px;
+  border-radius:14px;
   background:var(--bg-card-soft);
   border:1px solid var(--border-soft);
-  backdrop-filter:blur(18px);
-  -webkit-backdrop-filter:blur(18px);
-  box-shadow:0 20px 50px rgba(15,23,42,0.9);
+  box-shadow:none;
   position:relative;
-  overflow:hidden;
-  transition:transform .12s ease-out, box-shadow .12s ease-out, border-color .12s ease-out, background .12s ease-out;
-}
-.kpi-card::before{
-  content:"";
-  position:absolute;
-  inset:-60%;
-  background:conic-gradient(from 200deg, rgba(34,211,238,0.15), rgba(244,114,182,0.14), transparent 60%);
-  opacity:0;
-  transition:opacity .18s ease-out;
-  pointer-events:none;
+  transition:transform .1s ease-out, border-color .1s ease-out, background .1s ease-out;
 }
 .kpi-card:hover{
-  transform:translateY(-2px);
-  box-shadow:0 26px 64px rgba(15,23,42,0.95);
-  border-color:rgba(56,189,248,0.9);
-  background:rgba(15,23,42,0.92);
-}
-.kpi-card:hover::before{
-  opacity:0.28;
+  transform:translateY(-1px);
+  border-color:var(--accent-soft);
+  background:#151515;
 }
 .kpi-label {
   font-size:11px;
   text-transform:uppercase;
-  letter-spacing:0.14em;
+  letter-spacing:0.16em;
   color:var(--muted);
   margin-bottom:4px;
 }
 .kpi-value {
-  font-size:22px;
+  font-size:20px;
   font-weight:800;
 }
 .kpi-pill {
@@ -170,11 +135,11 @@ html, body, [class*="css"] {
   margin-top:4px;
 }
 
-/* SEÇÕES */
+/* SEÇÕES / CARDS */
 .section-title {
   font-size:16px;
   font-weight:700;
-  margin-top:2px;
+  margin-top:0;
   margin-bottom:2px;
 }
 .section-sub {
@@ -182,17 +147,12 @@ html, body, [class*="css"] {
   color:var(--muted);
   margin-bottom:8px;
 }
-
-/* CARDS GENERICOS */
 .card-soft {
-  background:var(--bg-card-soft);
-  border-radius:18px;
+  background:var(--bg-card);
+  border-radius:16px;
   padding:14px 16px;
   border:1px solid var(--border-soft);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  box-shadow:0 18px 45px rgba(15,23,42,0.85);
-  margin-bottom:14px;
+  margin-bottom:16px;
 }
 
 /* BADGES */
@@ -200,37 +160,37 @@ html, body, [class*="css"] {
   display:inline-flex;
   align-items:center;
   gap:4px;
-  padding:2px 8px;
+  padding:1px 8px;
   border-radius:999px;
   font-size:11px;
-  background:rgba(37,99,235,0.18);
-  color:#bfdbfe;
+  background:#111827;
+  color:#e5e7eb;
 }
 .badge-red {
-  background:rgba(239,68,68,0.22);
+  background:#451a1a;
   color:#fecaca;
 }
 .badge-yellow {
-  background:rgba(234,179,8,0.22);
+  background:#422006;
   color:#facc15;
 }
 .badge-green {
-  background:rgba(34,197,94,0.22);
+  background:#022c22;
   color:#bbf7d0;
 }
 
 /* TABELAS */
 .stDataFrame thead tr th {
-  background:linear-gradient(90deg, rgba(148,163,184,0.2), rgba(56,189,248,0.12)) !important;
+  background:#111827 !important;
   color:#e5e7eb !important;
   font-size:11px !important;
   text-transform:uppercase;
 }
 .stDataFrame tbody tr:nth-child(odd) {
-  background-color:rgba(15,23,42,0.8);
+  background-color:#050505;
 }
 .stDataFrame tbody tr:nth-child(even) {
-  background-color:rgba(15,23,42,0.92);
+  background-color:#0a0a0a;
 }
 
 /* TABS */
@@ -238,20 +198,25 @@ html, body, [class*="css"] {
   gap: 4px;
 }
 .stTabs [data-baseweb="tab"] {
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius:999px;
-  background:rgba(15,23,42,0.85);
+  background:#050505;
   color:#9ca3af;
   border:1px solid transparent;
 }
 .stTabs [aria-selected="true"] {
-  background:radial-gradient(circle at top left, rgba(34,211,238,0.45), rgba(56,189,248,0.7));
+  background:#111111;
   color:#f9fafb !important;
-  border-color:rgba(59,130,246,0.9);
+  border-color:var(--accent-soft);
 }
 
-/* PEQUENOS AJUSTES */
-hr { border-color:rgba(51,65,85,0.9) !important; }
+/* INPUTS */
+[data-baseweb="input"], [data-baseweb="select"], .stSelectbox, .stTextInput {
+  background:#050505 !important;
+}
+
+/* HR */
+hr { border-color:#1f2933 !important; }
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
@@ -262,16 +227,16 @@ st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.markdown(
     """
 <div class="topbar">
-  <div style="display:flex; align-items:center; gap:14px;">
+  <div style="display:flex; align-items:center; gap:12px;">
     <div class="logo-pill">LI</div>
     <div>
       <div class="top-title">Loja Importados – Painel FIFO</div>
-      <div class="top-subtitle">Visão real de estoque, custo e lucro por produto. Menos achismo, mais dado.</div>
+      <div class="top-subtitle">Estoque, custo e lucro por produto, em preto básico sem firula.</div>
     </div>
   </div>
   <div class="top-right-badge">
-    <div class="top-chip">📂 Conectado à planilha <span>Google Sheets</span></div>
-    <div style="opacity:0.8;">Modo: <b>FIFO</b> • Base: compras ENTREGUE</div>
+    <div class="top-chip">📂 Planilha conectada <span>Google Sheets</span></div>
+    <div>Modo: <b>FIFO</b> (base: compras ENTREGUE)</div>
   </div>
 </div>
 """,
@@ -711,7 +676,7 @@ with tab_dash:
             text="LABEL",
             labels={"PRODUTO": "Produto", "QTD_VENDIDA": "Qtd vendida"},
             color="QTD_VENDIDA",
-            color_continuous_scale=["#22d3ee", "#0ea5e9", "#a855f7"],
+            color_continuous_scale=["#1f2937", "#22c55e"],
         )
         fig_top.update_traces(
             textposition="inside",
@@ -720,12 +685,12 @@ with tab_dash:
             textfont_size=13,
         )
         fig_top.update_layout(
-            height=380,
-            plot_bgcolor="rgba(15,23,42,0.92)",
-            paper_bgcolor="rgba(0,0,0,0)",
+            height=360,
+            plot_bgcolor="#050505",
+            paper_bgcolor="#050505",
             font=dict(
-                family="Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif",
-                color="#e5e7eb",
+                family="system-ui, -apple-system, 'Segoe UI', sans-serif",
+                color="#e5e5e5",
             ),
             coloraxis_showscale=False,
             uniformtext_minsize=10,
@@ -813,27 +778,27 @@ with tab_dash:
                 labels={"MES_ANO": "Mês", "VALOR_TOTAL": "Faturamento"},
                 color="TIPO_MES",
                 color_discrete_map={
-                    "Mês atual": "#f97316",
-                    "Anterior": "#0ea5e9",
+                    "Mês atual": "#22c55e",
+                    "Anterior": "#4b5563",
                 },
             )
             fig.update_traces(
                 textposition="inside",
                 texttemplate="<b>%{text}</b>",
                 insidetextanchor="middle",
-                textfont_size=14,
+                textfont_size=13,
             )
             fig.update_layout(
-                height=380,
+                height=360,
                 yaxis_title="Faturamento (R$)",
                 xaxis_title="Mês",
                 uniformtext_minsize=10,
                 uniformtext_mode="hide",
-                plot_bgcolor="rgba(15,23,42,0.92)",
-                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="#050505",
+                paper_bgcolor="#050505",
                 font=dict(
-                    family="Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif",
-                    color="#e5e7eb",
+                    family="system-ui, -apple-system, 'Segoe UI', sans-serif",
+                    color="#e5e5e5",
                 ),
                 legend_title_text="",
             )
@@ -902,12 +867,12 @@ with tab_dash:
 - Custo unitário FIFO: **{custo_unit_ex}**  
 - Lucro nessa venda: **{lucro_ex}**  
 
-**Resumo da lógica:**
+**Lógica resumida:**
 
-1. Busco todas as **compras de `{prod_ex}` com STATUS = ENTREGUE**, em ordem de data (mais antigas primeiro).
-2. Cada compra vira um **lote de estoque** com quantidade e custo unitário.
-3. Quando essa venda de **{qtd_ex:.0f} unid.** acontece, consumo primeiro o lote mais antigo, depois o próximo, até completar a quantidade.
-4. O **custo total FIFO** é a soma dos custos dos lotes que foram “comidos” por essa venda.
+1. Buscamos todas as **compras de `{prod_ex}` com STATUS = ENTREGUE**, em ordem de data (mais antigas primeiro).
+2. Cada compra vira um **lote** com quantidade e custo unitário.
+3. Quando essa venda de **{qtd_ex:.0f} unid.** acontece, consumimos primeiro o lote mais antigo, depois o próximo, até completar a quantidade.
+4. O **custo total FIFO** é a soma dos custos desses lotes “comidos” pela venda.
 5. O **custo unitário FIFO** é o custo total dividido pela quantidade vendida.
 6. O **lucro** é sempre: **venda − custo FIFO**.
             """
@@ -1116,7 +1081,7 @@ with tab_alerts:
     st.markdown(
         """
 <div class="section-title">⚠️ Alertas de estoque</div>
-<div class="section-sub">Veja o que está voando sem estoque e o que está travando dinheiro na prateleira.</div>
+<div class="section-sub">Veja o que está vendendo forte com pouco estoque e o que está encalhado.</div>
 """,
         unsafe_allow_html=True,
     )
