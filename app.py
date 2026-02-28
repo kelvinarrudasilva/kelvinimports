@@ -20,7 +20,7 @@ CUSTO_MAX_PLAUSIVEL = 500.0
 def parse_money(x):
     """
     Converte 'R$ 20,70' ou '1,00' -> 20.70 (float).
-    Ignora números gigantes só de dígitos (ex: código de barras).
+    Ignora números gigantes (ex: código de barras).
     """
     if pd.isna(x):
         return 0.0
@@ -44,6 +44,16 @@ def parse_money(x):
         return float(s)
     except Exception:
         return 0.0
+
+
+def format_reais(v):
+    """Formata float -> 'R$ X.XXX,YY'."""
+    try:
+        v = float(v)
+    except Exception:
+        return "R$ 0,00"
+    s = f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {s}"
 
 
 def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
@@ -226,11 +236,13 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     # ---------- sanity no resultado: cortar custos insanos ----------
     df_fifo["CUSTO_UNIT"] = df_fifo["CUSTO_TOTAL"] / df_fifo["QTD"].replace(0, pd.NA)
     mask_insano = df_fifo["CUSTO_UNIT"] > CUSTO_MAX_PLAUSIVEL
-    # qualquer linha com custo unitário insano → zera custo e recalcula lucro
     df_fifo.loc[mask_insano, "CUSTO_TOTAL"] = 0.0
 
     # lucro final
     df_fifo["LUCRO"] = df_fifo["VALOR_TOTAL"] - df_fifo["CUSTO_TOTAL"]
+
+    # mês/ano pra filtro
+    df_fifo["MES_ANO"] = df_fifo["DATA"].dt.strftime("%Y-%m")
 
     # ---------- estoque atual remanescente ----------
     estoque_reg = []
@@ -267,63 +279,97 @@ if df_fifo.empty:
     st.stop()
 
 # ============================================
-# KPIs GERAIS
+# FILTRO POR MÊS
 # ============================================
 
-total_vendido = df_fifo["VALOR_TOTAL"].sum()
-total_custo = df_fifo["CUSTO_TOTAL"].sum()
-total_lucro = df_fifo["LUCRO"].sum()
+meses = ["Todos"]
+meses_disp = sorted(df_fifo["MES_ANO"].dropna().unique().tolist(), reverse=True)
+meses += meses_disp
+
+mes_atual = pd.Timestamp.now().strftime("%Y-%m")
+idx_padrao = meses.index(mes_atual) if mes_atual in meses else 0
+
+mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", meses, index=idx_padrao)
+
+if mes_selecionado == "Todos":
+    df_fifo_filt = df_fifo.copy()
+else:
+    df_fifo_filt = df_fifo[df_fifo["MES_ANO"] == mes_selecionado].copy()
+
+# ============================================
+# KPIs GERAIS (MÊS FILTRADO)
+# ============================================
+
+total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
+total_custo = df_fifo_filt["CUSTO_TOTAL"].sum()
+total_lucro = df_fifo_filt["LUCRO"].sum()
 
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 Total vendido", f"R$ {total_vendido:,.2f}")
-c2.metric("📉 Custo (FIFO)", f"R$ {total_custo:,.2f}")
-c3.metric("📈 Lucro (FIFO)", f"R$ {total_lucro:,.2f}")
+c1.metric("💰 Total vendido", format_reais(total_vendido))
+c2.metric("📉 Custo (FIFO)", format_reais(total_custo))
+c3.metric("📈 Lucro (FIFO)", format_reais(total_lucro))
 
 st.markdown("---")
 
 # ============================================
-# LUCRO REAL POR PRODUTO
+# LUCRO REAL POR PRODUTO (MÊS FILTRADO)
 # ============================================
 
-st.subheader("💰 Lucro real por produto (FIFO)")
+st.subheader("💰 Lucro real por produto (FIFO) – período filtrado")
 
-res_prod = (
-    df_fifo
-    .groupby("PRODUTO", as_index=False)
-    .agg({
-        "QTD": "sum",
-        "VALOR_TOTAL": "sum",
-        "CUSTO_TOTAL": "sum",
-        "LUCRO": "sum",
-    })
-    .sort_values("LUCRO", ascending=False)
-)
+if df_fifo_filt.empty:
+    st.info("Nenhuma venda no período selecionado.")
+else:
+    res_prod = (
+        df_fifo_filt
+        .groupby("PRODUTO", as_index=False)
+        .agg({
+            "QTD": "sum",
+            "VALOR_TOTAL": "sum",
+            "CUSTO_TOTAL": "sum",
+            "LUCRO": "sum",
+        })
+        .sort_values("LUCRO", ascending=False)
+    )
 
-st.dataframe(res_prod, use_container_width=True)
+    res_view = res_prod.copy()
+    res_view["VALOR_TOTAL"] = res_view["VALOR_TOTAL"].map(format_reais)
+    res_view["CUSTO_TOTAL"] = res_view["CUSTO_TOTAL"].map(format_reais)
+    res_view["LUCRO"] = res_view["LUCRO"].map(format_reais)
+
+    st.dataframe(res_view, use_container_width=True)
 
 # ============================================
-# ESTOQUE ATUAL (FIFO)
+# ESTOQUE ATUAL (GLOBAL, COM REAIS)
 # ============================================
 
-st.subheader("📦 Estoque atual (custo médio FIFO)")
+st.subheader("📦 Estoque atual (custo médio FIFO – global)")
 
 if not df_estoque.empty:
+    est_view = df_estoque.copy()
+    est_view["VALOR_ESTOQUE"] = est_view["VALOR_ESTOQUE"].map(format_reais)
+    est_view["CUSTO_MEDIO_FIFO"] = est_view["CUSTO_MEDIO_FIFO"].map(format_reais)
+    est_view["SALDO_QTD"] = est_view["SALDO_QTD"].astype(int)
     st.dataframe(
-        df_estoque.sort_values("SALDO_QTD", ascending=False),
+        est_view.sort_values("SALDO_QTD", ascending=False),
         use_container_width=True
     )
 else:
     st.info("Sem saldo em estoque após aplicar FIFO (ou todas as compras foram consumidas nas vendas).")
 
 # ============================================
-# VENDAS DETALHADAS
+# VENDAS DETALHADAS (MÊS FILTRADO)
 # ============================================
 
-st.subheader("🧾 Vendas detalhadas (com custo FIFO)")
+st.subheader("🧾 Vendas detalhadas (com custo FIFO) – período filtrado")
 
-df_fifo_view = df_fifo.copy()
+df_fifo_view = df_fifo_filt.copy()
 if df_fifo_view["DATA"].notna().any():
     df_fifo_view["DATA"] = df_fifo_view["DATA"].dt.strftime("%d/%m/%Y")
+
+df_fifo_view["VALOR_TOTAL"] = df_fifo_view["VALOR_TOTAL"].map(format_reais)
+df_fifo_view["CUSTO_TOTAL"] = df_fifo_view["CUSTO_TOTAL"].map(format_reais)
+df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
 
 st.dataframe(
     df_fifo_view.sort_values("DATA", ascending=False),
