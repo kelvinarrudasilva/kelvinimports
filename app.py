@@ -253,6 +253,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     df_fifo["CUSTO_UNIT"] = df_fifo["CUSTO_TOTAL"] / df_fifo["QTD"].replace(0, pd.NA)
     mask_insano = df_fifo["CUSTO_UNIT"] > CUSTO_MAX_PLAUSIVEL
     df_fifo.loc[mask_insano, "CUSTO_TOTAL"] = 0.0
+    df_fifo.loc[mask_insano, "CUSTO_UNIT"] = 0.0
 
     # lucro final
     df_fifo["LUCRO"] = df_fifo["VALOR_TOTAL"] - df_fifo["CUSTO_TOTAL"]
@@ -380,14 +381,70 @@ else:
 st.subheader("🧾 Vendas detalhadas (com custo FIFO) – período filtrado")
 
 df_fifo_view = df_fifo_filt.copy()
-if df_fifo_view["DATA"].notna().any():
-    df_fifo_view["DATA"] = df_fifo_view["DATA"].dt.strftime("%d/%m/%Y")
 
-df_fifo_view["VALOR_TOTAL"] = df_fifo_view["VALOR_TOTAL"].map(format_reais)
-df_fifo_view["CUSTO_TOTAL"] = df_fifo_view["CUSTO_TOTAL"].map(format_reais)
-df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
+if not df_fifo_view.empty:
+    # garantir custo unitário numérico antes de formatar
+    df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_TOTAL"] / df_fifo_view["QTD"].replace(0, pd.NA)
 
-st.dataframe(
-    df_fifo_view.sort_values("DATA", ascending=False),
-    use_container_width=True
-)
+    # exemplo REAL para legenda – primeira linha do período filtrado
+    exemplo = df_fifo_filt.iloc[0]
+    prod_ex = str(exemplo["PRODUTO"])
+    qtd_ex = float(exemplo["QTD"])
+    venda_ex = format_reais(exemplo["VALOR_TOTAL"])
+    custo_total_ex = format_reais(exemplo["CUSTO_TOTAL"])
+    custo_unit_ex = format_reais(exemplo["CUSTO_TOTAL"] / exemplo["QTD"] if exemplo["QTD"] else 0)
+    lucro_ex = format_reais(exemplo["LUCRO"])
+
+    if df_fifo_view["DATA"].notna().any():
+        df_fifo_view["DATA"] = df_fifo_view["DATA"].dt.strftime("%d/%m/%Y")
+
+    df_fifo_view["VALOR_TOTAL"] = df_fifo_view["VALOR_TOTAL"].map(format_reais)
+    df_fifo_view["CUSTO_TOTAL"] = df_fifo_view["CUSTO_TOTAL"].map(format_reais)
+    df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
+    df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_UNIT"].map(format_reais)
+
+    # ordenar colunas pra ficar mais bonitinho
+    cols_ordem = ["DATA", "PRODUTO", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "CUSTO_UNIT", "LUCRO", "MES_ANO"]
+    cols_ordem = [c for c in cols_ordem if c in df_fifo_view.columns]
+
+    st.dataframe(
+        df_fifo_view[cols_ordem].sort_values("DATA", ascending=False),
+        use_container_width=True
+    )
+
+    # ============================================
+    # LEGENDA FIFO – EXEMPLO REAL
+    # ============================================
+    st.markdown("### 📘 Como o FIFO é calculado (exemplo real)")
+
+    st.markdown(
+        f"""
+**Produto usado no exemplo:** `{prod_ex}`  
+
+- Quantidade vendida nesta linha: **{qtd_ex:.0f} unid.**
+- Valor total da venda: **{venda_ex}**
+- Custo total FIFO dessa venda: **{custo_total_ex}**
+- Custo unitário FIFO: **{custo_unit_ex}**
+- Lucro dessa venda: **{lucro_ex}**
+
+**O que o app faz por trás:**
+
+1. Ele pega todas as **compras de `{prod_ex}` com STATUS = ENTREGUE**, na aba COMPRAS, **em ordem de data (da mais antiga pra mais nova)**.
+2. Essas compras viram “lotes” de estoque, cada um com:
+   - quantidade comprada
+   - custo unitário daquela compra
+3. Quando você registra essa venda de **{qtd_ex:.0f} unidade(s)**:
+   - o app vai consumindo primeiro o lote mais antigo,
+   - depois o próximo, e assim por diante,
+   - até completar as {qtd_ex:.0f} unidades.
+4. O **custo total FIFO** (**{custo_total_ex}**) é a soma dos custos de todos esses lotes que foram consumidos.
+5. O **custo unitário FIFO** (**{custo_unit_ex}**) é esse custo total dividido pela quantidade vendida.
+6. Por fim, o **lucro** (**{lucro_ex}**) é calculado como:
+   - lucro = valor total da venda (**{venda_ex}**) − custo total FIFO (**{custo_total_ex}**).
+
+Se você olhar essa linha na tabela de vendas detalhadas, o valor de **CUSTO UNIT** é justamente o custo médio de cada unidade **segundo a fila das compras (FIFO)**.
+        """
+    )
+
+else:
+    st.info("Nenhuma venda no período selecionado.")
