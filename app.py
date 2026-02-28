@@ -307,7 +307,7 @@ if df_fifo.empty:
 # TABS
 # ============================================
 
-tab_dash, tab_search = st.tabs(["📊 Dashboard", "🔎 Pesquisa de produto"])
+tab_dash, tab_search, tab_alerts = st.tabs(["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas"])
 
 # ============================================
 # TAB 1 – DASHBOARD
@@ -340,47 +340,16 @@ with tab_dash:
 
     st.markdown("---")
 
-    # -------- GRÁFICO: FATURAMENTO / LUCRO POR PRODUTO --------
-    st.subheader("📊 Faturamento e lucro por produto (período filtrado)")
+    # -------- GRÁFICO: FATURAMENTO DIÁRIO --------
+    st.subheader("📊 Faturamento diário (período filtrado)")
     if df_fifo_filt.empty:
         st.info("Nenhuma venda no período selecionado.")
     else:
-        res_prod_num = (
-            df_fifo_filt
-            .groupby("PRODUTO", as_index=False)
-            .agg({
-                "VALOR_TOTAL": "sum",
-                "LUCRO": "sum"
-            })
-            .sort_values("VALOR_TOTAL", ascending=False)
-        )
-        # limitar para não ficar gigante
-        res_prod_num_top = res_prod_num.head(15).set_index("PRODUTO")[["VALOR_TOTAL", "LUCRO"]]
-        st.bar_chart(res_prod_num_top)
-
-    # -------- LUCRO REAL POR PRODUTO (MÊS FILTRADO) – TABELA --------
-    st.subheader("💰 Lucro real por produto (FIFO) – tabela")
-    if df_fifo_filt.empty:
-        st.info("Nenhuma venda no período selecionado.")
-    else:
-        res_prod = (
-            df_fifo_filt
-            .groupby("PRODUTO", as_index=False)
-            .agg({
-                "QTD": "sum",
-                "VALOR_TOTAL": "sum",
-                "CUSTO_TOTAL": "sum",
-                "LUCRO": "sum",
-            })
-            .sort_values("LUCRO", ascending=False)
-        )
-
-        res_view = res_prod.copy()
-        res_view["VALOR_TOTAL"] = res_view["VALOR_TOTAL"].map(format_reais)
-        res_view["CUSTO_TOTAL"] = res_view["CUSTO_TOTAL"].map(format_reais)
-        res_view["LUCRO"] = res_view["LUCRO"].map(format_reais)
-
-        st.dataframe(res_view, use_container_width=True)
+        df_dia = df_fifo_filt.copy()
+        df_dia["DIA"] = df_dia["DATA"].dt.date
+        resumo_dia = df_dia.groupby("DIA", as_index=False)["VALOR_TOTAL"].sum().sort_values("DIA")
+        resumo_dia = resumo_dia.set_index("DIA")
+        st.line_chart(resumo_dia)
 
     # -------- VENDAS DETALHADAS (MÊS FILTRADO) --------
     st.subheader("🧾 Vendas detalhadas (com custo FIFO) – período filtrado")
@@ -449,7 +418,7 @@ with tab_dash:
 # TAB 2 – PESQUISA DE PRODUTO (PREÇO FIFO)
 # ============================================
 with tab_search:
-    st.subheader("🔎 Pesquisa de produto – preço baseado no FIFO")
+    st.subheader("🔎 Pesquisa de produto – baseado no FIFO")
 
     if df_fifo.empty and df_estoque.empty:
         st.info("Sem dados de estoque ou vendas para pesquisar.")
@@ -504,10 +473,6 @@ with tab_search:
                 margem_media = 0.0
                 custo_total_hist = 0.0
 
-            # ---------- preço sugerido (ex.: +30% sobre custo FIFO) ----------
-            markup_padrao = 0.30
-            preco_sugerido = custo_medio_fifo * (1 + markup_padrao) if custo_medio_fifo > 0 else preco_medio_venda
-
             # ---------- cards / métricas ----------
             st.markdown(f"### 📦 {prod_sel}")
 
@@ -517,7 +482,7 @@ with tab_search:
             with col_m2:
                 st.metric("Preço médio de venda", format_reais(preco_medio_venda))
             with col_m3:
-                st.metric("Preço sugerido (30% acima do custo)", format_reais(preco_sugerido))
+                st.metric("Margem média histórica", f"{margem_media*100:,.1f}%")
 
             col_m4, col_m5, col_m6 = st.columns(3)
             with col_m4:
@@ -525,7 +490,7 @@ with tab_search:
             with col_m5:
                 st.metric("Receita total acumulada", format_reais(receita_total))
             with col_m6:
-                st.metric("Margem média histórica", f"{margem_media*100:,.1f}%")
+                st.metric("Quantidade total vendida", f"{int(qtd_total_vendida)} unid.")
 
             st.markdown("---")
 
@@ -545,16 +510,6 @@ with tab_search:
             st.markdown("#### 📄 Histório recente de vendas do produto")
 
             if not vendas_prod.empty:
-                vendas_view = vendas_prod.copy()
-                if vendas_view["DATA"].notna().any():
-                    vendas_view["DATA"] = vendas_view["DATA"].dt.strftime("%d/%m/%Y")
-
-                vendas_view["VALOR_TOTAL"] = vendas_view["VALOR_TOTAL"].map(format_reais)
-                vendas_view["CUSTO_TOTAL"] = vendas_view["CUSTO_TOTAL"].map(format_reais)
-                vendas_view["LUCRO"] = vendas_view["LUCRO"].map(format_reais)
-                vendas_view["CUSTO_UNIT"] = vendas_view["CUSTO_TOTAL"]  # já estava agregado; se quiser, recalcular
-
-                # recalcular custo unitário real antes de formatar pro histórico
                 vendas_prod_hist = vendas_prod.copy()
                 vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
                 vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y")
@@ -578,11 +533,176 @@ with tab_search:
             st.markdown(
                 f"""
 - Se o **custo médio FIFO** estiver aumentando, é sinal de que suas últimas compras de `{prod_sel}` vieram mais caras.
-- Compare o **preço sugerido** com o que você realmente está cobrando hoje:
-  se estiver vendendo muito abaixo dele, você pode estar queimando margem.
-- A **margem média histórica** mostra como você tem tratado esse produto ao longo do tempo.  
-  Se hoje a margem estiver bem abaixo da média, vale revisar o preço.
+- Compare o **preço médio de venda** com o custo médio: isso te diz se esse produto costuma ser saudável ou apertado.
+- A **margem média histórica** mostra como você vem tratando esse produto ao longo do tempo.  
+  Se hoje a margem estiver bem abaixo da média, vale revisar seu preço ou suas condições de compra.
                 """
             )
         else:
-            st.info("Selecione um produto acima para ver os preços baseados no FIFO.")
+            st.info("Selecione um produto acima para ver os números baseados no FIFO.")
+
+# ============================================
+# TAB 3 – ALERTAS
+# ============================================
+with tab_alerts:
+    st.subheader("⚠️ Alertas de estoque")
+
+    if df_estoque.empty:
+        st.info("Sem dados de estoque para gerar alertas.")
+    else:
+        # ---------- PREPARO BASE ----------
+        # vendas totais por produto (quantidade)
+        vendas_tot = (
+            df_fifo
+            .groupby("PRODUTO", as_index=False)["QTD"]
+            .sum()
+            .rename(columns={"QTD": "QTD_VENDIDA_TOTAL"})
+        )
+
+        base_alerta = df_estoque.merge(vendas_tot, on="PRODUTO", how="left")
+        base_alerta["QTD_VENDIDA_TOTAL"] = base_alerta["QTD_VENDIDA_TOTAL"].fillna(0)
+
+        # thresholds
+        LIM_VENDE_BEM = 10       # vendeu 10 ou mais unidades no histórico
+        LIM_ESTOQUE_BAIXO = 3    # no máximo 3 unidades em estoque
+        LIM_DIAS_PARADO = 30     # 30 dias sem movimento
+
+        # ---------- 1) Produtos vendendo bem mas com pouco estoque ----------
+        st.markdown("### 🔥 Vendendo bem e com pouco estoque")
+
+        vendendo_bem_baixo_estoque = base_alerta[
+            (base_alerta["QTD_VENDIDA_TOTAL"] >= LIM_VENDE_BEM) &
+            (base_alerta["SALDO_QTD"] > 0) &
+            (base_alerta["SALDO_QTD"] <= LIM_ESTOQUE_BAIXO)
+        ].copy()
+
+        if vendendo_bem_baixo_estoque.empty:
+            st.info("Nenhum produto ao mesmo tempo com vendas fortes e estoque muito baixo pelos critérios atuais.")
+        else:
+            df_vb = vendendo_bem_baixo_estoque.copy()
+            df_vb["VALOR_ESTOQUE_FMT"] = df_vb["VALOR_ESTOQUE"].map(format_reais)
+            df_vb = df_vb.sort_values(["SALDO_QTD", "QTD_VENDIDA_TOTAL"], ascending=[True, False])
+
+            st.dataframe(
+                df_vb[["PRODUTO", "SALDO_QTD", "QTD_VENDIDA_TOTAL", "VALOR_ESTOQUE_FMT"]]
+                .rename(columns={
+                    "SALDO_QTD": "Estoque atual",
+                    "QTD_VENDIDA_TOTAL": "Qtd vendida (histórico)",
+                    "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)"
+                }),
+                use_container_width=True
+            )
+
+            st.markdown(
+                f"*Critério usado:* vendeu **≥ {LIM_VENDE_BEM} unid.** no histórico e tem **≤ {LIM_ESTOQUE_BAIXO} unid.** em estoque."
+            )
+
+        st.markdown("---")
+
+        # ---------- 2) Produtos com estoque parado há muito tempo ----------
+        st.markdown("### 🐌 Estoque parado há muito tempo")
+
+        # preparar df_compras e df_vendas para datas de última movimentação
+        df_compras_alert = df_compras.copy()
+        df_compras_alert.columns = [c.strip().upper() for c in df_compras_alert.columns]
+        if "STATUS" in df_compras_alert.columns:
+            df_compras_alert = df_compras_alert[
+                df_compras_alert["STATUS"].astype(str).str.upper() == "ENTREGUE"
+            ].copy()
+        if "DATA" in df_compras_alert.columns:
+            df_compras_alert["DATA"] = pd.to_datetime(df_compras_alert["DATA"], errors="coerce", dayfirst=True)
+
+        df_vendas_alert = df_vendas.copy()
+        df_vendas_alert.columns = [c.strip().upper() for c in df_vendas_alert.columns]
+        if "DATA" in df_vendas_alert.columns:
+            df_vendas_alert["DATA"] = pd.to_datetime(df_vendas_alert["DATA"], errors="coerce", dayfirst=True)
+
+        # última venda por produto
+        if not df_vendas_alert.empty and "DATA" in df_vendas_alert.columns:
+            last_sale = (
+                df_vendas_alert
+                .groupby("PRODUTO", as_index=False)["DATA"]
+                .max()
+                .rename(columns={"DATA": "ULT_VENDA"})
+            )
+        else:
+            last_sale = pd.DataFrame(columns=["PRODUTO", "ULT_VENDA"])
+
+        # última compra (ENTREGUE) por produto
+        if not df_compras_alert.empty and "DATA" in df_compras_alert.columns:
+            last_buy = (
+                df_compras_alert
+                .groupby("PRODUTO", as_index=False)["DATA"]
+                .max()
+                .rename(columns={"DATA": "ULT_COMPRA"})
+            )
+        else:
+            last_buy = pd.DataFrame(columns=["PRODUTO", "ULT_COMPRA"])
+
+        parado = (
+            df_estoque
+            .merge(last_sale, on="PRODUTO", how="left")
+            .merge(last_buy, on="PRODUTO", how="left")
+        )
+
+        # só faz sentido se tem estoque > 0
+        parado = parado[parado["SALDO_QTD"] > 0].copy()
+
+        today = pd.Timestamp.now().normalize()
+
+        def dias_parado(row):
+            ult_venda = row.get("ULT_VENDA")
+            ult_compra = row.get("ULT_COMPRA")
+            if pd.notna(ult_venda):
+                return (today - ult_venda.normalize()).days
+            if pd.notna(ult_compra):
+                return (today - ult_compra.normalize()).days
+            return None
+
+        parado["DIAS_PARADO"] = parado.apply(dias_parado, axis=1)
+
+        parado_alerta = parado[
+            (parado["DIAS_PARADO"].notna()) &
+            (parado["DIAS_PARADO"] >= LIM_DIAS_PARADO)
+        ].copy()
+
+        if parado_alerta.empty:
+            st.info(f"Nenhum produto com estoque parado há mais de {LIM_DIAS_PARADO} dias pelos critérios atuais.")
+        else:
+            df_p = parado_alerta.copy()
+            if "ULT_VENDA" in df_p.columns:
+                df_p["ULT_VENDA_FMT"] = df_p["ULT_VENDA"].dt.strftime("%d/%m/%Y")
+            else:
+                df_p["ULT_VENDA_FMT"] = ""
+
+            if "ULT_COMPRA" in df_p.columns:
+                df_p["ULT_COMPRA_FMT"] = df_p["ULT_COMPRA"].dt.strftime("%d/%m/%Y")
+            else:
+                df_p["ULT_COMPRA_FMT"] = ""
+
+            df_p["VALOR_ESTOQUE_FMT"] = df_p["VALOR_ESTOQUE"].map(format_reais)
+
+            df_p = df_p.sort_values("DIAS_PARADO", ascending=False)
+
+            st.dataframe(
+                df_p[[
+                    "PRODUTO",
+                    "SALDO_QTD",
+                    "VALOR_ESTOQUE_FMT",
+                    "DIAS_PARADO",
+                    "ULT_VENDA_FMT",
+                    "ULT_COMPRA_FMT"
+                ]].rename(columns={
+                    "SALDO_QTD": "Estoque atual",
+                    "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)",
+                    "DIAS_PARADO": "Dias parado",
+                    "ULT_VENDA_FMT": "Última venda",
+                    "ULT_COMPRA_FMT": "Última compra (ENTREGUE)"
+                }),
+                use_container_width=True
+            )
+
+            st.markdown(
+                f"*Critério usado:* produto com estoque > 0 e **sem venda há ≥ {LIM_DIAS_PARADO} dias** "
+                f"(ou nunca vendeu, mas a última compra é mais antiga que isso)."
+            )
