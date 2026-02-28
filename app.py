@@ -607,7 +607,8 @@ with tab_dash:
             fig.update_traces(
                 textposition="inside",
                 texttemplate="<b>%{text}</b>",
-                textfont_size=18,
+                textfont_size=14,               # 🔹 um pouco menor
+                insidetextanchor="middle",      # 🔹 centraliza o texto no centro da barra
             )
             fig.update_layout(
                 height=380,
@@ -617,7 +618,10 @@ with tab_dash:
                 uniformtext_mode="hide",
                 plot_bgcolor="rgba(15,23,42,0.85)",
                 paper_bgcolor="rgba(0,0,0,0)",
-                font_color="#e5e7eb",
+                font=dict(
+                    family="Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif",
+                    color="#e5e7eb",
+                ),
                 legend_title_text="",
             )
             st.plotly_chart(fig, use_container_width=True)
