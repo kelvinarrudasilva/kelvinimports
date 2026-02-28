@@ -950,7 +950,7 @@ with tab_search:
     st.markdown(
         """
 <div class="section-title">🔎 Pesquisa de produto – baseado no FIFO</div>
-<div class="section-sub">Veja custo médio, margem e histórico para decidir preço e reposição.</div>
+<div class="section-sub">Veja custo médio, margem, histórico de vendas e histórico de compras.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -969,6 +969,7 @@ with tab_search:
         )
 
         if prod_sel != "(selecione)":
+            # --- Estoque + vendas agregadas ---
             linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
             if not linha_est.empty:
                 saldo = float(linha_est["SALDO_QTD"].iloc[0])
@@ -1074,6 +1075,7 @@ with tab_search:
 
             st.markdown("---")
 
+            # --- Última venda ---
             st.markdown("#### 🕒 Última venda")
             if data_ultima is not None and pd.notna(data_ultima):
                 st.write(
@@ -1088,6 +1090,7 @@ with tab_search:
             st.markdown("---")
             st.markdown("#### 📄 Histórico recente de vendas")
 
+            # --- Histórico de vendas do produto ---
             if not vendas_prod.empty:
                 vendas_prod_hist = vendas_prod.copy()
                 vendas_prod_hist["CUSTO_UNIT"] = (
@@ -1117,16 +1120,84 @@ with tab_search:
             else:
                 st.info("Sem histórico de vendas para esse produto.")
 
+            # --- NOVO: Histórico de compras do produto ---
+            st.markdown("---")
+            st.markdown("#### 🧾 Histórico de compras (ENTREGUE)")
+
+            compras_prod = df_compras.copy()
+            compras_prod.columns = [c.strip().upper() for c in compras_prod.columns]
+
+            if "PRODUTO" in compras_prod.columns:
+                compras_prod = compras_prod[compras_prod["PRODUTO"] == prod_sel].copy()
+            else:
+                compras_prod = pd.DataFrame()
+
+            if not compras_prod.empty and "STATUS" in compras_prod.columns:
+                compras_prod = compras_prod[
+                    compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"
+                ].copy()
+
+            if compras_prod.empty:
+                st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
+            else:
+                if "DATA" in compras_prod.columns:
+                    compras_prod["DATA"] = pd.to_datetime(
+                        compras_prod["DATA"], errors="coerce", dayfirst=True
+                    )
+                    compras_prod = compras_prod.sort_values("DATA", ascending=False)
+                    compras_prod["DATA_FMT"] = compras_prod["DATA"].dt.strftime("%d/%m/%Y")
+                else:
+                    compras_prod["DATA_FMT"] = ""
+
+                if "QUANTIDADE" in compras_prod.columns:
+                    compras_prod["QUANTIDADE"] = compras_prod["QUANTIDADE"].apply(parse_money).astype(float)
+                else:
+                    compras_prod["QUANTIDADE"] = 0.0
+
+                if "CUSTO UNITÁRIO" in compras_prod.columns:
+                    compras_prod["CUSTO UNITÁRIO"] = compras_prod["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
+                else:
+                    compras_prod["CUSTO UNITÁRIO"] = 0.0
+
+                compras_prod["CUSTO_TOTAL"] = compras_prod.get("CUSTO_TOTAL", compras_prod["QUANTIDADE"] * compras_prod["CUSTO UNITÁRIO"])
+
+                compras_prod["CUSTO_UNIT_FMT"] = compras_prod["CUSTO UNITÁRIO"].map(format_reais)
+                compras_prod["CUSTO_TOTAL_FMT"] = compras_prod["CUSTO_TOTAL"].map(format_reais)
+
+                total_qtd_comp = compras_prod["QUANTIDADE"].sum()
+                total_valor_comp = compras_prod["CUSTO_TOTAL"].sum()
+
+                st.write(
+                    f"- Total comprado (histórico ENTREGUE): **{int(total_qtd_comp)} unid.**  "
+                    f"– **{format_reais(total_valor_comp)}**"
+                )
+
+                cols_comp = ["DATA_FMT", "STATUS", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"]
+                cols_comp = [c for c in cols_comp if c in compras_prod.columns]
+
+                st.dataframe(
+                    compras_prod[cols_comp].rename(
+                        columns={
+                            "DATA_FMT": "Data",
+                            "STATUS": "Status",
+                            "QUANTIDADE": "Qtd.",
+                            "CUSTO_UNIT_FMT": "Custo unitário",
+                            "CUSTO_TOTAL_FMT": "Custo total",
+                        }
+                    ).head(40),
+                    use_container_width=True,
+                )
+
             st.markdown("---")
             st.markdown("#### 💡 Leitura rápida")
             st.markdown(
                 f"""
 - Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
 - Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
-- Se a **margem é ruim**, você pode:
-  - negociar melhor na compra,
-  - subir preço,
-  - ou usar como isca para atrair cliente (sabendo que compensa em outros itens).
+- Olhando o **histórico de compras**, você enxerga:
+  - se está pagando mais caro ou mais barato ao longo do tempo,
+  - se vale negociar de novo com o fornecedor,
+  - e se não está enchendo estoque de um item que não gira tanto assim.
                 """
             )
         else:
