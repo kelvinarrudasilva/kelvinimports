@@ -13,7 +13,7 @@ st.set_page_config(
 
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
-# custo unitário máximo plausível (acima disso é lixo de dado)
+# custo unitário máximo plausível (acima disso é dado zoado)
 CUSTO_MAX_PLAUSIVEL = 500.0
 
 # --------------------------------------------------
@@ -506,7 +506,7 @@ with tab_dash:
             unsafe_allow_html=True,
         )
 
-    # ---------- NOVOS KPIs: ESTOQUE E COMPRAS NO PERÍODO ----------
+    # ---------- KPIs: ESTOQUE E COMPRAS NO PERÍODO ----------
     # Valor total do estoque (FIFO)
     if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
         valor_estoque_total = df_estoque["VALOR_ESTOQUE"].sum()
@@ -555,11 +555,11 @@ with tab_dash:
 
     st.markdown("---")
 
-    # 🔥 Top produtos mais vendidos (com FIFO e estoque atual)
+    # 🔥 Top produtos mais vendidos (com FIFO e estoque atual) – gráfico top 6
     st.markdown(
         """
 <div class="section-title">🥇 Produtos mais vendidos</div>
-<div class="section-sub">Custo médio FIFO, preço médio de venda, lucro total e estoque atual do período selecionado.</div>
+<div class="section-sub">Top 6 produtos por quantidade vendida, com custo FIFO, preço médio de venda e estoque atual.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -593,10 +593,45 @@ with tab_dash:
         top_prod["CUSTO_MEDIO_FIFO"] = top_prod["CUSTO"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
         top_prod["PRECO_MEDIO_VENDA"] = top_prod["RECEITA"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
 
-        # ordena pelos mais vendidos
-        top_view = top_prod.sort_values("QTD_VENDIDA", ascending=False).head(10).copy()
+        # pega só os 6 mais vendidos
+        top_view = top_prod.sort_values("QTD_VENDIDA", ascending=False).head(6).copy()
 
-        # formatar tudo bonitinho em reais
+        # label com quantidade + receita em reais
+        top_view["LABEL"] = top_view.apply(
+            lambda r: f"{int(r['QTD_VENDIDA'])} un\n{format_reais(r['RECEITA'])}",
+            axis=1,
+        )
+
+        fig_top = px.bar(
+            top_view,
+            x="PRODUTO",
+            y="QTD_VENDIDA",
+            text="LABEL",
+            labels={"PRODUTO": "Produto", "QTD_VENDIDA": "Qtd vendida"},
+            color="QTD_VENDIDA",
+            color_continuous_scale=["#6366f1", "#a855f7", "#f97316"],
+        )
+        fig_top.update_traces(
+            textposition="inside",
+            texttemplate="<b>%{text}</b>",
+            insidetextanchor="middle",
+            textfont_size=13,
+        )
+        fig_top.update_layout(
+            height=380,
+            plot_bgcolor="rgba(15,23,42,0.85)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(
+                family="Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif",
+                color="#e5e7eb",
+            ),
+            coloraxis_showscale=False,
+            uniformtext_minsize=10,
+            uniformtext_mode="hide",
+        )
+        st.plotly_chart(fig_top, use_container_width=True)
+
+        # Tabela resumo
         top_view["CUSTO_MEDIO_FIFO_FMT"] = top_view["CUSTO_MEDIO_FIFO"].map(format_reais)
         top_view["PRECO_MEDIO_VENDA_FMT"] = top_view["PRECO_MEDIO_VENDA"].map(format_reais)
         top_view["LUCRO_FMT"] = top_view["LUCRO"].map(format_reais)
@@ -647,7 +682,6 @@ with tab_dash:
             .sort_values("MES_ANO")
         )
 
-        # pegar mês atual e 2 anteriores, se existirem
         meses_unicos = resumo_mes["MES_ANO"].tolist()
         if not meses_unicos:
             st.info("Sem meses para exibir no gráfico.")
@@ -683,8 +717,8 @@ with tab_dash:
             fig.update_traces(
                 textposition="inside",
                 texttemplate="<b>%{text}</b>",
-                textfont_size=14,
                 insidetextanchor="middle",
+                textfont_size=14,
             )
             fig.update_layout(
                 height=380,
