@@ -292,7 +292,7 @@ col_btn, _ = st.columns([1, 3])
 with col_btn:
     if st.button("🔄 Atualizar dados da planilha"):
         st.cache_data.clear()
-        st.rerun()   # <<<<<< AQUI TROQUEI experimental_rerun() POR rerun()
+        st.rerun()
 
 # carrega dados (com cache)
 df_compras, df_vendas = carregar_dados()
@@ -304,125 +304,120 @@ if df_fifo.empty:
     st.stop()
 
 # ============================================
-# FILTRO POR MÊS
+# TABS
 # ============================================
 
-meses = ["Todos"]
-meses_disp = sorted(df_fifo["MES_ANO"].dropna().unique().tolist(), reverse=True)
-meses += meses_disp
-
-mes_atual = pd.Timestamp.now().strftime("%Y-%m")
-idx_padrao = meses.index(mes_atual) if mes_atual in meses else 0
-
-mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", meses, index=idx_padrao)
-
-if mes_selecionado == "Todos":
-    df_fifo_filt = df_fifo.copy()
-else:
-    df_fifo_filt = df_fifo[df_fifo["MES_ANO"] == mes_selecionado].copy()
+tab_dash, tab_search = st.tabs(["📊 Dashboard", "🔎 Pesquisa de produto"])
 
 # ============================================
-# KPIs GERAIS (MÊS FILTRADO)
+# TAB 1 – DASHBOARD
 # ============================================
+with tab_dash:
+    # -------- FILTRO POR MÊS --------
+    meses = ["Todos"]
+    meses_disp = sorted(df_fifo["MES_ANO"].dropna().unique().tolist(), reverse=True)
+    meses += meses_disp
 
-total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
-total_custo = df_fifo_filt["CUSTO_TOTAL"].sum()
-total_lucro = df_fifo_filt["LUCRO"].sum()
+    mes_atual = pd.Timestamp.now().strftime("%Y-%m")
+    idx_padrao = meses.index(mes_atual) if mes_atual in meses else 0
 
-c1, c2, c3 = st.columns(3)
-c1.metric("💰 Total vendido", format_reais(total_vendido))
-c2.metric("📉 Custo (FIFO)", format_reais(total_custo))
-c3.metric("📈 Lucro (FIFO)", format_reais(total_lucro))
+    mes_selecionado = st.selectbox("Filtrar por mês (YYYY-MM):", meses, index=idx_padrao)
 
-st.markdown("---")
+    if mes_selecionado == "Todos":
+        df_fifo_filt = df_fifo.copy()
+    else:
+        df_fifo_filt = df_fifo[df_fifo["MES_ANO"] == mes_selecionado].copy()
 
-# ============================================
-# LUCRO REAL POR PRODUTO (MÊS FILTRADO)
-# ============================================
+    # -------- KPIs GERAIS (MÊS FILTRADO) --------
+    total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
+    total_custo = df_fifo_filt["CUSTO_TOTAL"].sum()
+    total_lucro = df_fifo_filt["LUCRO"].sum()
 
-st.subheader("💰 Lucro real por produto (FIFO) – período filtrado")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("💰 Total vendido", format_reais(total_vendido))
+    c2.metric("📉 Custo (FIFO)", format_reais(total_custo))
+    c3.metric("📈 Lucro (FIFO)", format_reais(total_lucro))
 
-if df_fifo_filt.empty:
-    st.info("Nenhuma venda no período selecionado.")
-else:
-    res_prod = (
-        df_fifo_filt
-        .groupby("PRODUTO", as_index=False)
-        .agg({
-            "QTD": "sum",
-            "VALOR_TOTAL": "sum",
-            "CUSTO_TOTAL": "sum",
-            "LUCRO": "sum",
-        })
-        .sort_values("LUCRO", ascending=False)
-    )
+    st.markdown("---")
 
-    res_view = res_prod.copy()
-    res_view["VALOR_TOTAL"] = res_view["VALOR_TOTAL"].map(format_reais)
-    res_view["CUSTO_TOTAL"] = res_view["CUSTO_TOTAL"].map(format_reais)
-    res_view["LUCRO"] = res_view["LUCRO"].map(format_reais)
+    # -------- LUCRO REAL POR PRODUTO (MÊS FILTRADO) --------
+    st.subheader("💰 Lucro real por produto (FIFO) – período filtrado")
 
-    st.dataframe(res_view, use_container_width=True)
+    if df_fifo_filt.empty:
+        st.info("Nenhuma venda no período selecionado.")
+    else:
+        res_prod = (
+            df_fifo_filt
+            .groupby("PRODUTO", as_index=False)
+            .agg({
+                "QTD": "sum",
+                "VALOR_TOTAL": "sum",
+                "CUSTO_TOTAL": "sum",
+                "LUCRO": "sum",
+            })
+            .sort_values("LUCRO", ascending=False)
+        )
 
-# ============================================
-# ESTOQUE ATUAL (GLOBAL, COM REAIS)
-# ============================================
+        res_view = res_prod.copy()
+        res_view["VALOR_TOTAL"] = res_view["VALOR_TOTAL"].map(format_reais)
+        res_view["CUSTO_TOTAL"] = res_view["CUSTO_TOTAL"].map(format_reais)
+        res_view["LUCRO"] = res_view["LUCRO"].map(format_reais)
 
-st.subheader("📦 Estoque atual (custo médio FIFO – global)")
+        st.dataframe(res_view, use_container_width=True)
 
-if not df_estoque.empty:
-    est_view = df_estoque.copy()
-    est_view["VALOR_ESTOQUE"] = est_view["VALOR_ESTOQUE"].map(format_reais)
-    est_view["CUSTO_MEDIO_FIFO"] = est_view["CUSTO_MEDIO_FIFO"].map(format_reais)
-    est_view["SALDO_QTD"] = est_view["SALDO_QTD"].astype(int)
-    st.dataframe(
-        est_view.sort_values("SALDO_QTD", ascending=False),
-        use_container_width=True
-    )
-else:
-    st.info("Sem saldo em estoque após aplicar FIFO (ou todas as compras foram consumidas nas vendas).")
+    # -------- ESTOQUE ATUAL (GLOBAL, COM REAIS) --------
+    st.subheader("📦 Estoque atual (custo médio FIFO – global)")
 
-# ============================================
-# VENDAS DETALHADAS (MÊS FILTRADO)
-# ============================================
+    if not df_estoque.empty:
+        est_view = df_estoque.copy()
+        est_view["VALOR_ESTOQUE"] = est_view["VALOR_ESTOQUE"].map(format_reais)
+        est_view["CUSTO_MEDIO_FIFO"] = est_view["CUSTO_MEDIO_FIFO"].map(format_reais)
+        est_view["SALDO_QTD"] = est_view["SALDO_QTD"].astype(int)
+        st.dataframe(
+            est_view.sort_values("SALDO_QTD", ascending=False),
+            use_container_width=True
+        )
+    else:
+        st.info("Sem saldo em estoque após aplicar FIFO (ou todas as compras foram consumidas nas vendas).")
 
-st.subheader("🧾 Vendas detalhadas (com custo FIFO) – período filtrado")
+    # -------- VENDAS DETALHADAS (MÊS FILTRADO) --------
+    st.subheader("🧾 Vendas detalhadas (com custo FIFO) – período filtrado")
 
-df_fifo_view = df_fifo_filt.copy()
+    df_fifo_view = df_fifo_filt.copy()
 
-if not df_fifo_view.empty:
-    # garantir custo unitário numérico antes de formatar
-    df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_TOTAL"] / df_fifo_view["QTD"].replace(0, pd.NA)
+    if not df_fifo_view.empty:
+        # garantir custo unitário numérico antes de formatar
+        df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_TOTAL"] / df_fifo_view["QTD"].replace(0, pd.NA)
 
-    # exemplo REAL para legenda – primeira linha do período filtrado
-    exemplo = df_fifo_filt.iloc[0]
-    prod_ex = str(exemplo["PRODUTO"])
-    qtd_ex = float(exemplo["QTD"])
-    venda_ex = format_reais(exemplo["VALOR_TOTAL"])
-    custo_total_ex = format_reais(exemplo["CUSTO_TOTAL"])
-    custo_unit_ex = format_reais(exemplo["CUSTO_TOTAL"] / exemplo["QTD"] if exemplo["QTD"] else 0)
-    lucro_ex = format_reais(exemplo["LUCRO"])
+        # exemplo REAL para legenda – primeira linha do período filtrado
+        exemplo = df_fifo_filt.iloc[0]
+        prod_ex = str(exemplo["PRODUTO"])
+        qtd_ex = float(exemplo["QTD"])
+        venda_ex = format_reais(exemplo["VALOR_TOTAL"])
+        custo_total_ex = format_reais(exemplo["CUSTO_TOTAL"])
+        custo_unit_ex = format_reais(exemplo["CUSTO_TOTAL"] / exemplo["QTD"] if exemplo["QTD"] else 0)
+        lucro_ex = format_reais(exemplo["LUCRO"])
 
-    if df_fifo_view["DATA"].notna().any():
-        df_fifo_view["DATA"] = df_fifo_view["DATA"].dt.strftime("%d/%m/%Y")
+        if df_fifo_view["DATA"].notna().any():
+            df_fifo_view["DATA"] = df_fifo_view["DATA"].dt.strftime("%d/%m/%Y")
 
-    df_fifo_view["VALOR_TOTAL"] = df_fifo_view["VALOR_TOTAL"].map(format_reais)
-    df_fifo_view["CUSTO_TOTAL"] = df_fifo_view["CUSTO_TOTAL"].map(format_reais)
-    df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
-    df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_UNIT"].map(format_reais)
+        df_fifo_view["VALOR_TOTAL"] = df_fifo_view["VALOR_TOTAL"].map(format_reais)
+        df_fifo_view["CUSTO_TOTAL"] = df_fifo_view["CUSTO_TOTAL"].map(format_reais)
+        df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
+        df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_UNIT"].map(format_reais)
 
-    cols_ordem = ["DATA", "PRODUTO", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "CUSTO_UNIT", "LUCRO", "MES_ANO"]
-    cols_ordem = [c for c in cols_ordem if c in df_fifo_view.columns]
+        cols_ordem = ["DATA", "PRODUTO", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "CUSTO_UNIT", "LUCRO", "MES_ANO"]
+        cols_ordem = [c for c in cols_ordem if c in df_fifo_view.columns]
 
-    st.dataframe(
-        df_fifo_view[cols_ordem].sort_values("DATA", ascending=False),
-        use_container_width=True
-    )
+        st.dataframe(
+            df_fifo_view[cols_ordem].sort_values("DATA", ascending=False),
+            use_container_width=True
+        )
 
-    # LEGENDA FIFO
-    st.markdown("### 📘 Como o FIFO é calculado (exemplo real)")
-    st.markdown(
-        f"""
+        # LEGENDA FIFO
+        st.markdown("### 📘 Como o FIFO é calculado (exemplo real)")
+        st.markdown(
+            f"""
 **Produto usado no exemplo:** `{prod_ex}`  
 
 - Quantidade vendida nesta linha: **{qtd_ex:.0f} unid.**
@@ -443,7 +438,103 @@ if not df_fifo_view.empty:
 5. O **custo unitário FIFO** (**{custo_unit_ex}**) é esse custo total dividido pela quantidade vendida.
 6. O **lucro** (**{lucro_ex}**) é:  
    **lucro = valor da venda ({venda_ex}) − custo total FIFO ({custo_total_ex})**.
-        """
-    )
-else:
-    st.info("Nenhuma venda no período selecionado.")
+            """
+        )
+    else:
+        st.info("Nenhuma venda no período selecionado.")
+
+# ============================================
+# TAB 2 – PESQUISA DE PRODUTO (PREÇO FIFO)
+# ============================================
+with tab_search:
+    st.subheader("🔎 Pesquisa de produto – preço baseado no FIFO")
+
+    if df_fifo.empty and df_estoque.empty:
+        st.info("Sem dados de estoque ou vendas para pesquisar.")
+    else:
+        # lista de produtos (estoque + vendas)
+        produtos_estoque = df_estoque["PRODUTO"].unique().tolist() if not df_estoque.empty else []
+        produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
+        todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas))
+
+        prod_sel = st.selectbox(
+            "Escolha o produto:",
+            options=["(selecione)"] + todos_produtos,
+            index=0
+        )
+
+        if prod_sel != "(selecione)":
+            # ---------- dados de estoque FIFO ----------
+            linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
+            if not linha_est.empty:
+                saldo = float(linha_est["SALDO_QTD"].iloc[0])
+                valor_estoque = float(linha_est["VALOR_ESTOQUE"].iloc[0])
+                custo_medio_fifo = float(linha_est["CUSTO_MEDIO_FIFO"].iloc[0])
+            else:
+                saldo = 0.0
+                valor_estoque = 0.0
+                custo_medio_fifo = 0.0
+
+            # ---------- dados de vendas ----------
+            vendas_prod = df_fifo[df_fifo["PRODUTO"] == prod_sel].copy()
+
+            if not vendas_prod.empty:
+                # preço médio de venda histórico
+                qtd_total_vendida = vendas_prod["QTD"].sum()
+                receita_total = vendas_prod["VALOR_TOTAL"].sum()
+                preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
+
+                # última venda (unitária)
+                vendas_prod_ord = vendas_prod.sort_values("DATA")
+                ultima = vendas_prod_ord.iloc[-1]
+                preco_unit_ultima = ultima["VALOR_TOTAL"] / ultima["QTD"] if ultima["QTD"] else 0.0
+                data_ultima = ultima["DATA"]
+            else:
+                qtd_total_vendida = 0.0
+                receita_total = 0.0
+                preco_medio_venda = 0.0
+                preco_unit_ultima = 0.0
+                data_ultima = None
+
+            # ---------- exibição ----------
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### 💰 Preços e custos")
+                st.write(f"**Produto:** `{prod_sel}`")
+                st.write(f"**Custo médio FIFO atual:** {format_reais(custo_medio_fifo)}")
+                st.write(f"**Preço médio de venda histórico:** {format_reais(preco_medio_venda)}")
+                if data_ultima is not None and pd.notna(data_ultima):
+                    st.write(
+                        f"**Última venda unitária:** {format_reais(preco_unit_ultima)} "
+                        f"em {data_ultima.strftime('%d/%m/%Y')}"
+                    )
+                else:
+                    st.write("**Última venda unitária:** sem vendas registradas.")
+
+            with c2:
+                st.markdown("#### 📦 Estoque e histórico")
+                st.write(f"**Saldo em estoque (FIFO):** {int(saldo)} unid.")
+                st.write(f"**Valor total em estoque (FIFO):** {format_reais(valor_estoque)}")
+                st.write(f"**Quantidade total vendida:** {int(qtd_total_vendida)} unid.")
+                st.write(f"**Receita total nas vendas:** {format_reais(receita_total)}")
+
+            st.markdown("---")
+            st.markdown("#### 📘 Como interpretar esses valores para esse produto")
+            st.markdown(
+                f"""
+- **Custo médio FIFO atual ({format_reais(custo_medio_fifo)})**  
+  É o custo médio de cada unidade de `{prod_sel}` considerando **apenas as compras que ainda estão em estoque**, sempre na ordem FIFO.
+
+- **Preço médio de venda histórico ({format_reais(preco_medio_venda)})**  
+  Soma de tudo que você já faturou com `{prod_sel}` dividido pela quantidade total vendida.
+
+- **Última venda unitária ({format_reais(preco_unit_ultima)})**  
+  Preço por unidade na venda mais recente desse produto (útil pra ver por quanto você está saindo hoje).
+
+- **Saldo em estoque e valor em estoque**  
+  São calculados usando os mesmos lotes FIFO:  
+  quantidade que sobrou × custo de cada lote que ainda não foi consumido nas vendas.
+                """
+            )
+        else:
+            st.info("Selecione um produto acima para ver os preços baseados no FIFO.")
