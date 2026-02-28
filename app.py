@@ -340,9 +340,26 @@ with tab_dash:
 
     st.markdown("---")
 
-    # -------- LUCRO REAL POR PRODUTO (MÊS FILTRADO) --------
-    st.subheader("💰 Lucro real por produto (FIFO) – período filtrado")
+    # -------- GRÁFICO: FATURAMENTO / LUCRO POR PRODUTO --------
+    st.subheader("📊 Faturamento e lucro por produto (período filtrado)")
+    if df_fifo_filt.empty:
+        st.info("Nenhuma venda no período selecionado.")
+    else:
+        res_prod_num = (
+            df_fifo_filt
+            .groupby("PRODUTO", as_index=False)
+            .agg({
+                "VALOR_TOTAL": "sum",
+                "LUCRO": "sum"
+            })
+            .sort_values("VALOR_TOTAL", ascending=False)
+        )
+        # limitar para não ficar gigante
+        res_prod_num_top = res_prod_num.head(15).set_index("PRODUTO")[["VALOR_TOTAL", "LUCRO"]]
+        st.bar_chart(res_prod_num_top)
 
+    # -------- LUCRO REAL POR PRODUTO (MÊS FILTRADO) – TABELA --------
+    st.subheader("💰 Lucro real por produto (FIFO) – tabela")
     if df_fifo_filt.empty:
         st.info("Nenhuma venda no período selecionado.")
     else:
@@ -364,21 +381,6 @@ with tab_dash:
         res_view["LUCRO"] = res_view["LUCRO"].map(format_reais)
 
         st.dataframe(res_view, use_container_width=True)
-
-    # -------- ESTOQUE ATUAL (GLOBAL, COM REAIS) --------
-    st.subheader("📦 Estoque atual (custo médio FIFO – global)")
-
-    if not df_estoque.empty:
-        est_view = df_estoque.copy()
-        est_view["VALOR_ESTOQUE"] = est_view["VALOR_ESTOQUE"].map(format_reais)
-        est_view["CUSTO_MEDIO_FIFO"] = est_view["CUSTO_MEDIO_FIFO"].map(format_reais)
-        est_view["SALDO_QTD"] = est_view["SALDO_QTD"].astype(int)
-        st.dataframe(
-            est_view.sort_values("SALDO_QTD", ascending=False),
-            use_container_width=True
-        )
-    else:
-        st.info("Sem saldo em estoque após aplicar FIFO (ou todas as compras foram consumidas nas vendas).")
 
     # -------- VENDAS DETALHADAS (MÊS FILTRADO) --------
     st.subheader("🧾 Vendas detalhadas (com custo FIFO) – período filtrado")
@@ -484,6 +486,10 @@ with tab_search:
                 receita_total = vendas_prod["VALOR_TOTAL"].sum()
                 preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
 
+                # custo total histórico pra margem
+                custo_total_hist = vendas_prod["CUSTO_TOTAL"].sum()
+                margem_media = (receita_total - custo_total_hist) / receita_total if receita_total else 0.0
+
                 # última venda (unitária)
                 vendas_prod_ord = vendas_prod.sort_values("DATA")
                 ultima = vendas_prod_ord.iloc[-1]
@@ -495,45 +501,87 @@ with tab_search:
                 preco_medio_venda = 0.0
                 preco_unit_ultima = 0.0
                 data_ultima = None
+                margem_media = 0.0
+                custo_total_hist = 0.0
 
-            # ---------- exibição ----------
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("#### 💰 Preços e custos")
-                st.write(f"**Produto:** `{prod_sel}`")
-                st.write(f"**Custo médio FIFO atual:** {format_reais(custo_medio_fifo)}")
-                st.write(f"**Preço médio de venda histórico:** {format_reais(preco_medio_venda)}")
-                if data_ultima is not None and pd.notna(data_ultima):
-                    st.write(
-                        f"**Última venda unitária:** {format_reais(preco_unit_ultima)} "
-                        f"em {data_ultima.strftime('%d/%m/%Y')}"
-                    )
-                else:
-                    st.write("**Última venda unitária:** sem vendas registradas.")
+            # ---------- preço sugerido (ex.: +30% sobre custo FIFO) ----------
+            markup_padrao = 0.30
+            preco_sugerido = custo_medio_fifo * (1 + markup_padrao) if custo_medio_fifo > 0 else preco_medio_venda
 
-            with c2:
-                st.markdown("#### 📦 Estoque e histórico")
-                st.write(f"**Saldo em estoque (FIFO):** {int(saldo)} unid.")
-                st.write(f"**Valor total em estoque (FIFO):** {format_reais(valor_estoque)}")
-                st.write(f"**Quantidade total vendida:** {int(qtd_total_vendida)} unid.")
-                st.write(f"**Receita total nas vendas:** {format_reais(receita_total)}")
+            # ---------- cards / métricas ----------
+            st.markdown(f"### 📦 {prod_sel}")
+
+            col_m1, col_m2, col_m3 = st.columns(3)
+            with col_m1:
+                st.metric("Custo médio FIFO", format_reais(custo_medio_fifo))
+            with col_m2:
+                st.metric("Preço médio de venda", format_reais(preco_medio_venda))
+            with col_m3:
+                st.metric("Preço sugerido (30% acima do custo)", format_reais(preco_sugerido))
+
+            col_m4, col_m5, col_m6 = st.columns(3)
+            with col_m4:
+                st.metric("Saldo em estoque", f"{int(saldo)} unid.")
+            with col_m5:
+                st.metric("Receita total acumulada", format_reais(receita_total))
+            with col_m6:
+                st.metric("Margem média histórica", f"{margem_media*100:,.1f}%")
 
             st.markdown("---")
-            st.markdown("#### 📘 Como interpretar esses valores para esse produto")
+
+            # bloco texto com última venda
+            st.markdown("#### 🕒 Última venda")
+            if data_ultima is not None and pd.notna(data_ultima):
+                st.write(
+                    f"- Data: **{data_ultima.strftime('%d/%m/%Y')}**  \n"
+                    f"- Preço unitário na venda: **{format_reais(preco_unit_ultima)}**  \n"
+                    f"- Quantidade vendida nesse dia: **{int(ultima['QTD'])} unid.**  \n"
+                    f"- Valor total da venda: **{format_reais(ultima['VALOR_TOTAL'])}**"
+                )
+            else:
+                st.write("Nenhuma venda registrada para esse produto ainda.")
+
+            st.markdown("---")
+            st.markdown("#### 📄 Histório recente de vendas do produto")
+
+            if not vendas_prod.empty:
+                vendas_view = vendas_prod.copy()
+                if vendas_view["DATA"].notna().any():
+                    vendas_view["DATA"] = vendas_view["DATA"].dt.strftime("%d/%m/%Y")
+
+                vendas_view["VALOR_TOTAL"] = vendas_view["VALOR_TOTAL"].map(format_reais)
+                vendas_view["CUSTO_TOTAL"] = vendas_view["CUSTO_TOTAL"].map(format_reais)
+                vendas_view["LUCRO"] = vendas_view["LUCRO"].map(format_reais)
+                vendas_view["CUSTO_UNIT"] = vendas_view["CUSTO_TOTAL"]  # já estava agregado; se quiser, recalcular
+
+                # recalcular custo unitário real antes de formatar pro histórico
+                vendas_prod_hist = vendas_prod.copy()
+                vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
+                vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y")
+                vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
+                vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
+                vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
+                vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_UNIT"].map(format_reais)
+
+                cols_hist = ["DATA", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "CUSTO_UNIT", "LUCRO", "MES_ANO"]
+                cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
+
+                st.dataframe(
+                    vendas_prod_hist[cols_hist].sort_values("DATA", ascending=False).head(20),
+                    use_container_width=True
+                )
+            else:
+                st.info("Sem histórico de vendas para esse produto.")
+
+            st.markdown("---")
+            st.markdown("#### 💡 Como usar esses números na prática")
             st.markdown(
                 f"""
-- **Custo médio FIFO atual ({format_reais(custo_medio_fifo)})**  
-  É o custo médio de cada unidade de `{prod_sel}` considerando **apenas as compras que ainda estão em estoque**, sempre na ordem FIFO.
-
-- **Preço médio de venda histórico ({format_reais(preco_medio_venda)})**  
-  Soma de tudo que você já faturou com `{prod_sel}` dividido pela quantidade total vendida.
-
-- **Última venda unitária ({format_reais(preco_unit_ultima)})**  
-  Preço por unidade na venda mais recente desse produto (útil pra ver por quanto você está saindo hoje).
-
-- **Saldo em estoque e valor em estoque**  
-  São calculados usando os mesmos lotes FIFO:  
-  quantidade que sobrou × custo de cada lote que ainda não foi consumido nas vendas.
+- Se o **custo médio FIFO** estiver aumentando, é sinal de que suas últimas compras de `{prod_sel}` vieram mais caras.
+- Compare o **preço sugerido** com o que você realmente está cobrando hoje:
+  se estiver vendendo muito abaixo dele, você pode estar queimando margem.
+- A **margem média histórica** mostra como você tem tratado esse produto ao longo do tempo.  
+  Se hoje a margem estiver bem abaixo da média, vale revisar o preço.
                 """
             )
         else:
