@@ -287,6 +287,14 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
 
 st.title("📦 Dashboard FIFO – Loja Importados")
 
+# ---------- Botão para recarregar a planilha (limpa cache) ----------
+col_btn, _ = st.columns([1, 3])
+with col_btn:
+    if st.button("🔄 Atualizar dados da planilha"):
+        st.cache_data.clear()
+        st.experimental_rerun()
+
+# carrega dados (com cache)
 df_compras, df_vendas = carregar_dados()
 
 df_fifo, df_estoque = calcular_fifo(df_compras, df_vendas)
@@ -403,7 +411,6 @@ if not df_fifo_view.empty:
     df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
     df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_UNIT"].map(format_reais)
 
-    # ordenar colunas pra ficar mais bonitinho
     cols_ordem = ["DATA", "PRODUTO", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "CUSTO_UNIT", "LUCRO", "MES_ANO"]
     cols_ordem = [c for c in cols_ordem if c in df_fifo_view.columns]
 
@@ -412,11 +419,8 @@ if not df_fifo_view.empty:
         use_container_width=True
     )
 
-    # ============================================
-    # LEGENDA FIFO – EXEMPLO REAL
-    # ============================================
+    # LEGENDA FIFO
     st.markdown("### 📘 Como o FIFO é calculado (exemplo real)")
-
     st.markdown(
         f"""
 **Produto usado no exemplo:** `{prod_ex}`  
@@ -427,24 +431,19 @@ if not df_fifo_view.empty:
 - Custo unitário FIFO: **{custo_unit_ex}**
 - Lucro dessa venda: **{lucro_ex}**
 
-**O que o app faz por trás:**
+**Passo a passo:**
 
-1. Ele pega todas as **compras de `{prod_ex}` com STATUS = ENTREGUE**, na aba COMPRAS, **em ordem de data (da mais antiga pra mais nova)**.
-2. Essas compras viram “lotes” de estoque, cada um com:
-   - quantidade comprada
-   - custo unitário daquela compra
-3. Quando você registra essa venda de **{qtd_ex:.0f} unidade(s)**:
-   - o app vai consumindo primeiro o lote mais antigo,
+1. O app pega todas as **compras de `{prod_ex}` com STATUS = ENTREGUE**, na aba COMPRAS, em ordem de data (mais antigas primeiro).
+2. Cada compra vira um **lote de estoque** com quantidade e custo unitário daquela compra.
+3. Quando essa venda de **{qtd_ex:.0f} unidade(s)** acontece, o app:
+   - consome primeiro o lote mais antigo,
    - depois o próximo, e assim por diante,
-   - até completar as {qtd_ex:.0f} unidades.
-4. O **custo total FIFO** (**{custo_total_ex}**) é a soma dos custos de todos esses lotes que foram consumidos.
+   - até somar as {qtd_ex:.0f} unidades vendidas.
+4. O **custo total FIFO** (**{custo_total_ex}**) é a soma dos custos de todos esses lotes consumidos.
 5. O **custo unitário FIFO** (**{custo_unit_ex}**) é esse custo total dividido pela quantidade vendida.
-6. Por fim, o **lucro** (**{lucro_ex}**) é calculado como:
-   - lucro = valor total da venda (**{venda_ex}**) − custo total FIFO (**{custo_total_ex}**).
-
-Se você olhar essa linha na tabela de vendas detalhadas, o valor de **CUSTO UNIT** é justamente o custo médio de cada unidade **segundo a fila das compras (FIFO)**.
+6. O **lucro** (**{lucro_ex}**) é:  
+   **lucro = valor da venda ({venda_ex}) − custo total FIFO ({custo_total_ex})**.
         """
     )
-
 else:
     st.info("Nenhuma venda no período selecionado.")
