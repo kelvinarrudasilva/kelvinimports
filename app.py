@@ -554,10 +554,10 @@ with tab_dash:
 
     st.markdown("---")
 
-    # Gráfico mensal (sempre base completa)
+    # Gráfico mensal – APENAS ÚLTIMOS 3 MESES, COM TEXTO GRANDE E NEGRITO
     st.markdown(
         """
-<div class="section-title">📊 Faturamento nos últimos meses</div>
+<div class="section-title">📊 Faturamento nos últimos 3 meses</div>
 <div class="section-sub">Baseado em todas as vendas registradas.</div>
 """,
         unsafe_allow_html=True,
@@ -572,8 +572,9 @@ with tab_dash:
             .sum()
             .sort_values("MES_ANO")
         )
-        if len(resumo_mes) > 8:
-            resumo_mes = resumo_mes.tail(8)
+        # pega só os 3 últimos meses
+        if len(resumo_mes) > 3:
+            resumo_mes = resumo_mes.tail(3)
 
         resumo_mes["VALOR_TOTAL_FMT"] = resumo_mes["VALOR_TOTAL"].map(format_reais)
 
@@ -583,8 +584,13 @@ with tab_dash:
             y="VALOR_TOTAL",
             text="VALOR_TOTAL_FMT",
             labels={"MES_ANO": "Mês", "VALOR_TOTAL": "Faturamento"},
+            color_discrete_sequence=["#6366f1"],  # roxo elegante
         )
-        fig.update_traces(textposition="inside")
+        fig.update_traces(
+            textposition="inside",
+            texttemplate="<b>%{text}</b>",
+            textfont_size=18,
+        )
         fig.update_layout(
             height=380,
             yaxis_title="Faturamento (R$)",
@@ -835,7 +841,7 @@ with tab_search:
                 st.info("Sem histórico de vendas para esse produto.")
 
             st.markdown("---")
-            st.markdown("#### 💡 Leitura rápida")
+            st.markmarkdown("#### 💡 Leitura rápida")
             st.markdown(
                 f"""
 - Se o **custo médio FIFO** está grudando ou passando o **preço médio de venda**, o produto está no limite.
