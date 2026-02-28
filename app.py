@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px  # <--- NOVO: para o gráfico mensal
 
 st.set_page_config(page_title="📦 Dashboard FIFO – Loja Importados", layout="wide")
 
@@ -340,16 +341,40 @@ with tab_dash:
 
     st.markdown("---")
 
-    # -------- GRÁFICO: FATURAMENTO DIÁRIO --------
-    st.subheader("📊 Faturamento diário (período filtrado)")
-    if df_fifo_filt.empty:
-        st.info("Nenhuma venda no período selecionado.")
+    # -------- GRÁFICO: FATURAMENTO MENSAL (ÚLTIMOS MESES) --------
+    st.subheader("📊 Faturamento nos últimos meses")
+
+    df_mes = df_fifo.dropna(subset=["MES_ANO"]).copy()
+    if df_mes.empty:
+        st.info("Sem dados suficientes para montar o gráfico mensal.")
     else:
-        df_dia = df_fifo_filt.copy()
-        df_dia["DIA"] = df_dia["DATA"].dt.date
-        resumo_dia = df_dia.groupby("DIA", as_index=False)["VALOR_TOTAL"].sum().sort_values("DIA")
-        resumo_dia = resumo_dia.set_index("DIA")
-        st.line_chart(resumo_dia)
+        resumo_mes = (
+            df_mes.groupby("MES_ANO", as_index=False)["VALOR_TOTAL"]
+            .sum()
+            .sort_values("MES_ANO")
+        )
+        # pega só os últimos 6 meses para não ficar poluído
+        if len(resumo_mes) > 6:
+            resumo_mes = resumo_mes.tail(6)
+
+        resumo_mes["VALOR_TOTAL_FMT"] = resumo_mes["VALOR_TOTAL"].map(format_reais)
+
+        fig = px.bar(
+            resumo_mes,
+            x="MES_ANO",
+            y="VALOR_TOTAL",
+            text="VALOR_TOTAL_FMT",
+            labels={"MES_ANO": "Mês", "VALOR_TOTAL": "Faturamento"},
+            title=""
+        )
+        fig.update_traces(textposition="inside")
+        fig.update_layout(
+            yaxis_title="Faturamento (R$)",
+            xaxis_title="Mês",
+            uniformtext_minsize=10,
+            uniformtext_mode="hide"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     # -------- VENDAS DETALHADAS (MÊS FILTRADO) --------
     st.subheader("🧾 Vendas detalhadas (com custo FIFO) – período filtrado")
