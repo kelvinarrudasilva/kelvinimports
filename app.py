@@ -19,26 +19,43 @@ CUSTO_MAX_PLAUSIVEL = 500.0
 
 def parse_money(x):
     """
-    Converte 'R$ 20,70' ou '1,00' -> 20.70 (float).
-    Ignora números gigantes (ex: código de barras).
+    Converte valores da planilha para float em reais.
+
+    Exemplos:
+    - 'R$ 23,75'   -> 23.75
+    - '1.299,00'   -> 1299.00
+    - 237.55       -> 237.55  (já é número, não mexe)
+    - códigos de barras grandões (só dígitos, 12+ casas) -> 0.0
     """
+    # se já é número (float ou int), só converte direto
+    if isinstance(x, (int, float)):
+        if pd.isna(x):
+            return 0.0
+        return float(x)
+
     if pd.isna(x):
         return 0.0
 
     s = str(x).strip()
-    if s == "":
+    if s == "" or s.lower() == "nan":
         return 0.0
 
     # tira símbolo de moeda e espaços
     s = s.replace("R$", "").replace("r$", "").replace(" ", "")
 
-    # se for um número só de dígitos MUITO longo (12+), provável código de barras → não tratar como dinheiro
+    # se for praticamente só dígitos MUITO longos, trata como código de barras
     digitos = "".join(ch for ch in s if ch.isdigit())
-    if len(digitos) >= 12:
+    if len(digitos) >= 12 and ("," not in s and "." not in s):
         return 0.0
 
-    # formato BR: 1.234,56
-    s = s.replace(".", "").replace(",", ".")
+    # CASOS DE FORMATACÃO:
+    # 1) Tem ponto E vírgula -> padrão BR: 1.234,56  (ponto milhar, vírgula decimal)
+    if "." in s and "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    # 2) Só vírgula -> decimal BR: 23,75
+    elif "," in s:
+        s = s.replace(",", ".")
+    # 3) Só ponto -> provavelmente já é decimal de número interno: 237.55 (NÃO mexe)
 
     try:
         return float(s)
@@ -125,7 +142,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     compras.columns = [c.strip().upper() for c in compras.columns]
     vendas.columns = [c.strip().upper() for c in vendas.columns]
 
-    # Pela sua planilha (prints):
+    # Pela sua planilha:
     # COMPRAS: DATA | PRODUTO | STATUS | QUANTIDADE | CUSTO UNITÁRIO | CUSTO TOTAL | ...
     # VENDAS:  DATA | PRODUTO | QTD | VALOR VENDA | VALOR TOTAL | ...
 
@@ -351,7 +368,7 @@ if not df_estoque.empty:
     est_view["CUSTO_MEDIO_FIFO"] = est_view["CUSTO_MEDIO_FIFO"].map(format_reais)
     est_view["SALDO_QTD"] = est_view["SALDO_QTD"].astype(int)
     st.dataframe(
-        est_view.sort_values("SALDO_QTD", ascending=False),
+        est_view.sort_values("SALDO_QTD", descending=False),
         use_container_width=True
     )
 else:
