@@ -142,7 +142,6 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     compras.columns = [c.strip().upper() for c in compras.columns]
     vendas.columns = [c.strip().upper() for c in vendas.columns]
 
-    # Pela sua planilha:
     # COMPRAS: DATA | PRODUTO | STATUS | QUANTIDADE | CUSTO UNITÁRIO | CUSTO TOTAL | ...
     # VENDAS:  DATA | PRODUTO | QTD | VALOR VENDA | VALOR TOTAL | ...
 
@@ -368,7 +367,7 @@ if not df_estoque.empty:
     est_view["CUSTO_MEDIO_FIFO"] = est_view["CUSTO_MEDIO_FIFO"].map(format_reais)
     est_view["SALDO_QTD"] = est_view["SALDO_QTD"].astype(int)
     st.dataframe(
-        est_view.sort_values("SALDO_QTD", descending=False),
+        est_view.sort_values("SALDO_QTD", ascending=False),
         use_container_width=True
     )
 else:
