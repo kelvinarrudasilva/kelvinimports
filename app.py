@@ -431,7 +431,7 @@ with tab_dash:
     else:
         df_fifo_filt = df_fifo[df_fifo["MES_ANO"] == mes_selecionado].copy()
 
-    # KPIs
+    # ---------- KPI PRINCIPAIS (VENDAS/LUCRO) ----------
     qtd_total = df_fifo_filt["QTD"].sum()
     total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
     total_custo = df_fifo_filt["CUSTO_TOTAL"].sum()
@@ -504,6 +504,53 @@ with tab_dash:
 """,
             unsafe_allow_html=True,
         )
+
+    # ---------- NOVOS KPIs: ESTOQUE E COMPRAS NO PERÍODO ----------
+    # Valor total do estoque (FIFO)
+    if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
+        valor_estoque_total = df_estoque["VALOR_ESTOQUE"].sum()
+    else:
+        valor_estoque_total = 0.0
+
+    # Total de compras no período (STATUS = ENTREGUE)
+    dfc = df_compras.copy()
+    dfc.columns = [c.strip().upper() for c in dfc.columns]
+
+    if "DATA" in dfc.columns:
+        dfc["DATA"] = pd.to_datetime(dfc["DATA"], errors="coerce", dayfirst=True)
+        dfc["MES_ANO"] = dfc["DATA"].dt.strftime("%Y-%m")
+    if "STATUS" in dfc.columns:
+        dfc = dfc[dfc["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
+
+    if "QUANTIDADE" in dfc.columns:
+        dfc["QUANTIDADE"] = dfc["QUANTIDADE"].apply(parse_money).astype(float)
+    if "CUSTO UNITÁRIO" in dfc.columns:
+        dfc["CUSTO UNITÁRIO"] = dfc["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
+
+    dfc["CUSTO_TOTAL"] = dfc.get("QUANTIDADE", 0) * dfc.get("CUSTO UNITÁRIO", 0)
+
+    if mes_selecionado == "Todos":
+        total_compras_periodo = dfc["CUSTO_TOTAL"].sum()
+    else:
+        total_compras_periodo = dfc.loc[dfc["MES_ANO"] == mes_selecionado, "CUSTO_TOTAL"].sum()
+
+    st.markdown(
+        f"""
+<div class="kpi-row">
+  <div class="kpi-card">
+    <div class="kpi-label">Valor do estoque (FIFO)</div>
+    <div class="kpi-value">{format_reais(valor_estoque_total)}</div>
+    <div class="kpi-pill">Soma do valor em estoque de todos os produtos (custo FIFO)</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Compras no período</div>
+    <div class="kpi-value">{format_reais(total_compras_periodo)}</div>
+    <div class="kpi-pill">Somatório de compras com STATUS = ENTREGUE no filtro</div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
     st.markdown("---")
 
