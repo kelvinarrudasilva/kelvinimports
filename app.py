@@ -292,7 +292,7 @@ col_btn, _ = st.columns([1, 3])
 with col_btn:
     if st.button("🔄 Atualizar dados da planilha"):
         st.cache_data.clear()
-        st.experimental_rerun()
+        st.rerun()   # <<<<<< AQUI TROQUEI experimental_rerun() POR rerun()
 
 # carrega dados (com cache)
 df_compras, df_vendas = carregar_dados()
