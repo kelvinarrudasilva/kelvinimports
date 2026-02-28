@@ -555,6 +555,79 @@ with tab_dash:
 
     st.markdown("---")
 
+    # 🔥 Top produtos mais vendidos (com FIFO e estoque atual)
+    st.markdown(
+        """
+<div class="section-title">🥇 Produtos mais vendidos</div>
+<div class="section-sub">Custo médio FIFO, preço médio de venda, lucro total e estoque atual do período selecionado.</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    if df_fifo_filt.empty:
+        st.info("Nenhuma venda no período selecionado para montar o ranking de produtos.")
+    else:
+        top_prod = (
+            df_fifo_filt.groupby("PRODUTO", as_index=False)
+            .agg(
+                QTD_VENDIDA=("QTD", "sum"),
+                RECEITA=("VALOR_TOTAL", "sum"),
+                CUSTO=("CUSTO_TOTAL", "sum"),
+                LUCRO=("LUCRO", "sum"),
+            )
+        )
+
+        # unir com estoque FIFO atual
+        if not df_estoque.empty:
+            top_prod = top_prod.merge(
+                df_estoque[["PRODUTO", "SALDO_QTD"]],
+                on="PRODUTO",
+                how="left",
+            )
+        else:
+            top_prod["SALDO_QTD"] = 0
+
+        top_prod["SALDO_QTD"] = top_prod["SALDO_QTD"].fillna(0)
+
+        # custo / preço médios por unidade
+        top_prod["CUSTO_MEDIO_FIFO"] = top_prod["CUSTO"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
+        top_prod["PRECO_MEDIO_VENDA"] = top_prod["RECEITA"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
+
+        # ordena pelos mais vendidos
+        top_view = top_prod.sort_values("QTD_VENDIDA", ascending=False).head(10).copy()
+
+        # formatar tudo bonitinho em reais
+        top_view["CUSTO_MEDIO_FIFO_FMT"] = top_view["CUSTO_MEDIO_FIFO"].map(format_reais)
+        top_view["PRECO_MEDIO_VENDA_FMT"] = top_view["PRECO_MEDIO_VENDA"].map(format_reais)
+        top_view["LUCRO_FMT"] = top_view["LUCRO"].map(format_reais)
+        top_view["RECEITA_FMT"] = top_view["RECEITA"].map(format_reais)
+
+        tabela_top = top_view[
+            [
+                "PRODUTO",
+                "QTD_VENDIDA",
+                "SALDO_QTD",
+                "CUSTO_MEDIO_FIFO_FMT",
+                "PRECO_MEDIO_VENDA_FMT",
+                "RECEITA_FMT",
+                "LUCRO_FMT",
+            ]
+        ].rename(
+            columns={
+                "PRODUTO": "Produto",
+                "QTD_VENDIDA": "Qtd vendida",
+                "SALDO_QTD": "Estoque atual",
+                "CUSTO_MEDIO_FIFO_FMT": "Custo médio FIFO (unid.)",
+                "PRECO_MEDIO_VENDA_FMT": "Preço médio venda (unid.)",
+                "RECEITA_FMT": "Receita total",
+                "LUCRO_FMT": "Lucro total (FIFO)",
+            }
+        )
+
+        st.dataframe(tabela_top, use_container_width=True)
+
+    st.markdown("---")
+
     # -------- GRÁFICO: MÊS ATUAL + 2 ANTERIORES --------
     st.markdown(
         """
