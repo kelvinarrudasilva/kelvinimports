@@ -148,7 +148,7 @@ html, body, [class*="css"] {
   margin-bottom:8px;
 }
 
-/* ESTA ERA A CAIXA QUE VOCÊ VIA – AGORA FICA TRANSPARENTE */
+/* CARD-SOFT (DESLIGADO VISUALMENTE) */
 .card-soft {
   background: transparent;
   border-radius: 0;
@@ -578,6 +578,7 @@ with tab_dash:
             unsafe_allow_html=True,
         )
 
+    # Valor de estoque total (FIFO) e compras no período
     if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
         valor_estoque_total = df_estoque["VALOR_ESTOQUE"].sum()
     else:
@@ -656,7 +657,6 @@ with tab_dash:
             top_prod["SALDO_QTD"] = 0
 
         top_prod["SALDO_QTD"] = top_prod["SALDO_QTD"].fillna(0)
-
         top_prod["CUSTO_MEDIO_FIFO"] = top_prod["CUSTO"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
         top_prod["PRECO_MEDIO_VENDA"] = top_prod["RECEITA"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
 
@@ -723,6 +723,76 @@ with tab_dash:
         )
 
         st.dataframe(tabela_top, use_container_width=True)
+
+        # ----------------------------------------
+        # INDICADOR DE PRODUTOS ÂNCORA
+        # ----------------------------------------
+        st.markdown(
+            """
+<div class="section-title">🧱 Produtos âncora da loja</div>
+<div class="section-sub">
+Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        # margem em %
+        top_prod["MARGEM_PCT"] = (top_prod["LUCRO"] / top_prod["RECEITA"].replace(0, pd.NA)) * 100
+
+        # critérios (ajustáveis se quiser depois)
+        ANC_MIN_QTD = 10        # mínimo de unidades vendidas no período
+        ANC_MIN_RECEITA = 500   # receita mínima no período
+        ANC_MIN_MARGEM = 20.0   # margem mínima em %
+
+        ancora = top_prod[
+            (top_prod["QTD_VENDIDA"] >= ANC_MIN_QTD)
+            & (top_prod["RECEITA"] >= ANC_MIN_RECEITA)
+            & (top_prod["MARGEM_PCT"] >= ANC_MIN_MARGEM)
+        ].copy()
+
+        if ancora.empty:
+            st.info(
+                "Nenhum produto bateu todos os critérios de âncora nesse período "
+                f"(≥ {ANC_MIN_QTD} un, ≥ {format_reais(ANC_MIN_RECEITA)} em vendas e margem ≥ {ANC_MIN_MARGEM:.0f}%)."
+            )
+        else:
+            ancora["RECEITA_FMT"] = ancora["RECEITA"].map(format_reais)
+            ancora["LUCRO_FMT"] = ancora["LUCRO"].map(format_reais)
+            ancora["MARGEM_PCT_FMT"] = ancora["MARGEM_PCT"].map(lambda x: f"{x:.1f}%")
+
+            tabela_ancora = ancora.sort_values("RECEITA", ascending=False)[
+                [
+                    "PRODUTO",
+                    "QTD_VENDIDA",
+                    "SALDO_QTD",
+                    "RECEITA_FMT",
+                    "LUCRO_FMT",
+                    "MARGEM_PCT_FMT",
+                ]
+            ].rename(
+                columns={
+                    "PRODUTO": "Produto",
+                    "QTD_VENDIDA": "Qtd vendida",
+                    "SALDO_QTD": "Estoque atual",
+                    "RECEITA_FMT": "Receita período",
+                    "LUCRO_FMT": "Lucro período",
+                    "MARGEM_PCT_FMT": "Margem (%)",
+                }
+            )
+
+            st.dataframe(tabela_ancora, use_container_width=True)
+
+            st.markdown(
+                """
+- Esses são os itens que **mais carregam a loja** em volume + margem.
+- Ideias:
+  - destaque em anúncios,
+  - vitrine,
+  - kits,
+  - e cuidado para não deixar zerar estoque.
+                """
+            )
 
     st.markdown("---")
 
@@ -1063,7 +1133,7 @@ with tab_search:
             st.info("Selecione um produto para ver os detalhes baseados no FIFO.")
 
 # --------------------------------------------------
-# TAB 3 – ALERTAS
+# TAB 3 – ALERTAS + SAÚDE DA LOJA
 # --------------------------------------------------
 with tab_alerts:
     st.markdown(
@@ -1081,6 +1151,7 @@ with tab_alerts:
         LIM_ESTOQUE_BAIXO = st.slider("Considerar estoque baixo abaixo de (unid.)", 1, 20, 3, 1)
         LIM_DIAS_PARADO = st.slider("Parado há mais de (dias)", 7, 180, 30, 1)
 
+        # Base para "vendendo bem e com pouco estoque"
         vendas_tot = (
             df_fifo.groupby("PRODUTO", as_index=False)["QTD"]
             .sum()
@@ -1109,6 +1180,7 @@ with tab_alerts:
                     ["PRODUTO", "SALDO_QTD", "QTD_VENDIDA_TOTAL", "VALOR_ESTOQUE_FMT"]
                 ].rename(
                     columns={
+                        "PRODUTO": "Produto",
                         "SALDO_QTD": "Estoque atual",
                         "QTD_VENDIDA_TOTAL": "Qtd vendida (histórico)",
                         "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)",
@@ -1174,15 +1246,15 @@ with tab_alerts:
 
         parado["DIAS_PARADO"] = parado.apply(dias_parado, axis=1)
 
-        parado_alerta = parado[
+        parado_filtrado = parado[
             (parado["DIAS_PARADO"].notna())
             & (parado["DIAS_PARADO"] >= LIM_DIAS_PARADO)
         ].copy()
 
-        if parado_alerta.empty:
+        if parado_filtrado.empty:
             st.info(f"Nenhum produto com estoque parado há mais de {LIM_DIAS_PARADO} dias.")
         else:
-            df_p = parado_alerta.copy()
+            df_p = parado_filtrado.copy()
             if "ULT_VENDA" in df_p.columns:
                 df_p["ULT_VENDA_FMT"] = df_p["ULT_VENDA"].dt.strftime("%d/%m/%Y")
             else:
@@ -1207,6 +1279,7 @@ with tab_alerts:
                     ]
                 ].rename(
                     columns={
+                        "PRODUTO": "Produto",
                         "SALDO_QTD": "Estoque atual",
                         "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)",
                         "DIAS_PARADO": "Dias parado",
@@ -1216,6 +1289,102 @@ with tab_alerts:
                 ),
                 use_container_width=True,
             )
+
+        # ----------------------------------------
+        # PAINEL SAÚDE DA LOJA
+        # ----------------------------------------
+        st.markdown("---")
+        st.markdown(
+            """
+<div class="section-title">🩺 Saúde da loja</div>
+<div class="section-sub">
+Indicadores de concentração de vendas, estoque parado e risco de dependência em poucos produtos.
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        # % do valor do estoque que está parado >= LIM_DIAS_PARADO
+        valor_estoque_total_alert = df_estoque["VALOR_ESTOQUE"].sum() if "VALOR_ESTOQUE" in df_estoque.columns else 0.0
+        valor_estoque_parado = parado_filtrado["VALOR_ESTOQUE"].sum() if "VALOR_ESTOQUE" in parado_filtrado.columns else 0.0
+        pct_estoque_parado = (
+            (valor_estoque_parado / valor_estoque_total_alert) * 100
+            if valor_estoque_total_alert > 0
+            else 0.0
+        )
+
+        # % da receita total concentrada nos 5 produtos com maior faturamento (histórico)
+        receita_por_prod = (
+            df_fifo.groupby("PRODUTO", as_index=False)["VALOR_TOTAL"]
+            .sum()
+            .rename(columns={"VALOR_TOTAL": "RECEITA_TOTAL"})
+        )
+        receita_total_geral = receita_por_prod["RECEITA_TOTAL"].sum()
+        top5_receita = (
+            receita_por_prod.sort_values("RECEITA_TOTAL", ascending=False)
+            .head(5)["RECEITA_TOTAL"]
+            .sum()
+        )
+        pct_receita_top5 = (
+            (top5_receita / receita_total_geral) * 100 if receita_total_geral > 0 else 0.0
+        )
+
+        # % do valor do estoque concentrado em 5 produtos com maior valor de estoque
+        if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
+            top5_estoque = (
+                df_estoque.sort_values("VALOR_ESTOQUE", ascending=False)
+                .head(5)["VALOR_ESTOQUE"]
+                .sum()
+            )
+            pct_estoque_top5 = (
+                (top5_estoque / valor_estoque_total_alert) * 100
+                if valor_estoque_total_alert > 0
+                else 0.0
+            )
+        else:
+            pct_estoque_top5 = 0.0
+
+        h1, h2, h3 = st.columns(3)
+        with h1:
+            st.markdown(
+                f"""
+<div class="kpi-card">
+  <div class="kpi-label">Estoque parado</div>
+  <div class="kpi-value">{pct_estoque_parado:,.1f}%</div>
+  <div class="kpi-pill">
+    Valor em estoque parado ≥ {LIM_DIAS_PARADO} dias / estoque total
+  </div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+        with h2:
+            st.markdown(
+                f"""
+<div class="kpi-card">
+  <div class="kpi-label">Vendas concentradas</div>
+  <div class="kpi-value">{pct_receita_top5:,.1f}%</div>
+  <div class="kpi-pill">
+    Receita vinda dos 5 produtos que mais faturam (histórico)
+  </div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+        with h3:
+            st.markdown(
+                f"""
+<div class="kpi-card">
+  <div class="kpi-label">Estoque concentrado</div>
+  <div class="kpi-value">{pct_estoque_top5:,.1f}%</div>
+  <div class="kpi-pill">
+    Valor do estoque nos 5 produtos mais caros em estoque
+  </div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+
         st.markdown(
             f"*Critérios atuais:* vende bem ≥ **{LIM_VENDE_BEM} unid.**, estoque baixo ≤ **{LIM_ESTOQUE_BAIXO} unid.**, parado ≥ **{LIM_DIAS_PARADO} dias**."
         )
