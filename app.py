@@ -352,7 +352,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
                 "QTD": qtd_venda,
                 "VALOR_TOTAL": valor_total,
                 "CUSTO_TOTAL": custo_total,
-                # NOVO: traz da aba VENDAS
+                # traz da aba VENDAS
                 "CLIENTE": row.get("CLIENTE"),
                 "STATUS": row.get("STATUS"),
             }
@@ -610,8 +610,8 @@ with tab_dash:
             fig.update_traces(
                 textposition="inside",
                 texttemplate="<b>%{text}</b>",
-                textfont_size=14,               # um pouco menor
-                insidetextanchor="middle",      # centraliza no meio da barra
+                textfont_size=14,
+                insidetextanchor="middle",
             )
             fig.update_layout(
                 height=380,
@@ -660,7 +660,6 @@ with tab_dash:
         df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
         df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_UNIT"].map(format_reais)
 
-        # ORDEM DAS COLUNAS – agora com CLIENTE e STATUS
         cols_ordem = [
             "DATA",
             "PRODUTO",
@@ -1021,10 +1020,8 @@ with tab_alerts:
             st.info(f"Nenhum produto com estoque parado há mais de {LIM_DIAS_PARADO} dias.")
         else:
             df_p = parado_alerta.copy()
-          if "ULT_VENDA" in df_p.columns:
-    df_p["ULT_VENDA_FMT"] = df_p["ULT_VENDA"].dt.strftime("%d/%m/%Y")
-else:
-    df_p["ULT_VENDA_FMT"] = ""
+            if "ULT_VENDA" in df_p.columns:
+                df_p["ULT_VENDA_FMT"] = df_p["ULT_VENDA"].dt.strftime("%d/%m/%Y")
             else:
                 df_p["ULT_VENDA_FMT"] = ""
             if "ULT_COMPRA" in df_p.columns:
