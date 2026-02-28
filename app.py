@@ -11,84 +11,152 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# URL da sua planilha (gravado)
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
 
 # custo unitário máximo plausível (acima disso é dado zoado)
 CUSTO_MAX_PLAUSIVEL = 500.0
 
 # --------------------------------------------------
-# ESTILO GLOBAL (CSS)
+# ESTILO GLOBAL (CSS) - versão mais "glass" e colorida
 # --------------------------------------------------
 GLOBAL_CSS = """
 <style>
 :root{
   --bg:#020617;
-  --bg-card:rgba(15,23,42,0.96);
-  --accent:#6366f1;
-  --accent-soft:#4f46e5;
+  --bg-elevated:#020617;
+  --bg-card:rgba(15,23,42,0.90);
+  --bg-card-soft:rgba(15,23,42,0.78);
+  --border-soft:rgba(148,163,184,0.25);
+  --accent:#22d3ee;
+  --accent-soft:#0ea5e9;
   --accent-soft2:#a855f7;
+  --accent-warm:#f97316;
   --text:#e5e7eb;
   --muted:#9ca3af;
 }
-html, body, [class*="css"]  {
+
+html, body, [class*="css"] {
   background-color: var(--bg) !important;
   color: var(--text) !important;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
 }
+
 .stApp {
-  background: radial-gradient(circle at top left, #1e293b 0, #020617 55%);
+  background:
+    radial-gradient(circle at top left, rgba(56,189,248,0.18) 0, transparent 50%),
+    radial-gradient(circle at top right, rgba(244,114,182,0.18) 0, transparent 55%),
+    radial-gradient(circle at bottom, rgba(15,23,42,0.8) 0, #020617 70%);
 }
+
+/* TOP BAR */
 .topbar {
   display:flex;
   align-items:center;
-  gap:14px;
-  padding:12px 18px;
-  border-radius:18px;
-  background: linear-gradient(135deg, rgba(79,70,229,0.20), rgba(15,23,42,0.96));
-  border:1px solid rgba(148,163,184,0.2);
-  margin-bottom:18px;
+  justify-content:space-between;
+  gap:18px;
+  padding:16px 20px;
+  border-radius:22px;
+  background: radial-gradient(circle at top left, rgba(56,189,248,0.28), rgba(15,23,42,0.96));
+  border:1px solid rgba(148,163,184,0.55);
+  box-shadow:0 26px 70px rgba(15,23,42,0.95);
+  margin-bottom:22px;
+  position:relative;
+  overflow:hidden;
+}
+.topbar::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background:radial-gradient(circle at 120% -10%, rgba(248,250,252,0.32), transparent 55%);
+  opacity:0.45;
+  mix-blend-mode:soft-light;
+  pointer-events:none;
 }
 .logo-pill {
-  width:52px;
-  height:52px;
-  border-radius:16px;
-  background: conic-gradient(from 180deg, #6366f1, #8b5cf6, #ec4899, #22c55e, #6366f1);
+  width:58px;
+  height:58px;
+  border-radius:20px;
+  background:
+    conic-gradient(from 210deg, #22d3ee, #a855f7, #f97316, #22d3ee);
   display:flex;
   align-items:center;
   justify-content:center;
   color:white;
   font-weight:900;
-  font-size:22px;
-  box-shadow:0 14px 35px rgba(15,23,42,0.75);
+  font-size:24px;
+  box-shadow:0 18px 45px rgba(15,23,42,0.85);
 }
 .top-title {
-  font-size:20px;
+  font-size:22px;
   font-weight:800;
-  letter-spacing:-0.03em;
+  letter-spacing:-0.04em;
 }
 .top-subtitle {
   font-size:12px;
   color:var(--muted);
 }
+.top-right-badge {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:6px;
+  font-size:11px;
+}
+.top-chip {
+  padding:5px 11px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,0.7);
+  background:rgba(15,23,42,0.9);
+}
+.top-chip span {
+  color:#a5b4fc;
+}
+
+/* KPI CARDS */
 .kpi-row {
   display:flex;
   gap:12px;
   flex-wrap:wrap;
-  margin-bottom:8px;
+  margin-bottom:10px;
 }
 .kpi-card {
   flex:1 1 180px;
   min-width:0;
   padding:14px 16px;
-  border-radius:16px;
-  background:var(--bg-card);
-  border:1px solid rgba(148,163,184,0.22);
-  box-shadow:0 18px 45px rgba(15,23,42,0.75);
+  border-radius:18px;
+  background:var(--bg-card-soft);
+  border:1px solid var(--border-soft);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+  box-shadow:0 20px 50px rgba(15,23,42,0.9);
+  position:relative;
+  overflow:hidden;
+  transition:transform .12s ease-out, box-shadow .12s ease-out, border-color .12s ease-out, background .12s ease-out;
+}
+.kpi-card::before{
+  content:"";
+  position:absolute;
+  inset:-60%;
+  background:conic-gradient(from 200deg, rgba(34,211,238,0.15), rgba(244,114,182,0.14), transparent 60%);
+  opacity:0;
+  transition:opacity .18s ease-out;
+  pointer-events:none;
+}
+.kpi-card:hover{
+  transform:translateY(-2px);
+  box-shadow:0 26px 64px rgba(15,23,42,0.95);
+  border-color:rgba(56,189,248,0.9);
+  background:rgba(15,23,42,0.92);
+}
+.kpi-card:hover::before{
+  opacity:0.28;
 }
 .kpi-label {
-  font-size:12px;
+  font-size:11px;
   text-transform:uppercase;
-  letter-spacing:0.12em;
+  letter-spacing:0.14em;
   color:var(--muted);
   margin-bottom:4px;
 }
@@ -99,24 +167,35 @@ html, body, [class*="css"]  {
 .kpi-pill {
   font-size:11px;
   color:var(--muted);
-  margin-top:2px;
+  margin-top:4px;
 }
+
+/* SEÇÕES */
 .section-title {
   font-size:16px;
   font-weight:700;
-  margin-top:8px;
+  margin-top:2px;
+  margin-bottom:2px;
 }
 .section-sub {
   font-size:12px;
   color:var(--muted);
-  margin-bottom:4px;
+  margin-bottom:8px;
 }
+
+/* CARDS GENERICOS */
 .card-soft {
-  background:var(--bg-card);
-  border-radius:16px;
+  background:var(--bg-card-soft);
+  border-radius:18px;
   padding:14px 16px;
-  border:1px solid rgba(148,163,184,0.25);
+  border:1px solid var(--border-soft);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  box-shadow:0 18px 45px rgba(15,23,42,0.85);
+  margin-bottom:14px;
 }
+
+/* BADGES */
 .badge-soft {
   display:inline-flex;
   align-items:center;
@@ -124,21 +203,55 @@ html, body, [class*="css"]  {
   padding:2px 8px;
   border-radius:999px;
   font-size:11px;
-  background:rgba(37,99,235,0.15);
+  background:rgba(37,99,235,0.18);
   color:#bfdbfe;
 }
 .badge-red {
-  background:rgba(239,68,68,0.18);
+  background:rgba(239,68,68,0.22);
   color:#fecaca;
 }
 .badge-yellow {
-  background:rgba(234,179,8,0.18);
+  background:rgba(234,179,8,0.22);
   color:#facc15;
 }
 .badge-green {
-  background:rgba(34,197,94,0.18);
+  background:rgba(34,197,94,0.22);
   color:#bbf7d0;
 }
+
+/* TABELAS */
+.stDataFrame thead tr th {
+  background:linear-gradient(90deg, rgba(148,163,184,0.2), rgba(56,189,248,0.12)) !important;
+  color:#e5e7eb !important;
+  font-size:11px !important;
+  text-transform:uppercase;
+}
+.stDataFrame tbody tr:nth-child(odd) {
+  background-color:rgba(15,23,42,0.8);
+}
+.stDataFrame tbody tr:nth-child(even) {
+  background-color:rgba(15,23,42,0.92);
+}
+
+/* TABS */
+.stTabs [data-baseweb="tab-list"] {
+  gap: 4px;
+}
+.stTabs [data-baseweb="tab"] {
+  padding: 4px 10px;
+  border-radius:999px;
+  background:rgba(15,23,42,0.85);
+  color:#9ca3af;
+  border:1px solid transparent;
+}
+.stTabs [aria-selected="true"] {
+  background:radial-gradient(circle at top left, rgba(34,211,238,0.45), rgba(56,189,248,0.7));
+  color:#f9fafb !important;
+  border-color:rgba(59,130,246,0.9);
+}
+
+/* PEQUENOS AJUSTES */
+hr { border-color:rgba(51,65,85,0.9) !important; }
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
@@ -149,10 +262,16 @@ st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.markdown(
     """
 <div class="topbar">
-  <div class="logo-pill">LI</div>
-  <div>
-    <div class="top-title">Loja Importados – Painel FIFO</div>
-    <div class="top-subtitle">Controle real de estoque, custo e lucro por produto, direto da sua planilha.</div>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <div class="logo-pill">LI</div>
+    <div>
+      <div class="top-title">Loja Importados – Painel FIFO</div>
+      <div class="top-subtitle">Visão real de estoque, custo e lucro por produto. Menos achismo, mais dado.</div>
+    </div>
+  </div>
+  <div class="top-right-badge">
+    <div class="top-chip">📂 Conectado à planilha <span>Google Sheets</span></div>
+    <div style="opacity:0.8;">Modo: <b>FIFO</b> • Base: compras ENTREGUE</div>
   </div>
 </div>
 """,
@@ -180,7 +299,6 @@ def parse_money(x):
 
     digits = "".join(ch for ch in s if ch.isdigit())
     if len(digits) >= 12 and ("," not in s and "." not in s):
-        # provavelmente código de barras
         return 0.0
 
     if "." in s and "," in s:
@@ -225,10 +343,8 @@ def limpar_aba(xls, nome_aba):
     linha_header = detectar_linha_cabecalho(df_raw, must_have)
 
     if linha_header is None:
-        st.error(
-            f"Não encontrei cabeçalho claro na aba {nome_aba}. "
-            f"Primeiras linhas lidas:\n{df_raw.head(5)}"
-        )
+        linha_header = 0
+
     cabecalho = df_raw.iloc[linha_header]
     df = df_raw.iloc[linha_header + 1 :].copy()
     df.columns = [str(c).strip().upper() for c in cabecalho]
@@ -274,19 +390,16 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
         )
         st.stop()
 
-    # Só compras ENTREGUE
     compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
     if compras.empty:
         st.warning("Nenhuma compra com STATUS = ENTREGUE encontrada.")
         return pd.DataFrame(), pd.DataFrame()
 
-    # Datas
     compras["DATA"] = pd.to_datetime(compras["DATA"], errors="coerce", dayfirst=True)
     vendas["DATA"] = pd.to_datetime(vendas["DATA"], errors="coerce", dayfirst=True)
     compras = compras.sort_values("DATA")
     vendas = vendas.sort_values("DATA")
 
-    # COMPRAS numéricas
     compras["QUANTIDADE"] = compras["QUANTIDADE"].apply(parse_money).astype(float)
     compras["CUSTO UNITÁRIO"] = compras["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
     compras["CUSTO TOTAL"] = compras["QUANTIDADE"] * compras["CUSTO UNITÁRIO"]
@@ -302,12 +415,10 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
         st.warning("Todas as linhas de COMPRAS ficaram inválidas após o filtro de custo.")
         return pd.DataFrame(), pd.DataFrame()
 
-    # VENDAS numéricas
     vendas["QTD"] = vendas["QTD"].apply(parse_money).astype(float)
     vendas["VALOR TOTAL"] = vendas["VALOR TOTAL"].apply(parse_money).astype(float)
 
-    # Montar lotes FIFO
-    estoque = {}  # produto -> [ {qtd, custo}, ... ]
+    estoque = {}
     for _, row in compras.iterrows():
         produto = str(row["PRODUTO"])
         qtd = float(row["QUANTIDADE"])
@@ -319,7 +430,6 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
             estoque[produto] = []
         estoque[produto].append({"qtd": qtd, "custo": custo_unit})
 
-    # Processar vendas
     registros_venda = []
     for _, row in vendas.iterrows():
         produto = str(row["PRODUTO"])
@@ -352,7 +462,6 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
                 "QTD": qtd_venda,
                 "VALOR_TOTAL": valor_total,
                 "CUSTO_TOTAL": custo_total,
-                # traz da aba VENDAS
                 "CLIENTE": row.get("CLIENTE"),
                 "STATUS": row.get("STATUS"),
             }
@@ -361,7 +470,6 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     df_fifo = pd.DataFrame(registros_venda)
     df_fifo["CUSTO_UNIT"] = df_fifo["CUSTO_TOTAL"] / df_fifo["QTD"].replace(0, pd.NA)
 
-    # sanity check nos custos calculados
     mask_insano = df_fifo["CUSTO_UNIT"] > CUSTO_MAX_PLAUSIVEL
     df_fifo.loc[mask_insano, "CUSTO_TOTAL"] = 0.0
     df_fifo.loc[mask_insano, "CUSTO_UNIT"] = 0.0
@@ -369,7 +477,6 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     df_fifo["LUCRO"] = df_fifo["VALOR_TOTAL"] - df_fifo["CUSTO_TOTAL"]
     df_fifo["MES_ANO"] = df_fifo["DATA"].dt.strftime("%Y-%m")
 
-    # Estoque atual FIFO
     estoque_reg = []
     for produto, lotes in estoque.items():
         saldo = sum(l["qtd"] for l in lotes)
@@ -417,7 +524,8 @@ tab_dash, tab_search, tab_alerts = st.tabs(
 # TAB 1 – DASHBOARD
 # --------------------------------------------------
 with tab_dash:
-    # filtro mês (pra tabela e KPIs)
+    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
+
     meses = ["Todos"]
     meses_disp = sorted(df_fifo["MES_ANO"].dropna().unique().tolist(), reverse=True)
     meses += meses_disp
@@ -432,14 +540,6 @@ with tab_dash:
     else:
         df_fifo_filt = df_fifo[df_fifo["MES_ANO"] == mes_selecionado].copy()
 
-    # ---------- KPI PRINCIPAIS (VENDAS/LUCRO) ----------
-    qtd_total = df_fifo_filt["QTD"].sum()
-    total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
-    total_custo = df_fifo_filt["CUSTO_TOTAL"].sum()
-    total_lucro = df_fifo_filt["LUCRO"].sum()
-    ticket_medio = total_vendido / qtd_total if qtd_total else 0.0
-    num_vendas = len(df_fifo_filt)
-
     st.markdown(
         """
 <div class="section-title">Visão geral do período selecionado</div>
@@ -447,6 +547,13 @@ with tab_dash:
 """,
         unsafe_allow_html=True,
     )
+
+    qtd_total = df_fifo_filt["QTD"].sum()
+    total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
+    total_custo = df_fifo_filt["CUSTO_TOTAL"].sum()
+    total_lucro = df_fifo_filt["LUCRO"].sum()
+    ticket_medio = total_vendido / qtd_total if qtd_total else 0.0
+    num_vendas = len(df_fifo_filt)
 
     k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
@@ -506,14 +613,11 @@ with tab_dash:
             unsafe_allow_html=True,
         )
 
-    # ---------- KPIs: ESTOQUE E COMPRAS NO PERÍODO ----------
-    # Valor total do estoque (FIFO)
     if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
         valor_estoque_total = df_estoque["VALOR_ESTOQUE"].sum()
     else:
         valor_estoque_total = 0.0
 
-    # Total de compras no período (STATUS = ENTREGUE)
     dfc = df_compras.copy()
     dfc.columns = [c.strip().upper() for c in dfc.columns]
 
@@ -553,9 +657,12 @@ with tab_dash:
         unsafe_allow_html=True,
     )
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown("---")
 
-    # 🔥 Top produtos mais vendidos (com FIFO e estoque atual) – gráfico top 6
+    # Top produtos mais vendidos
+    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="section-title">🥇 Produtos mais vendidos</div>
@@ -577,7 +684,6 @@ with tab_dash:
             )
         )
 
-        # unir com estoque FIFO atual
         if not df_estoque.empty:
             top_prod = top_prod.merge(
                 df_estoque[["PRODUTO", "SALDO_QTD"]],
@@ -589,14 +695,10 @@ with tab_dash:
 
         top_prod["SALDO_QTD"] = top_prod["SALDO_QTD"].fillna(0)
 
-        # custo / preço médios por unidade
         top_prod["CUSTO_MEDIO_FIFO"] = top_prod["CUSTO"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
         top_prod["PRECO_MEDIO_VENDA"] = top_prod["RECEITA"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
 
-        # pega só os 6 mais vendidos
         top_view = top_prod.sort_values("QTD_VENDIDA", ascending=False).head(6).copy()
-
-        # label com quantidade + receita em reais
         top_view["LABEL"] = top_view.apply(
             lambda r: f"{int(r['QTD_VENDIDA'])} un\n{format_reais(r['RECEITA'])}",
             axis=1,
@@ -609,7 +711,7 @@ with tab_dash:
             text="LABEL",
             labels={"PRODUTO": "Produto", "QTD_VENDIDA": "Qtd vendida"},
             color="QTD_VENDIDA",
-            color_continuous_scale=["#6366f1", "#a855f7", "#f97316"],
+            color_continuous_scale=["#22d3ee", "#0ea5e9", "#a855f7"],
         )
         fig_top.update_traces(
             textposition="inside",
@@ -619,7 +721,7 @@ with tab_dash:
         )
         fig_top.update_layout(
             height=380,
-            plot_bgcolor="rgba(15,23,42,0.85)",
+            plot_bgcolor="rgba(15,23,42,0.92)",
             paper_bgcolor="rgba(0,0,0,0)",
             font=dict(
                 family="Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif",
@@ -631,7 +733,6 @@ with tab_dash:
         )
         st.plotly_chart(fig_top, use_container_width=True)
 
-        # Tabela resumo
         top_view["CUSTO_MEDIO_FIFO_FMT"] = top_view["CUSTO_MEDIO_FIFO"].map(format_reais)
         top_view["PRECO_MEDIO_VENDA_FMT"] = top_view["PRECO_MEDIO_VENDA"].map(format_reais)
         top_view["LUCRO_FMT"] = top_view["LUCRO"].map(format_reais)
@@ -660,14 +761,16 @@ with tab_dash:
         )
 
         st.dataframe(tabela_top, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # -------- GRÁFICO: MÊS ATUAL + 2 ANTERIORES --------
+    # Gráfico mensal (mês atual + 2 anteriores)
+    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="section-title">📊 Faturamento – mês atual e 2 anteriores</div>
-<div class="section-sub">Valores em real dentro das colunas, destaque para o mês atual.</div>
+<div class="section-sub">Valores em real dentro das colunas, com o mês atual em destaque.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -710,8 +813,8 @@ with tab_dash:
                 labels={"MES_ANO": "Mês", "VALOR_TOTAL": "Faturamento"},
                 color="TIPO_MES",
                 color_discrete_map={
-                    "Mês atual": "#f97316",   # laranja destaque
-                    "Anterior": "#6366f1",    # roxo padrão
+                    "Mês atual": "#f97316",
+                    "Anterior": "#0ea5e9",
                 },
             )
             fig.update_traces(
@@ -726,7 +829,7 @@ with tab_dash:
                 xaxis_title="Mês",
                 uniformtext_minsize=10,
                 uniformtext_mode="hide",
-                plot_bgcolor="rgba(15,23,42,0.85)",
+                plot_bgcolor="rgba(15,23,42,0.92)",
                 paper_bgcolor="rgba(0,0,0,0)",
                 font=dict(
                     family="Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif",
@@ -735,10 +838,12 @@ with tab_dash:
                 legend_title_text="",
             )
             st.plotly_chart(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
     # Vendas detalhadas + explicação FIFO
+    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="section-title">🧾 Vendas detalhadas (com custo FIFO)</div>
@@ -809,6 +914,7 @@ with tab_dash:
         )
     else:
         st.info("Nenhuma venda no período selecionado.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # --------------------------------------------------
 # TAB 2 – PESQUISA DE PRODUTO
@@ -825,6 +931,8 @@ with tab_search:
     if df_fifo.empty and df_estoque.empty:
         st.info("Sem dados de estoque ou vendas para pesquisar.")
     else:
+        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
+
         produtos_estoque = df_estoque["PRODUTO"].unique().tolist() if not df_estoque.empty else []
         produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
         todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas))
@@ -988,16 +1096,18 @@ with tab_search:
             st.markdown("#### 💡 Leitura rápida")
             st.markdown(
                 f"""
-- Se o **custo médio FIFO** está grudando ou passando o **preço médio de venda**, o produto está no limite.
+- Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
 - Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
 - Se a **margem é ruim**, você pode:
   - negociar melhor na compra,
   - subir preço,
-  - ou usar como isca para atrair cliente (sabendo que ganha em outros itens).
+  - ou usar como isca para atrair cliente (sabendo que compensa em outros itens).
                 """
             )
         else:
             st.info("Selecione um produto para ver os detalhes baseados no FIFO.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # --------------------------------------------------
 # TAB 3 – ALERTAS
@@ -1006,7 +1116,7 @@ with tab_alerts:
     st.markdown(
         """
 <div class="section-title">⚠️ Alertas de estoque</div>
-<div class="section-sub">Enxergue o que está voando sem estoque e o que está dormindo travando dinheiro.</div>
+<div class="section-sub">Veja o que está voando sem estoque e o que está travando dinheiro na prateleira.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -1014,6 +1124,7 @@ with tab_alerts:
     if df_estoque.empty:
         st.info("Sem dados de estoque para gerar alertas.")
     else:
+        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
         st.markdown("##### Configurações dos critérios")
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -1022,6 +1133,7 @@ with tab_alerts:
             LIM_ESTOQUE_BAIXO = st.slider("Considerar estoque baixo abaixo de (unid.)", 1, 20, 3, 1)
         with c3:
             LIM_DIAS_PARADO = st.slider("Parado há mais de (dias)", 7, 180, 30, 1)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         vendas_tot = (
             df_fifo.groupby("PRODUTO", as_index=False)["QTD"]
@@ -1031,7 +1143,7 @@ with tab_alerts:
         base_alerta = df_estoque.merge(vendas_tot, on="PRODUTO", how="left")
         base_alerta["QTD_VENDIDA_TOTAL"] = base_alerta["QTD_VENDIDA_TOTAL"].fillna(0)
 
-        st.markdown("---")
+        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
         st.markdown("### 🔥 Vendendo bem e com pouco estoque")
 
         vendendo_bem_baixo_estoque = base_alerta[
@@ -1059,8 +1171,9 @@ with tab_alerts:
                 ),
                 use_container_width=True,
             )
+        st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("---")
+        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
         st.markdown("### 🐌 Estoque parado há muito tempo")
 
         df_compras_alert = df_compras.copy()
@@ -1163,3 +1276,4 @@ with tab_alerts:
         st.markdown(
             f"*Critérios atuais:* vende bem ≥ **{LIM_VENDE_BEM} unid.**, estoque baixo ≤ **{LIM_ESTOQUE_BAIXO} unid.**, parado ≥ **{LIM_DIAS_PARADO} dias**."
         )
+        st.markdown("</div>", unsafe_allow_html=True)
