@@ -229,8 +229,6 @@ def limpar_aba(xls, nome_aba):
             f"Não encontrei cabeçalho claro na aba {nome_aba}. "
             f"Primeiras linhas lidas:\n{df_raw.head(5)}"
         )
-        st.stop()
-
     cabecalho = df_raw.iloc[linha_header]
     df = df_raw.iloc[linha_header + 1 :].copy()
     df.columns = [str(c).strip().upper() for c in cabecalho]
@@ -554,11 +552,11 @@ with tab_dash:
 
     st.markdown("---")
 
-    # Gráfico mensal – APENAS ÚLTIMOS 3 MESES, COM TEXTO GRANDE E NEGRITO
+    # -------- GRÁFICO: MÊS ATUAL + 2 ANTERIORES --------
     st.markdown(
         """
-<div class="section-title">📊 Faturamento nos últimos 3 meses</div>
-<div class="section-sub">Baseado em todas as vendas registradas.</div>
+<div class="section-title">📊 Faturamento – mês atual e 2 anteriores</div>
+<div class="section-sub">Valores em real dentro das colunas, destaque para o mês atual.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -572,36 +570,57 @@ with tab_dash:
             .sum()
             .sort_values("MES_ANO")
         )
-        # pega só os 3 últimos meses
-        if len(resumo_mes) > 3:
-            resumo_mes = resumo_mes.tail(3)
 
-        resumo_mes["VALOR_TOTAL_FMT"] = resumo_mes["VALOR_TOTAL"].map(format_reais)
+        # pegar mês atual e 2 anteriores, se existirem
+        meses_unicos = resumo_mes["MES_ANO"].tolist()
+        if not meses_unicos:
+            st.info("Sem meses para exibir no gráfico.")
+        else:
+            mes_atual_data = pd.Timestamp.now().strftime("%Y-%m")
+            if mes_atual_data in meses_unicos:
+                idx_atual = meses_unicos.index(mes_atual_data)
+                start_idx = max(0, idx_atual - 2)
+                meses_plot = meses_unicos[start_idx : idx_atual + 1]
+            else:
+                meses_plot = meses_unicos[-3:]
 
-        fig = px.bar(
-            resumo_mes,
-            x="MES_ANO",
-            y="VALOR_TOTAL",
-            text="VALOR_TOTAL_FMT",
-            labels={"MES_ANO": "Mês", "VALOR_TOTAL": "Faturamento"},
-            color_discrete_sequence=["#6366f1"],  # roxo elegante
-        )
-        fig.update_traces(
-            textposition="inside",
-            texttemplate="<b>%{text}</b>",
-            textfont_size=18,
-        )
-        fig.update_layout(
-            height=380,
-            yaxis_title="Faturamento (R$)",
-            xaxis_title="Mês",
-            uniformtext_minsize=10,
-            uniformtext_mode="hide",
-            plot_bgcolor="rgba(15,23,42,0.85)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font_color="#e5e7eb",
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            resumo_mes = resumo_mes[resumo_mes["MES_ANO"].isin(meses_plot)]
+            resumo_mes = resumo_mes.sort_values("MES_ANO")
+
+            resumo_mes["VALOR_TOTAL_FMT"] = resumo_mes["VALOR_TOTAL"].map(format_reais)
+            resumo_mes["TIPO_MES"] = resumo_mes["MES_ANO"].apply(
+                lambda m: "Mês atual" if m == mes_atual_data else "Anterior"
+            )
+
+            fig = px.bar(
+                resumo_mes,
+                x="MES_ANO",
+                y="VALOR_TOTAL",
+                text="VALOR_TOTAL_FMT",
+                labels={"MES_ANO": "Mês", "VALOR_TOTAL": "Faturamento"},
+                color="TIPO_MES",
+                color_discrete_map={
+                    "Mês atual": "#f97316",   # laranja destaque
+                    "Anterior": "#6366f1",    # roxo padrão
+                },
+            )
+            fig.update_traces(
+                textposition="inside",
+                texttemplate="<b>%{text}</b>",
+                textfont_size=18,
+            )
+            fig.update_layout(
+                height=380,
+                yaxis_title="Faturamento (R$)",
+                xaxis_title="Mês",
+                uniformtext_minsize=10,
+                uniformtext_mode="hide",
+                plot_bgcolor="rgba(15,23,42,0.85)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font_color="#e5e7eb",
+                legend_title_text="",
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
 
@@ -841,7 +860,7 @@ with tab_search:
                 st.info("Sem histórico de vendas para esse produto.")
 
             st.markdown("---")
-            st.markmarkdown("#### 💡 Leitura rápida")
+            st.markdown("#### 💡 Leitura rápida")
             st.markdown(
                 f"""
 - Se o **custo médio FIFO** está grudando ou passando o **preço médio de venda**, o produto está no limite.
