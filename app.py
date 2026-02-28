@@ -147,12 +147,14 @@ html, body, [class*="css"] {
   color:var(--muted);
   margin-bottom:8px;
 }
+
+/* ESTA ERA A CAIXA QUE VOCÊ VIA – AGORA FICA TRANSPARENTE */
 .card-soft {
-  background:var(--bg-card);
-  border-radius:16px;
-  padding:14px 16px;
-  border:1px solid var(--border-soft);
-  margin-bottom:16px;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  border: none;
+  margin-bottom: 0;
 }
 
 /* BADGES */
@@ -489,7 +491,13 @@ tab_dash, tab_search, tab_alerts = st.tabs(
 # TAB 1 – DASHBOARD
 # --------------------------------------------------
 with tab_dash:
-    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
+    st.markdown(
+        """
+<div class="section-title">Visão geral do período selecionado</div>
+<div class="section-sub">Resumo financeiro real, já considerando custo FIFO.</div>
+""",
+        unsafe_allow_html=True,
+    )
 
     meses = ["Todos"]
     meses_disp = sorted(df_fifo["MES_ANO"].dropna().unique().tolist(), reverse=True)
@@ -504,14 +512,6 @@ with tab_dash:
         df_fifo_filt = df_fifo.copy()
     else:
         df_fifo_filt = df_fifo[df_fifo["MES_ANO"] == mes_selecionado].copy()
-
-    st.markdown(
-        """
-<div class="section-title">Visão geral do período selecionado</div>
-<div class="section-sub">Resumo financeiro real, já considerando custo FIFO.</div>
-""",
-        unsafe_allow_html=True,
-    )
 
     qtd_total = df_fifo_filt["QTD"].sum()
     total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
@@ -622,12 +622,9 @@ with tab_dash:
         unsafe_allow_html=True,
     )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("---")
 
     # Top produtos mais vendidos
-    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="section-title">🥇 Produtos mais vendidos</div>
@@ -726,12 +723,10 @@ with tab_dash:
         )
 
         st.dataframe(tabela_top, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
     # Gráfico mensal (mês atual + 2 anteriores)
-    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="section-title">📊 Faturamento – mês atual e 2 anteriores</div>
@@ -803,12 +798,10 @@ with tab_dash:
                 legend_title_text="",
             )
             st.plotly_chart(fig, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
     # Vendas detalhadas + explicação FIFO
-    st.markdown('<div class="card-soft">', unsafe_allow_html=True)
     st.markdown(
         """
 <div class="section-title">🧾 Vendas detalhadas (com custo FIFO)</div>
@@ -879,7 +872,6 @@ with tab_dash:
         )
     else:
         st.info("Nenhuma venda no período selecionado.")
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # --------------------------------------------------
 # TAB 2 – PESQUISA DE PRODUTO
@@ -896,8 +888,6 @@ with tab_search:
     if df_fifo.empty and df_estoque.empty:
         st.info("Sem dados de estoque ou vendas para pesquisar.")
     else:
-        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
-
         produtos_estoque = df_estoque["PRODUTO"].unique().tolist() if not df_estoque.empty else []
         produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
         todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas))
@@ -1072,8 +1062,6 @@ with tab_search:
         else:
             st.info("Selecione um produto para ver os detalhes baseados no FIFO.")
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
 # --------------------------------------------------
 # TAB 3 – ALERTAS
 # --------------------------------------------------
@@ -1089,16 +1077,9 @@ with tab_alerts:
     if df_estoque.empty:
         st.info("Sem dados de estoque para gerar alertas.")
     else:
-        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
-        st.markdown("##### Configurações dos critérios")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            LIM_VENDE_BEM = st.slider("Vende bem a partir de (unid.)", 5, 50, 10, 1)
-        with c2:
-            LIM_ESTOQUE_BAIXO = st.slider("Considerar estoque baixo abaixo de (unid.)", 1, 20, 3, 1)
-        with c3:
-            LIM_DIAS_PARADO = st.slider("Parado há mais de (dias)", 7, 180, 30, 1)
-        st.markdown("</div>", unsafe_allow_html=True)
+        LIM_VENDE_BEM = st.slider("Vende bem a partir de (unid.)", 5, 50, 10, 1)
+        LIM_ESTOQUE_BAIXO = st.slider("Considerar estoque baixo abaixo de (unid.)", 1, 20, 3, 1)
+        LIM_DIAS_PARADO = st.slider("Parado há mais de (dias)", 7, 180, 30, 1)
 
         vendas_tot = (
             df_fifo.groupby("PRODUTO", as_index=False)["QTD"]
@@ -1108,7 +1089,6 @@ with tab_alerts:
         base_alerta = df_estoque.merge(vendas_tot, on="PRODUTO", how="left")
         base_alerta["QTD_VENDIDA_TOTAL"] = base_alerta["QTD_VENDIDA_TOTAL"].fillna(0)
 
-        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
         st.markdown("### 🔥 Vendendo bem e com pouco estoque")
 
         vendendo_bem_baixo_estoque = base_alerta[
@@ -1136,9 +1116,7 @@ with tab_alerts:
                 ),
                 use_container_width=True,
             )
-        st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown('<div class="card-soft">', unsafe_allow_html=True)
         st.markdown("### 🐌 Estoque parado há muito tempo")
 
         df_compras_alert = df_compras.copy()
@@ -1241,4 +1219,3 @@ with tab_alerts:
         st.markdown(
             f"*Critérios atuais:* vende bem ≥ **{LIM_VENDE_BEM} unid.**, estoque baixo ≤ **{LIM_ESTOQUE_BAIXO} unid.**, parado ≥ **{LIM_DIAS_PARADO} dias**."
         )
-        st.markdown("</div>", unsafe_allow_html=True)
