@@ -1021,8 +1021,10 @@ with tab_alerts:
             st.info(f"Nenhum produto com estoque parado há mais de {LIM_DIAS_PARADO} dias.")
         else:
             df_p = parado_alerta.copy()
-            if "ULT_VENDA" in df_p.columns:
-                df_p["ULT_VENDA_FMT"] = df_p["ULT_VENDA"].dt.
+          if "ULT_VENDA" in df_p.columns:
+    df_p["ULT_VENDA_FMT"] = df_p["ULT_VENDA"].dt.strftime("%d/%m/%Y")
+else:
+    df_p["ULT_VENDA_FMT"] = ""
             else:
                 df_p["ULT_VENDA_FMT"] = ""
             if "ULT_COMPRA" in df_p.columns:
