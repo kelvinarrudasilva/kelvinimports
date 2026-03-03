@@ -264,6 +264,10 @@ def carregar_planilha():
 
 
 def limpar_aba(xls, nome_aba: str) -> pd.DataFrame:
+    """
+    Lê a aba e corrige casos onde o Excel tem um título na primeira linha
+    (ex: 'COMPRAS') e os cabeçalhos verdadeiros estão na primeira linha de dados.
+    """
     if isinstance(xls, dict):
         df = xls.get(nome_aba)
     else:
@@ -274,10 +278,42 @@ def limpar_aba(xls, nome_aba: str) -> pd.DataFrame:
         st.stop()
 
     df = df.copy()
+
+    # Tenta detectar se as colunas atuais são genéricas (ex: COMPRAS, Unnamed: 1...)
+    cols_original = [str(c).strip() for c in df.columns]
+    cols_upper = [c.upper() for c in cols_original]
+
+    # Marcadores típicos de cabeçalho real
+    marcadores = [
+        "DATA",
+        "PRODUTO",
+        "STATUS",
+        "QUANTIDADE",
+        "CUSTO UNITÁRIO",
+        "QTD",
+        "VALOR TOTAL",
+    ]
+
+    def lista_tem_marcador(lista):
+        return any(m in lista for m in marcadores)
+
+    # Se as colunas atuais NÃO têm nenhum dos marcadores,
+    # tentamos promover a primeira linha a cabeçalho
+    if not lista_tem_marcador(cols_upper) and not df.empty:
+        primeira_linha = df.iloc[0].astype(str).str.strip()
+        primeira_upper = [s.upper() for s in primeira_linha]
+
+        if lista_tem_marcador(primeira_upper):
+            # Usa a primeira linha como cabeçalho
+            df = df.iloc[1:].copy()
+            df.columns = primeira_linha
+
+    # Ajuste final de nomes de coluna
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Drop totalizações comuns
-    df = df[~df.iloc[:, 0].astype(str).str.contains("TOTAL", case=False, na=False)]
+    # Remove linhas de TOTAL
+    if not df.empty:
+        df = df[~df.iloc[:, 0].astype(str).str.contains("TOTAL", case=False, na=False)]
 
     return df
 
@@ -744,7 +780,6 @@ with tab_dash:
 
     st.markdown("---")
 
-    # Vendas detalhadas + explicação FIFO
     st.markdown(
         """
 <div class="section-title">🧾 Vendas detalhadas (com custo FIFO)</div>
@@ -1255,7 +1290,7 @@ Visão das compras da loja por mês, com foco no que realmente importa para o ca
             dfc["CUSTO UNITÁRIO"] = 0.0
 
         # Custo total (sempre recalculado)
-        dfc["CUSTO_TOTAL"] = dfc["QUANTIDADE"] * dfc["CUSTO UNITÁRIO"]
+        dfc["CUSTO_TOTAL"] = dfc["QUANTIDADE"] * dfc["CUSTO_UNITÁRIO"]
 
         # Mês/ano para filtro
         dfc["MES_ANO"] = dfc["DATA"].dt.strftime("%Y-%m")
@@ -1295,7 +1330,6 @@ Visão das compras da loja por mês, com foco no que realmente importa para o ca
                 # ------------------------------
                 total_compras = dfc_filt["CUSTO_TOTAL"].sum()
                 qtd_total_comp = dfc_filt["QUANTIDADE"].sum()
-                num_lanc = len(dfc_filt)
                 custo_medio_geral = (
                     total_compras / qtd_total_comp if qtd_total_comp > 0 else 0.0
                 )
