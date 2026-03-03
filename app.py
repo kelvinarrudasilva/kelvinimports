@@ -265,53 +265,63 @@ def carregar_planilha():
 
 def limpar_aba(xls, nome_aba: str) -> pd.DataFrame:
     """
-    Lê a aba e corrige casos onde o Excel tem um título na primeira linha
-    (ex: 'COMPRAS') e os cabeçalhos verdadeiros estão na primeira linha de dados.
+    Lê a aba SEM header e procura a linha que contém os cabeçalhos reais
+    (DATA, PRODUTO, STATUS, QUANTIDADE, CUSTO UNITÁRIO, etc).
+    Serve para planilhas com título grande tipo 'COMPRAS' na primeira linha.
     """
     if isinstance(xls, dict):
         df = xls.get(nome_aba)
-    else:
-        df = pd.read_excel(xls, sheet_name=nome_aba)
+        if df is not None:
+            # se já vier como DataFrame de outro lugar, assume header já certo
+            df = df.copy()
+            df.columns = [str(c).strip() for c in df.columns]
+            return df
+    # lê sem header para poder encontrar a linha certa
+    df = pd.read_excel(xls, sheet_name=nome_aba, header=None)
 
-    if df is None:
-        st.error(f"Aba '{nome_aba}' não encontrada na planilha.")
+    if df is None or df.empty:
+        st.error(f"Aba '{nome_aba}' não encontrada ou vazia.")
         st.stop()
 
-    df = df.copy()
+    # remove linhas/colunas totalmente vazias
+    df = df.dropna(how="all")
+    df = df.dropna(how="all", axis=1)
 
-    # Tenta detectar se as colunas atuais são genéricas (ex: COMPRAS, Unnamed: 1...)
-    cols_original = [str(c).strip() for c in df.columns]
-    cols_upper = [c.upper() for c in cols_original]
-
-    # Marcadores típicos de cabeçalho real
     marcadores = [
         "DATA",
         "PRODUTO",
         "STATUS",
         "QUANTIDADE",
-        "CUSTO UNITÁRIO",
         "QTD",
+        "CUSTO UNITÁRIO",
         "VALOR TOTAL",
+        "CUSTO TOTAL",
     ]
 
-    def lista_tem_marcador(lista):
-        return any(m in lista for m in marcadores)
+    def tem_marcador(vals):
+        ups = [str(v).strip().upper() for v in vals]
+        return any(m in ups for m in marcadores)
 
-    # Se as colunas atuais NÃO têm nenhum dos marcadores,
-    # tentamos promover a primeira linha a cabeçalho
-    if not lista_tem_marcador(cols_upper) and not df.empty:
-        primeira_linha = df.iloc[0].astype(str).str.strip()
-        primeira_upper = [s.upper() for s in primeira_linha]
+    header_idx = None
+    header_vals = None
+    max_lin = min(20, len(df))
+    for i in range(max_lin):
+        row = df.iloc[i].values
+        if tem_marcador(row):
+            header_idx = i
+            header_vals = [str(v).strip() for v in row]
+            break
 
-        if lista_tem_marcador(primeira_upper):
-            # Usa a primeira linha como cabeçalho
-            df = df.iloc[1:].copy()
-            df.columns = primeira_linha
+    if header_idx is None:
+        # fallback: usa a primeira linha mesmo
+        header_idx = 0
+        header_vals = [str(v).strip() for v in df.iloc[0].values]
 
-    # Ajuste final de nomes de coluna
+    df = df.iloc[header_idx + 1 :].copy()
+    df.columns = header_vals
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Remove linhas de TOTAL
+    # remove linhas de TOTAL
     if not df.empty:
         df = df[~df.iloc[:, 0].astype(str).str.contains("TOTAL", case=False, na=False)]
 
@@ -1262,45 +1272,34 @@ Visão das compras da loja por mês, com foco no que realmente importa para o ca
         unsafe_allow_html=True,
     )
 
-    # Cópia da aba de compras
     dfc = df_compras.copy()
     dfc.columns = [c.strip().upper() for c in dfc.columns]
 
-    # Precisa ter coluna DATA
     if "DATA" not in dfc.columns:
         st.info("A aba COMPRAS da planilha precisa ter uma coluna 'DATA'.")
     else:
-        # Converte DATA
         dfc["DATA"] = pd.to_datetime(dfc["DATA"], errors="coerce", dayfirst=True)
 
-        # Considera só compras ENTREGUE (coerente com o FIFO)
         if "STATUS" in dfc.columns:
             dfc = dfc[dfc["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
 
-        # Quantidade
         if "QUANTIDADE" in dfc.columns:
             dfc["QUANTIDADE"] = dfc["QUANTIDADE"].apply(parse_money).astype(float)
         else:
             dfc["QUANTIDADE"] = 0.0
 
-        # Custo unitário
         if "CUSTO UNITÁRIO" in dfc.columns:
             dfc["CUSTO UNITÁRIO"] = dfc["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
         else:
             dfc["CUSTO UNITÁRIO"] = 0.0
 
-        # Custo total (sempre recalculado)
-        dfc["CUSTO_TOTAL"] = dfc["QUANTIDADE"] * dfc["CUSTO_UNITÁRIO"]
+        dfc["CUSTO_TOTAL"] = dfc["QUANTIDADE"] * dfc["CUSTO UNITÁRIO"]
 
-        # Mês/ano para filtro
         dfc["MES_ANO"] = dfc["DATA"].dt.strftime("%Y-%m")
 
         if dfc["MES_ANO"].dropna().empty:
             st.info("Não encontrei compras com DATA válida para montar a aba de Compras.")
         else:
-            # ------------------------------
-            # Filtro de mês (mês atual pré-selecionado)
-            # ------------------------------
             meses_comp = ["Todos"]
             meses_disp_comp = sorted(
                 dfc["MES_ANO"].dropna().unique().tolist(),
@@ -1325,9 +1324,6 @@ Visão das compras da loja por mês, com foco no que realmente importa para o ca
             if dfc_filt.empty:
                 st.info("Não há compras no período selecionado.")
             else:
-                # ------------------------------
-                # KPIs principais
-                # ------------------------------
                 total_compras = dfc_filt["CUSTO_TOTAL"].sum()
                 qtd_total_comp = dfc_filt["QUANTIDADE"].sum()
                 custo_medio_geral = (
@@ -1387,9 +1383,6 @@ Visão das compras da loja por mês, com foco no que realmente importa para o ca
 
                 st.markdown("---")
 
-                # ------------------------------
-                # Top produtos comprados no período
-                # ------------------------------
                 st.markdown(
                     """
 <div class="section-title">📥 Top produtos comprados no período</div>
@@ -1428,9 +1421,6 @@ Veja onde está indo o dinheiro das compras, em quantidade e valor.
 
                 st.markdown("---")
 
-                # ------------------------------
-                # Tabela detalhada de compras
-                # ------------------------------
                 st.markdown(
                     """
 <div class="section-title">🧾 Compras detalhadas</div>
@@ -1443,7 +1433,6 @@ Cada lançamento com data, produto, quantidade e custo.
 
                 dfc_view = dfc_filt.copy()
 
-                # Formatações
                 dfc_view["DATA_FMT"] = dfc_view["DATA"].dt.strftime("%d/%m/%Y")
                 dfc_view["CUSTO_UNIT_FMT"] = dfc_view["CUSTO UNITÁRIO"].map(format_reais)
                 dfc_view["CUSTO_TOTAL_FMT"] = dfc_view["CUSTO_TOTAL"].map(format_reais)
