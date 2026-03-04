@@ -289,7 +289,7 @@ def format_reais(v):
 
 
 def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
-    # AQUI AJEITADO: procura até 200 linhas (antes era só 20)
+    # procura até 200 linhas
     max_linhas = min(200, len(df_raw))
     for i in range(max_linhas):
         linha = " ".join([str(x).upper() for x in df_raw.iloc[i].tolist()])
@@ -309,7 +309,6 @@ def limpar_aba(xls, nome_aba):
         must_have = ["DATA", "PRODUTO"]
 
     linha_header = detectar_linha_cabecalho(df_raw, must_have)
-
     if linha_header is None:
         linha_header = 0
 
@@ -480,6 +479,25 @@ df_fifo, df_estoque = calcular_fifo(df_compras, df_vendas)
 if df_fifo.empty:
     st.warning("Não foi possível calcular FIFO (sem vendas ou sem compras ENTREGUE válidas).")
     st.stop()
+
+# -----------------------------
+# MAPA: ESTOQUE ATUAL POR PRODUTO
+# -----------------------------
+if not df_estoque.empty and ("PRODUTO" in df_estoque.columns) and ("SALDO_QTD" in df_estoque.columns):
+    estoque_atual_map = df_estoque.set_index("PRODUTO")["SALDO_QTD"].to_dict()
+else:
+    estoque_atual_map = {}
+
+def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
+    out = df.copy()
+    if col_produto in out.columns:
+        out[nome_col] = out[col_produto].map(estoque_atual_map).fillna(0)
+        # garante numérico bonitinho
+        out[nome_col] = out[nome_col].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
+    else:
+        out[nome_col] = 0
+    return out
+
 
 # --------------------------------------------------
 # TABS
@@ -741,10 +759,10 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
         # margem em %
         top_prod["MARGEM_PCT"] = (top_prod["LUCRO"] / top_prod["RECEITA"].replace(0, pd.NA)) * 100
 
-        # critérios (ajustáveis se quiser depois)
-        ANC_MIN_QTD = 10        # mínimo de unidades vendidas no período
-        ANC_MIN_RECEITA = 500   # receita mínima no período
-        ANC_MIN_MARGEM = 20.0   # margem mínima em %
+        # critérios
+        ANC_MIN_QTD = 10
+        ANC_MIN_RECEITA = 500
+        ANC_MIN_MARGEM = 20.0
 
         ancora = top_prod[
             (top_prod["QTD_VENDIDA"] >= ANC_MIN_QTD)
@@ -876,13 +894,16 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
     st.markdown(
         """
 <div class="section-title">🧾 Vendas detalhadas (com custo FIFO)</div>
-<div class="section-sub">Cada linha já traz o custo correto de acordo com o giro do estoque.</div>
+<div class="section-sub">Cada linha já traz o custo correto de acordo com o giro do estoque — e agora com o estoque atual do item.</div>
 """,
         unsafe_allow_html=True,
     )
 
     df_fifo_view = df_fifo_filt.copy()
     if not df_fifo_view.empty:
+        # adiciona estoque atual na própria tabela de vendas
+        df_fifo_view = add_estoque_atual(df_fifo_view, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+
         df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_TOTAL"] / df_fifo_view["QTD"].replace(0, pd.NA)
 
         exemplo = df_fifo_filt.iloc[0]
@@ -892,6 +913,7 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
         custo_total_ex = format_reais(exemplo["CUSTO_TOTAL"])
         custo_unit_ex = format_reais(exemplo["CUSTO_TOTAL"] / exemplo["QTD"] if exemplo["QTD"] else 0)
         lucro_ex = format_reais(exemplo["LUCRO"])
+        estoque_ex = int(estoque_atual_map.get(prod_ex, 0))
 
         if df_fifo_view["DATA"].notna().any():
             df_fifo_view["DATA"] = df_fifo_view["DATA"].dt.strftime("%d/%m/%Y")
@@ -911,6 +933,7 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
             "CUSTO_TOTAL",
             "CUSTO_UNIT",
             "LUCRO",
+            "ESTOQUE_ATUAL",
             "MES_ANO",
         ]
         cols_ordem = [c for c in cols_ordem if c in df_fifo_view.columns]
@@ -930,15 +953,15 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
 - Custo total FIFO dessa venda: **{custo_total_ex}**  
 - Custo unitário FIFO: **{custo_unit_ex}**  
 - Lucro nessa venda: **{lucro_ex}**  
+- Estoque atual do item (saldo final): **{estoque_ex} unid.**
 
 **Lógica resumida:**
 
 1. Buscamos todas as **compras de `{prod_ex}` com STATUS = ENTREGUE**, em ordem de data (mais antigas primeiro).
 2. Cada compra vira um **lote** com quantidade e custo unitário.
-3. Quando essa venda de **{qtd_ex:.0f} unid.** acontece, consumimos primeiro o lote mais antigo, depois o próximo, até completar a quantidade.
-4. O **custo total FIFO** é a soma dos custos desses lotes “comidos” pela venda.
-5. O **custo unitário FIFO** é o custo total dividido pela quantidade vendida.
-6. O **lucro** é sempre: **venda − custo FIFO**.
+3. Quando essa venda acontece, consumimos primeiro o lote mais antigo, depois o próximo, até completar a quantidade.
+4. O **custo total FIFO** é a soma dos custos desses lotes consumidos.
+5. O **lucro** é: **venda − custo FIFO**.
             """
         )
     else:
@@ -1097,6 +1120,8 @@ with tab_search:
                 vendas_prod_hist["CUSTO_UNIT"] = (
                     vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
                 )
+                vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+
                 vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y")
                 vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
                 vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
@@ -1110,6 +1135,7 @@ with tab_search:
                     "CUSTO_TOTAL",
                     "CUSTO_UNIT",
                     "LUCRO",
+                    "ESTOQUE_ATUAL",
                     "MES_ANO",
                 ]
                 cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
@@ -1376,7 +1402,6 @@ Indicadores de concentração de vendas, estoque parado e risco de dependência 
             unsafe_allow_html=True,
         )
 
-        # % do valor do estoque que está parado >= LIM_DIAS_PARADO
         valor_estoque_total_alert = df_estoque["VALOR_ESTOQUE"].sum() if "VALOR_ESTOQUE" in df_estoque.columns else 0.0
         valor_estoque_parado = parado_filtrado["VALOR_ESTOQUE"].sum() if "VALOR_ESTOQUE" in parado_filtrado.columns else 0.0
         pct_estoque_parado = (
@@ -1385,7 +1410,6 @@ Indicadores de concentração de vendas, estoque parado e risco de dependência 
             else 0.0
         )
 
-        # % da receita total concentrada nos 5 produtos com maior faturamento (histórico)
         receita_por_prod = (
             df_fifo.groupby("PRODUTO", as_index=False)["VALOR_TOTAL"]
             .sum()
@@ -1401,7 +1425,6 @@ Indicadores de concentração de vendas, estoque parado e risco de dependência 
             (top5_receita / receita_total_geral) * 100 if receita_total_geral > 0 else 0.0
         )
 
-        # % do valor do estoque concentrado em 5 produtos com maior valor de estoque
         if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
             top5_estoque = (
                 df_estoque.sort_values("VALOR_ESTOQUE", ascending=False)
@@ -1469,7 +1492,7 @@ with tab_compras:
         """
 <div class="section-title">🧾 Compras</div>
 <div class="section-sub">
-Visão das compras da loja por mês, com foco no que realmente importa para o caixa.
+Visão das compras da loja por mês, com foco no que realmente importa para o caixa — e com estoque atual do item comprado.
 </div>
 """,
         unsafe_allow_html=True,
@@ -1605,6 +1628,9 @@ Veja onde está indo o dinheiro das compras, em quantidade e valor.
                         .sort_values("VALOR_COMP", ascending=False)
                     )
 
+                    # adiciona estoque atual do item comprado
+                    top_comp["ESTOQUE_ATUAL"] = top_comp["PRODUTO"].map(estoque_atual_map).fillna(0).astype(int)
+
                     top_comp["VALOR_COMP_FMT"] = top_comp["VALOR_COMP"].map(format_reais)
 
                     st.dataframe(
@@ -1613,8 +1639,9 @@ Veja onde está indo o dinheiro das compras, em quantidade e valor.
                                 "PRODUTO": "Produto",
                                 "QTD_COMP": "Qtd comprada",
                                 "VALOR_COMP_FMT": "Valor em compras",
+                                "ESTOQUE_ATUAL": "Estoque atual",
                             }
-                        )[["Produto", "Qtd comprada", "Valor em compras"]]
+                        )[["Produto", "Qtd comprada", "Valor em compras", "Estoque atual"]]
                         .head(20),
                         use_container_width=True,
                     )
@@ -1627,13 +1654,16 @@ Veja onde está indo o dinheiro das compras, em quantidade e valor.
                     """
 <div class="section-title">🧾 Compras detalhadas</div>
 <div class="section-sub">
-Cada lançamento com data, produto, quantidade e custo.
+Cada lançamento com data, produto, quantidade e custo — e o estoque atual do item.
 </div>
 """,
                     unsafe_allow_html=True,
                 )
 
                 dfc_view = dfc_filt.copy()
+
+                # adiciona estoque atual em cada linha da compra
+                dfc_view = add_estoque_atual(dfc_view, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
 
                 dfc_view["DATA_FMT"] = dfc_view["DATA"].dt.strftime("%d/%m/%Y")
                 dfc_view["CUSTO_UNIT_FMT"] = dfc_view["CUSTO UNITÁRIO"].map(format_reais)
@@ -1644,7 +1674,7 @@ Cada lançamento com data, produto, quantidade e custo.
                     cols_comp.append("PRODUTO")
                 if "STATUS" in dfc_view.columns:
                     cols_comp.append("STATUS")
-                cols_comp += ["QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT", "MES_ANO"]
+                cols_comp += ["QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT", "ESTOQUE_ATUAL", "MES_ANO"]
                 cols_comp = [c for c in cols_comp if c in dfc_view.columns]
 
                 st.dataframe(
@@ -1657,6 +1687,7 @@ Cada lançamento com data, produto, quantidade e custo.
                             "QUANTIDADE": "Qtd",
                             "CUSTO_UNIT_FMT": "Custo unitário",
                             "CUSTO_TOTAL_FMT": "Custo total",
+                            "ESTOQUE_ATUAL": "Estoque atual",
                             "MES_ANO": "Mês/ano",
                         }
                     )
