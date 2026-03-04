@@ -23,231 +23,202 @@ CUSTO_MAX_PLAUSIVEL = 500.0
 GLOBAL_CSS = """
 <style>
 :root{
-  --bg:#030303;
-  --bg-page:#030303;
-  --card:#0b0b0d;
-  --card2:#0f0f12;
-  --border:#222226;
-  --border2:#2b2b32;
-
-  --text:#f4f4f5;
-  --muted:#a1a1aa;
-
-  /* acentos (cor na medida, sem carnaval) */
-  --g:#22c55e;    /* verde */
-  --b:#60a5fa;    /* azul */
-  --o:#fb923c;    /* laranja */
-  --p:#a78bfa;    /* roxo */
-
-  --shadow: 0 12px 34px rgba(0,0,0,.45);
+  --bg:#050505;
+  --bg-page:#050505;
+  --bg-card:#101010;
+  --bg-card-soft:#111111;
+  --border-soft:#262626;
+  --accent:#22c55e;
+  --accent-soft:#14b8a6;
+  --accent-warm:#f97316;
+  --text:#e5e5e5;
+  --muted:#9ca3af;
 }
 
-/* base */
-html, body, [class*="css"]{
-  background: var(--bg-page) !important;
+html, body, [class*="css"] {
+  background-color: var(--bg-page) !important;
   color: var(--text) !important;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
 }
-.stApp{ background: var(--bg-page) !important; }
-.block-container{ padding-top: 1rem; padding-bottom: 2.2rem; max-width: 1380px; }
 
-/* topo */
-.topbar{
+.stApp {
+  background-color: var(--bg-page) !important;
+}
+
+/* TOP BAR */
+.topbar {
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:16px;
-  padding:14px 16px;
+  padding:14px 18px;
   border-radius:18px;
-
-  background:
-    radial-gradient(900px 220px at 10% 0%, rgba(34,197,94,.10), transparent 55%),
-    radial-gradient(900px 220px at 90% 0%, rgba(96,165,250,.10), transparent 55%),
-    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0));
-
-  border:1px solid var(--border);
-  box-shadow: var(--shadow);
-  margin-bottom:14px;
+  background:#050505;
+  border:1px solid var(--border-soft);
+  margin-bottom:20px;
 }
-.logo-pill{
-  width:48px; height:48px;
+.logo-pill {
+  width:52px;
+  height:52px;
   border-radius:16px;
-  display:flex; align-items:center; justify-content:center;
-  font-weight:900; font-size:18px;
-  background: linear-gradient(135deg, rgba(96,165,250,.20), rgba(167,139,250,.18));
-  border:1px solid rgba(96,165,250,.25);
-  color: var(--text);
+  background:#111827;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:white;
+  font-weight:800;
+  font-size:22px;
 }
-.top-title{
-  font-size:18px;
-  font-weight:900;
+.top-title {
+  font-size:20px;
+  font-weight:800;
   letter-spacing:-0.03em;
 }
-.top-subtitle{
+.top-subtitle {
   font-size:12px;
-  color: var(--muted);
+  color:var(--muted);
 }
-.top-right-badge{
+.top-right-badge {
   display:flex;
   flex-direction:column;
   align-items:flex-end;
-  gap:6px;
+  gap:4px;
   font-size:11px;
-  color: var(--muted);
 }
-.top-chip{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  padding:6px 10px;
+.top-chip {
+  padding:4px 10px;
   border-radius:999px;
-  border:1px solid var(--border2);
-  background: rgba(255,255,255,.03);
+  border:1px solid var(--border-soft);
+  background:#050505;
 }
-.top-chip span{ color: var(--b); font-weight:700; }
-.dot{
-  width:8px; height:8px; border-radius:99px;
-  background: var(--g);
-  box-shadow: 0 0 0 3px rgba(34,197,94,.12);
+.top-chip span {
+  color:var(--accent-soft);
 }
 
-/* títulos de seção */
-.section-title{
-  font-size:16px;
-  font-weight:900;
-  margin:0 0 2px 0;
-}
-.section-sub{
-  font-size:12px;
-  color: var(--muted);
-  margin:0 0 10px 0;
-}
-
-/* KPI cards */
-.kpi-row{
+/* KPI CARDS */
+.kpi-row {
   display:flex;
   gap:10px;
   flex-wrap:wrap;
-  margin: 10px 0 4px 0;
+  margin-bottom:10px;
 }
-.kpi-card{
-  flex: 1 1 180px;
-  min-width: 0;
-  padding: 14px 14px;
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+.kpi-card {
+  flex:1 1 180px;
+  min-width:0;
+  padding:14px 16px;
+  border-radius:14px;
+  background:var(--bg-card-soft);
+  border:1px solid var(--border-soft);
+  box-shadow:none;
+  position:relative;
+  transition:transform .1s ease-out, border-color .1s ease-out, background .1s ease-out;
 }
 .kpi-card:hover{
-  transform: translateY(-1px);
-  border-color: rgba(96,165,250,.35);
-  background:
-    radial-gradient(600px 80px at 20% 0%, rgba(96,165,250,.12), transparent 60%),
-    linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+  transform:translateY(-1px);
+  border-color:var(--accent-soft);
+  background:#151515;
 }
-.kpi-label{
+.kpi-label {
   font-size:11px;
   text-transform:uppercase;
-  letter-spacing:.16em;
-  color: var(--muted);
+  letter-spacing:0.16em;
+  color:var(--muted);
   margin-bottom:4px;
 }
-.kpi-value{
+.kpi-value {
   font-size:20px;
-  font-weight:950;
+  font-weight:800;
 }
-.kpi-pill{
+.kpi-pill {
   font-size:11px;
-  color: var(--muted);
-  margin-top:6px;
+  color:var(--muted);
+  margin-top:4px;
 }
 
-/* badges */
-.badge-soft{
+/* SEÇÕES / CARDS */
+.section-title {
+  font-size:16px;
+  font-weight:700;
+  margin-top:0;
+  margin-bottom:2px;
+}
+.section-sub {
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+
+/* CARD-SOFT (DESLIGADO VISUALMENTE) */
+.card-soft {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  border: none;
+  margin-bottom: 0;
+}
+
+/* BADGES */
+.badge-soft {
   display:inline-flex;
   align-items:center;
-  gap:6px;
-  padding:2px 10px;
+  gap:4px;
+  padding:1px 8px;
   border-radius:999px;
   font-size:11px;
-  border:1px solid var(--border2);
-  background: rgba(255,255,255,.02);
-  color: var(--text);
+  background:#111827;
+  color:#e5e7eb;
 }
-.badge-red{ border-color: rgba(239,68,68,.30); background: rgba(239,68,68,.10); color:#fecaca; }
-.badge-yellow{ border-color: rgba(251,146,60,.30); background: rgba(251,146,60,.10); color:#fed7aa; }
-.badge-green{ border-color: rgba(34,197,94,.30); background: rgba(34,197,94,.10); color:#bbf7d0; }
-
-/* tabs */
-.stTabs [data-baseweb="tab-list"]{ gap:6px; flex-wrap:wrap; }
-.stTabs [data-baseweb="tab"]{
-  padding:6px 12px !important;
-  border-radius:999px !important;
-  background: rgba(255,255,255,.02) !important;
-  border:1px solid var(--border) !important;
-  color: var(--muted) !important;
+.badge-red {
+  background:#451a1a;
+  color:#fecaca;
 }
-.stTabs [aria-selected="true"]{
-  color: var(--text) !important;
-  border-color: rgba(34,197,94,.35) !important;
-  background:
-    radial-gradient(520px 80px at 20% 50%, rgba(34,197,94,.12), transparent 60%),
-    radial-gradient(520px 80px at 80% 50%, rgba(96,165,250,.10), transparent 60%),
-    rgba(255,255,255,.03) !important;
+.badge-yellow {
+  background:#422006;
+  color:#facc15;
+}
+.badge-green {
+  background:#022c22;
+  color:#bbf7d0;
 }
 
-/* tabelas */
-.stDataFrame thead tr th{
-  background: rgba(255,255,255,.03) !important;
-  color: var(--text) !important;
+/* TABELAS */
+.stDataFrame thead tr th {
+  background:#111827 !important;
+  color:#e5e7eb !important;
   font-size:11px !important;
-  text-transform:uppercase !important;
-  border-bottom: 1px solid var(--border) !important;
+  text-transform:uppercase;
 }
-.stDataFrame tbody tr:nth-child(odd){ background-color: rgba(255,255,255,.01) !important; }
-.stDataFrame tbody tr:nth-child(even){ background-color: rgba(255,255,255,.02) !important; }
-
-/* inputs */
-[data-baseweb="input"] input{
-  background: rgba(255,255,255,.02) !important;
-  border:1px solid var(--border) !important;
-  color: var(--text) !important;
+.stDataFrame tbody tr:nth-child(odd) {
+  background-color:#050505;
 }
-div[role="combobox"]{
-  background: rgba(255,255,255,.02) !important;
-  border:1px solid var(--border) !important;
-  border-radius: 12px !important;
+.stDataFrame tbody tr:nth-child(even) {
+  background-color:#0a0a0a;
 }
 
-/* botões */
-.stButton button{
-  border-radius: 12px !important;
-  border: 1px solid rgba(34,197,94,.35) !important;
-  background:
-    radial-gradient(520px 70px at 20% 50%, rgba(34,197,94,.16), transparent 60%),
-    rgba(255,255,255,.03) !important;
-  color: var(--text) !important;
-  font-weight: 800 !important;
+/* TABS */
+.stTabs [data-baseweb="tab-list"] {
+  gap: 4px;
 }
-.stButton button:hover{
-  border-color: rgba(96,165,250,.40) !important;
-  background:
-    radial-gradient(520px 70px at 20% 50%, rgba(96,165,250,.16), transparent 60%),
-    rgba(255,255,255,.05) !important;
+.stTabs [data-baseweb="tab"] {
+  padding: 4px 12px;
+  border-radius:999px;
+  background:#050505;
+  color:#9ca3af;
+  border:1px solid transparent;
+}
+.stTabs [aria-selected="true"] {
+  background:#111111;
+  color:#f9fafb !important;
+  border-color:var(--accent-soft);
 }
 
-/* responsivo (mobile) */
-@media (max-width: 720px){
-  .block-container{ padding-left: 0.9rem; padding-right: 0.9rem; }
-  .topbar{ padding:12px 12px; border-radius:16px; }
-  .top-title{ font-size:16px; }
-  .top-right-badge{ display:none; } /* limpa topo no celular */
-  .kpi-card{ flex:1 1 150px; padding: 12px 12px; }
-  .kpi-value{ font-size:18px; }
+/* INPUTS */
+[data-baseweb="input"], [data-baseweb="select"], .stSelectbox, .stTextInput {
+  background:#050505 !important;
 }
+
+/* HR */
+hr { border-color:#1f2933 !important; }
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
@@ -262,11 +233,11 @@ st.markdown(
     <div class="logo-pill">LI</div>
     <div>
       <div class="top-title">Loja Importados – Painel FIFO</div>
-      <div class="top-subtitle">Dark elegante, responsivo e com cor na medida certa — sem cortar nenhum recurso.</div>
+      <div class="top-subtitle">Estoque, custo e lucro por produto, em preto básico sem firula.</div>
     </div>
   </div>
   <div class="top-right-badge">
-    <div class="top-chip"><span class="dot"></span> Planilha conectada <span>Google Sheets</span></div>
+    <div class="top-chip">📂 Planilha conectada <span>Google Sheets</span></div>
     <div>Modo: <b>FIFO</b> (base: compras ENTREGUE)</div>
   </div>
 </div>
