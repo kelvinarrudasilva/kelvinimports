@@ -347,6 +347,7 @@ def ensure_datetime_series(df: pd.DataFrame, col: str):
     except Exception:
         df[col] = pd.to_datetime(pd.Series([pd.NaT] * len(df)), errors="coerce")
     
+    return df
 
 def ensure_col_from_aliases(df: pd.DataFrame, target: str, aliases, default=0):
     """Garante df[target]. Se não existir, tenta copiar de aliases, senão cria com default."""
@@ -396,7 +397,6 @@ def normalize_sales_like(df: pd.DataFrame):
     # lucro (se faltar, cria 0)
     df = ensure_col_from_aliases(df, "LUCRO", ["LUCRO", "LUCRO_TOTAL", "LUCRO TOTAL"], default=0.0)
     return df
-return df
 
 
 def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
@@ -607,6 +607,7 @@ def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
         out[nome_col] = out[nome_col].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
     else:
         out[nome_col] = 0
+    return out
 
 def _render_compact_table(rows, headers):
     """Renderiza uma tabela HTML compacta com hover e links na coluna Produto."""
@@ -630,7 +631,6 @@ def _safe(s):
         return ""
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    return out
 
 
 # --------------------------------------------------
@@ -916,7 +916,7 @@ if nav == "📊 Dashboard":
                 "LUCRO_FMT": "Lucro total (FIFO)",
             }
         )
-                # --- Tabela compacta (🔍 abre na Pesquisa) ---
+        # --- Tabela compacta (🔍 abre na Pesquisa) ---
         headers = ["Produto", "Qtd", "Estoque", "Custo FIFO", "Preço médio", "Receita", "Lucro"]
         rows = []
         for _, r in tabela_top.iterrows():
@@ -1026,7 +1026,7 @@ if nav == "📊 Dashboard":
     df_fifo_view = df_fifo_filt.copy()
     if not df_fifo_view.empty:
         # Lista compacta de vendas (🔍 abre o produto na Pesquisa)
-                df_sales = normalize_sales_like(df_fifo_view).copy()
+        df_sales = normalize_sales_like(df_fifo_view).copy()
 
         # adiciona estoque atual por produto (se não der, segue com 0)
         try:
@@ -1054,7 +1054,7 @@ if nav == "📊 Dashboard":
 
         df_sales['VALOR_FMT'] = df_sales['VALOR_TOTAL'].map(format_reais)
         df_sales['LUCRO_FMT'] = df_sales['LUCRO'].map(format_reais)
-df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
+        df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
 
         headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Valor', 'Lucro']
         rows = []
@@ -1098,7 +1098,7 @@ elif nav == "🔎 Pesquisa de produto":
         produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
         todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas))
 
-                # Se veio de uma lupinha, já seleciona o produto automaticamente
+        # Se veio de uma lupinha, já seleciona o produto automaticamente
         default_idx = 0
         if st.session_state.get("produto_pesquisa") in todos_produtos:
             default_idx = todos_produtos.index(st.session_state.get("produto_pesquisa")) + 1
