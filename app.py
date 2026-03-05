@@ -851,7 +851,7 @@ if nav == "📊 Dashboard":
         for _, r in tabela_top.iterrows():
             prod = _safe(r.get("Produto", ""))
             link = f"?produto={quote(prod)}"
-            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
             rows.append(
                 "<tr>"
                 + _td(prod_html)
@@ -963,6 +963,9 @@ if nav == "📊 Dashboard":
         if "STATUS" not in df_sales.columns:
             df_sales["STATUS"] = ""
 
+        # adiciona estoque atual por produto
+        df_sales = add_estoque_atual(df_sales, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+
         # formatações
         if "DATA" in df_sales.columns:
             try:
@@ -973,17 +976,18 @@ if nav == "📊 Dashboard":
             df_sales["DATA_FMT"] = ""
 
         df_sales["QTD_INT"] = df_sales["QTD"].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
+        df_sales["ESTOQUE_ATUAL"] = df_sales.get("ESTOQUE_ATUAL", 0).apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
         df_sales["VALOR_FMT"] = df_sales["VALOR_TOTAL"].map(format_reais)
         df_sales["LUCRO_FMT"] = df_sales["LUCRO"].map(format_reais)
 
         df_sales = df_sales.sort_values("DATA", ascending=False).head(220)
 
-        headers = ["Data", "Produto", "Cliente", "Status", "Qtd", "Valor", "Lucro"]
+        headers = ["Data", "Produto", "Cliente", "Status", "Qtd", "Estoque", "Valor", "Lucro"]
         rows = []
         for _, r in df_sales.iterrows():
             prod = _safe(r.get("PRODUTO", ""))
             link = f"?produto={quote(prod)}"
-            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
             rows.append(
                 "<tr>"
                 + _td(_safe(r.get("DATA_FMT", "")), "muted")
@@ -991,6 +995,7 @@ if nav == "📊 Dashboard":
                 + _td(_safe(r.get("CLIENTE", "")))
                 + _td(_safe(r.get("STATUS", "")), "muted")
                 + _td(_safe(r.get("QTD_INT", 0)))
+                + _td(_safe(r.get("ESTOQUE_ATUAL", 0)), "muted")
                 + _td(_safe(r.get("VALOR_FMT", "")))
                 + _td(_safe(r.get("LUCRO_FMT", "")))
                 + "</tr>"
@@ -1159,7 +1164,7 @@ elif nav == "🔎 Pesquisa de produto":
                 )
                 vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
 
-                vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y")
+                vendas_prod_hist["DATA"] = pd.to_datetime(vendas_prod_hist["DATA"], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
                 vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
                 vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
                 vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
