@@ -507,6 +507,11 @@ if "nav_tab" not in st.session_state:
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
 
+# aplica navegação pendente (evita erro de setar session_state do rádio após o widget existir)
+if "_nav_pending" in st.session_state:
+    st.session_state.nav_tab = st.session_state["_nav_pending"]
+    del st.session_state["_nav_pending"]
+
 NAV_OPTS = ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧾 Compras"]
 if st.session_state.nav_tab not in NAV_OPTS:
     st.session_state.nav_tab = "📊 Dashboard"
@@ -759,23 +764,33 @@ if nav == "📊 Dashboard":
                 "LUCRO_FMT": "Lucro total (FIFO)",
             }
         )
-        # --- Tabela interativa (lupa abre Pesquisa) ---
-        st.markdown("#### 📋 Ranking (clique na 🔍 para abrir na Pesquisa)")
-        h0, h1 = st.columns([0.08, 0.92])
-        h0.markdown("**🔎**")
-        h1.markdown("**Produto**")
+                # --- Tabela (lupa ao lado do produto) ---
+        # (renderizada em colunas para permitir clique na 🔍)
+        header = st.columns([0.36, 0.10, 0.12, 0.16, 0.16, 0.16, 0.16, 0.08])
+        header[0].markdown("**Produto**")
+        header[1].markdown("**Qtd**")
+        header[2].markdown("**Estoque**")
+        header[3].markdown("**Custo FIFO**")
+        header[4].markdown("**Preço médio**")
+        header[5].markdown("**Receita**")
+        header[6].markdown("**Lucro**")
+        header[7].markdown("**🔎**")
 
         for idx, r in tabela_top.iterrows():
-            c0, c1 = st.columns([0.08, 0.92])
-            if c0.button("🔍", key=f"top_search_{idx}", help="Abrir este produto na Pesquisa"):
+            cols = st.columns([0.36, 0.10, 0.12, 0.16, 0.16, 0.16, 0.16, 0.08])
+            cols[0].write(r.get("Produto", ""))
+            cols[1].write(int(r.get("Qtd vendida", 0)))
+            cols[2].write(int(r.get("Estoque atual", 0)))
+            cols[3].write(r.get("Custo médio FIFO (unid.)", ""))
+            cols[4].write(r.get("Preço médio venda (unid.)", ""))
+            cols[5].write(r.get("Receita total", ""))
+            cols[6].write(r.get("Lucro total (FIFO)", ""))
+            if cols[7].button("🔍", key=f"top_search_{idx}", help="Abrir este produto na Pesquisa"):
                 st.session_state.produto_pesquisa = r["Produto"]
-                st.session_state.nav_tab = "🔎 Pesquisa de produto"
+                st.session_state._nav_pending = "🔎 Pesquisa de produto"
                 st.rerun()
-            c1.write(r["Produto"])
 
-        # Tabela completa (sem clique) com números
-        st.dataframe(tabela_top, use_container_width=True)
-        # ----------------------------------------
+# ----------------------------------------
         # INDICADOR DE PRODUTOS ÂNCORA
         # ----------------------------------------
         st.markdown(
@@ -933,105 +948,41 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
 
     df_fifo_view = df_fifo_filt.copy()
     if not df_fifo_view.empty:
-        # adiciona estoque atual na própria tabela de vendas
-        df_fifo_view = add_estoque_atual(df_fifo_view, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
-
-        df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_TOTAL"] / df_fifo_view["QTD"].replace(0, pd.NA)
-
-        exemplo = df_fifo_filt.iloc[0]
-        prod_ex = str(exemplo["PRODUTO"])
-        qtd_ex = float(exemplo["QTD"])
-        venda_ex = format_reais(exemplo["VALOR_TOTAL"])
-        custo_total_ex = format_reais(exemplo["CUSTO_TOTAL"])
-        custo_unit_ex = format_reais(exemplo["CUSTO_TOTAL"] / exemplo["QTD"] if exemplo["QTD"] else 0)
-        lucro_ex = format_reais(exemplo["LUCRO"])
-        estoque_ex = int(estoque_atual_map.get(prod_ex, 0))
-
-        if df_fifo_view["DATA"].notna().any():
-            df_fifo_view["DATA"] = df_fifo_view["DATA"].dt.strftime("%d/%m/%Y")
-
-        df_fifo_view["VALOR_TOTAL"] = df_fifo_view["VALOR_TOTAL"].map(format_reais)
-        df_fifo_view["CUSTO_TOTAL"] = df_fifo_view["CUSTO_TOTAL"].map(format_reais)
-        df_fifo_view["LUCRO"] = df_fifo_view["LUCRO"].map(format_reais)
-        df_fifo_view["CUSTO_UNIT"] = df_fifo_view["CUSTO_UNIT"].map(format_reais)
-
-        cols_ordem = [
-            "DATA",
-            "PRODUTO",
-            "CLIENTE",
-            "STATUS",
-            "QTD",
-            "VALOR_TOTAL",
-            "CUSTO_TOTAL",
-            "CUSTO_UNIT",
-            "LUCRO",
-            "ESTOQUE_ATUAL",
-            "MES_ANO",
-        ]
-        cols_ordem = [c for c in cols_ordem if c in df_fifo_view.columns]
-
-                # --- Lista rápida com lupa (🔍 abre na Pesquisa) ---
-        st.markdown("#### 🧷 Acesso rápido (clique na 🔍)")
-        df_quick_raw = df_fifo_filt.copy()
-        df_quick_raw = add_estoque_atual(df_quick_raw, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
-        df_quick_raw = df_quick_raw.sort_values("DATA", ascending=False).head(120)
-
-        if df_quick_raw.empty:
-            st.info("Sem registros para mostrar no acesso rápido.")
-        else:
-            df_quick_disp = df_quick_raw.copy()
-            df_quick_disp["DATA"] = df_quick_disp["DATA"].dt.strftime("%d/%m/%Y")
-            df_quick_disp["VALOR_TOTAL"] = df_quick_disp["VALOR_TOTAL"].map(format_reais)
-            df_quick_disp["CUSTO_TOTAL"] = df_quick_disp["CUSTO_TOTAL"].map(format_reais)
-            df_quick_disp["LUCRO"] = df_quick_disp["LUCRO"].map(format_reais)
-
-            h = st.columns([0.06, 0.32, 0.10, 0.17, 0.17, 0.18])
-            h[0].markdown("**🔎**")
-            h[1].markdown("**Produto**")
-            h[2].markdown("**Qtd**")
-            h[3].markdown("**Venda**")
-            h[4].markdown("**Lucro**")
-            h[5].markdown("**Estoque**")
-
-            for i, r in df_quick_disp.iterrows():
-                c = st.columns([0.06, 0.32, 0.10, 0.17, 0.17, 0.18])
-                if c[0].button("🔍", key=f"venda_search_{i}", help="Abrir este produto na Pesquisa"):
-                    st.session_state.produto_pesquisa = r["PRODUTO"]
-                    st.session_state.nav_tab = "🔎 Pesquisa de produto"
-                    st.rerun()
-                c[1].write(r.get("PRODUTO", ""))
-                c[2].write(int(r.get("QTD", 0)))
-                c[3].write(r.get("VALOR_TOTAL", ""))
-                c[4].write(r.get("LUCRO", ""))
-                c[5].write(int(r.get("ESTOQUE_ATUAL", 0)))
-
-        # --- Tabela completa ---
-        st.dataframe(
-            df_fifo_view[cols_ordem].sort_values("DATA", ascending=False),
-            use_container_width=True,
+        # Lista de produtos (clique na 🔍 pra abrir detalhes na Pesquisa)
+        base = (
+            df_fifo_filt.groupby("PRODUTO", as_index=False)
+            .agg(
+                QTD_VENDIDA=("QTD", "sum"),
+                RECEITA=("VALOR_TOTAL", "sum"),
+                LUCRO=("LUCRO", "sum"),
+            )
+            .sort_values(["QTD_VENDIDA", "RECEITA"], ascending=False)
         )
 
-        st.markdown("#### 📘 Como o FIFO é calculado (exemplo real)")
-        st.markdown(
-            f"""
-**Produto do exemplo:** `{prod_ex}`  
+        base["ESTOQUE_ATUAL"] = base["PRODUTO"].map(estoque_atual_map).fillna(0).astype(int)
+        base["RECEITA_FMT"] = base["RECEITA"].map(format_reais)
+        base["LUCRO_FMT"] = base["LUCRO"].map(format_reais)
 
-- Quantidade vendida: **{qtd_ex:.0f} unid.**  
-- Valor da venda: **{venda_ex}**  
-- Custo total FIFO dessa venda: **{custo_total_ex}**  
-- Custo unitário FIFO: **{custo_unit_ex}**  
-- Lucro nessa venda: **{lucro_ex}**  
-- Estoque atual do item (saldo final): **{estoque_ex} unid.**
+        h = st.columns([0.40, 0.12, 0.14, 0.17, 0.17, 0.08])
+        h[0].markdown("**Produto**")
+        h[1].markdown("**Qtd**")
+        h[2].markdown("**Estoque**")
+        h[3].markdown("**Receita**")
+        h[4].markdown("**Lucro**")
+        h[5].markdown("**🔎**")
 
-**Lógica resumida:**
+        for i, r in base.head(120).iterrows():
+            c = st.columns([0.40, 0.12, 0.14, 0.17, 0.17, 0.08])
+            c[0].write(r["PRODUTO"])
+            c[1].write(int(r["QTD_VENDIDA"]))
+            c[2].write(int(r["ESTOQUE_ATUAL"]))
+            c[3].write(r["RECEITA_FMT"])
+            c[4].write(r["LUCRO_FMT"])
+            if c[5].button("🔍", key=f"det_search_{i}", help="Abrir este produto na Pesquisa"):
+                st.session_state.produto_pesquisa = r["PRODUTO"]
+                st.session_state._nav_pending = "🔎 Pesquisa de produto"
+                st.rerun()
 
-1. Buscamos todas as **compras de `{prod_ex}` com STATUS = ENTREGUE**, em ordem de data (mais antigas primeiro).
-2. Cada compra vira um **lote** com quantidade e custo unitário.
-3. Quando essa venda acontece, consumimos primeiro o lote mais antigo, depois o próximo, até completar a quantidade.
-4. O **custo total FIFO** é a soma dos custos desses lotes consumidos.
-5. O **lucro** é: **venda − custo FIFO**.
-            """
-        )
     else:
         st.info("Nenhuma venda no período selecionado.")
 
