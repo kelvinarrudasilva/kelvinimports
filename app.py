@@ -967,11 +967,13 @@ if nav == "📊 Dashboard":
         df_sales = add_estoque_atual(df_sales, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
 
         # formatações
-        if "DATA" in df_sales.columns:
-            try:
-                df_sales["DATA_FMT"] = pd.to_datetime(df_sales["DATA"], errors="coerce").dt.strftime("%d/%m/%Y")
-            except Exception:
-                df_sales["DATA_FMT"] = ""
+        if not isinstance(df_sales, pd.DataFrame):
+            st.error("Erro interno: lista de vendas ficou inválida (df_sales não é DataFrame).")
+            df_sales = pd.DataFrame()
+        
+        if not df_sales.empty and ("DATA" in df_sales.columns):
+            df_sales["DATA"] = pd.to_datetime(df_sales["DATA"], errors="coerce", dayfirst=True)
+            df_sales["DATA_FMT"] = df_sales["DATA"].dt.strftime("%d/%m/%Y")
         else:
             df_sales["DATA_FMT"] = ""
 
@@ -1701,7 +1703,11 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                 # adiciona estoque atual em cada linha da compra
                 dfc_view = add_estoque_atual(dfc_view, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
 
-                dfc_view["DATA_FMT"] = dfc_view["DATA"].dt.strftime("%d/%m/%Y")
+                if "DATA" in dfc_view.columns:
+                    dfc_view["DATA"] = pd.to_datetime(dfc_view["DATA"], errors="coerce", dayfirst=True)
+                    dfc_view["DATA_FMT"] = dfc_view["DATA"].dt.strftime("%d/%m/%Y")
+                else:
+                    dfc_view["DATA_FMT"] = ""
                 dfc_view["CUSTO_UNIT_FMT"] = dfc_view["CUSTO UNITÁRIO"].map(format_reais)
                 dfc_view["CUSTO_TOTAL_FMT"] = dfc_view["CUSTO_TOTAL"].map(format_reais)
 
@@ -1730,4 +1736,3 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                     .sort_values("Data", ascending=False),
                     use_container_width=True,
                 )
-
