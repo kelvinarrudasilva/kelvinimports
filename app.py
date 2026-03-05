@@ -346,7 +346,57 @@ def ensure_datetime_series(df: pd.DataFrame, col: str):
         df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
     except Exception:
         df[col] = pd.to_datetime(pd.Series([pd.NaT] * len(df)), errors="coerce")
+    
+
+def ensure_col_from_aliases(df: pd.DataFrame, target: str, aliases, default=0):
+    """Garante df[target]. Se não existir, tenta copiar de aliases, senão cria com default."""
+    df = ensure_df(df).copy()
+    if target in df.columns:
+        return df
+    for a in aliases:
+        if a in df.columns:
+            df[target] = df[a]
+            return df
+    df[target] = default
     return df
+
+def normalize_sales_like(df: pd.DataFrame):
+    """Normaliza nomes/alias comuns em VENDAS ou dataframes derivados."""
+    df = ensure_df(df).copy()
+    # nomes com espaço -> underscore (apenas alguns críticos)
+    df = df.rename(columns={
+        "VALOR TOTAL": "VALOR_TOTAL",
+        "VALOR TOTAL (R$)": "VALOR_TOTAL",
+        "VALOR VENDA": "VALOR_VENDA",
+        "LUCRO TOTAL": "LUCRO",
+        "QTD.": "QTD",
+        "QTDE": "QTD",
+        "QUANTIDADE": "QTD",
+        "QUANT": "QTD",
+        "QNT": "QTD",
+    })
+    # garante colunas essenciais
+    df = ensure_col_from_aliases(df, "DATA", ["DATA", "DATA_VENDA", "DIA"], default=pd.NaT)
+    df = ensure_col_from_aliases(df, "PRODUTO", ["PRODUTO", "ITEM", "DESCRICAO"], default="")
+    df = ensure_col_from_aliases(df, "QTD", ["QTD", "QTD.", "QTDE", "QUANTIDADE", "QUANT", "QNT", "QTY"], default=0)
+
+    # valor total: prioriza VALOR_TOTAL; fallback em VALOR_VENDA; se existir VALOR (genérico) usa
+    if "VALOR_TOTAL" not in df.columns:
+        if "VALOR_VENDA" in df.columns:
+            df["VALOR_TOTAL"] = df["VALOR_VENDA"]
+        elif "VALOR" in df.columns:
+            df["VALOR_TOTAL"] = df["VALOR"]
+        else:
+            df["VALOR_TOTAL"] = 0.0
+
+    # cliente/status (não quebra se não existir)
+    df = ensure_col_from_aliases(df, "CLIENTE", ["CLIENTE", "NOME", "COMPRADOR"], default="")
+    df = ensure_col_from_aliases(df, "STATUS", ["STATUS", "SITUACAO"], default="")
+
+    # lucro (se faltar, cria 0)
+    df = ensure_col_from_aliases(df, "LUCRO", ["LUCRO", "LUCRO_TOTAL", "LUCRO TOTAL"], default=0.0)
+    return df
+return df
 
 
 def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
@@ -535,8 +585,6 @@ with col_btn:
         st.rerun()
 
 df_compras, df_vendas = carregar_dados()
-st.write("COLUNAS VENDAS:", list(df_vendas.columns))
-st.stop()
 df_fifo, df_estoque = calcular_fifo(df_compras, df_vendas)
 
 if df_fifo.empty:
@@ -978,22 +1026,7 @@ if nav == "📊 Dashboard":
     df_fifo_view = df_fifo_filt.copy()
     if not df_fifo_view.empty:
         # Lista compacta de vendas (🔍 abre o produto na Pesquisa)
-        df_sales = ensure_df(df_fifo_view).copy()
-        # Blindagem total (garante DataFrame)
-        df_sales = ensure_df(df_sales)
-
-        # Colunas obrigatórias (se faltar, cria vazias/zero)
-        for col, default in {
-            'DATA': pd.NaT,
-            'PRODUTO': '',
-            'QTD': 0,
-            'VALOR_TOTAL': 0.0,
-            'LUCRO': 0.0,
-            'CLIENTE': '',
-            'STATUS': ''
-        }.items():
-            if col not in df_sales.columns:
-                df_sales[col] = default
+                df_sales = normalize_sales_like(df_fifo_view).copy()
 
         # adiciona estoque atual por produto (se não der, segue com 0)
         try:
@@ -1006,17 +1039,9 @@ if nav == "📊 Dashboard":
         df_sales['DATA_FMT'] = df_sales['DATA'].dt.strftime('%d/%m/%Y').fillna('')
 
         # numéricos
-        # garante coluna QTD (algumas planilhas vêm como QUANTIDADE / QTD. / QTDE / etc.)
-        if 'QTD' not in df_sales.columns:
-            for _c in ['QTD.', 'QTDE', 'QUANTIDADE', 'QUANT', 'QNT', 'QTY']:
-                if _c in df_sales.columns:
-                    df_sales['QTD'] = df_sales[_c]
-                    break
-        if 'QTD' not in df_sales.columns:
-            df_sales['QTD'] = 0
-
         df_sales['QTD_NUM'] = df_sales['QTD'].apply(parse_money).astype(float)
         df_sales['QTD_INT'] = df_sales['QTD_NUM'].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
+
         # normaliza ESTOQUE_ATUAL (garante Series)
         if 'ESTOQUE_ATUAL' in df_sales.columns:
             _est = df_sales['ESTOQUE_ATUAL']
@@ -1029,8 +1054,7 @@ if nav == "📊 Dashboard":
 
         df_sales['VALOR_FMT'] = df_sales['VALOR_TOTAL'].map(format_reais)
         df_sales['LUCRO_FMT'] = df_sales['LUCRO'].map(format_reais)
-
-        df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
+df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
 
         headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Valor', 'Lucro']
         rows = []
