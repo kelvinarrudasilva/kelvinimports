@@ -1004,6 +1004,15 @@ if nav == "📊 Dashboard":
         df_sales['DATA_FMT'] = df_sales['DATA'].dt.strftime('%d/%m/%Y').fillna('')
 
         # numéricos
+        # garante coluna QTD (algumas planilhas vêm como QUANTIDADE / QTD. / QTDE / etc.)
+        if 'QTD' not in df_sales.columns:
+            for _c in ['QTD.', 'QTDE', 'QUANTIDADE', 'QUANT', 'QNT', 'QTY']:
+                if _c in df_sales.columns:
+                    df_sales['QTD'] = df_sales[_c]
+                    break
+        if 'QTD' not in df_sales.columns:
+            df_sales['QTD'] = 0
+
         df_sales['QTD_NUM'] = df_sales['QTD'].apply(parse_money).astype(float)
         df_sales['QTD_INT'] = df_sales['QTD_NUM'].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
         df_sales['ESTOQUE_ATUAL'] = df_sales.get('ESTOQUE_ATUAL', 0).apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
@@ -1199,7 +1208,8 @@ elif nav == "🔎 Pesquisa de produto":
                 )
                 vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
 
-                vendas_prod_hist["DATA"] = pd.to_datetime(vendas_prod_hist["DATA"], errors="coerce", dayfirst=True).dt.strftime("%d/%m/%Y")
+                vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
+                vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
                 vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
                 vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
                 vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
