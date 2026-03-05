@@ -1015,7 +1015,12 @@ if nav == "📊 Dashboard":
 
         df_sales['QTD_NUM'] = df_sales['QTD'].apply(parse_money).astype(float)
         df_sales['QTD_INT'] = df_sales['QTD_NUM'].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
-        df_sales['ESTOQUE_ATUAL'] = df_sales.get('ESTOQUE_ATUAL', 0).apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
+        # normaliza ESTOQUE_ATUAL (garante Series)
+        if 'ESTOQUE_ATUAL' in df_sales.columns:
+            _est = df_sales['ESTOQUE_ATUAL']
+        else:
+            _est = pd.Series(0, index=df_sales.index)
+        df_sales['ESTOQUE_ATUAL'] = _est.apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
 
         df_sales['VALOR_TOTAL'] = df_sales['VALOR_TOTAL'].apply(parse_money).astype(float)
         df_sales['LUCRO'] = df_sales['LUCRO'].apply(parse_money).astype(float)
