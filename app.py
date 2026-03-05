@@ -328,6 +328,27 @@ def format_reais(v):
     return f"R$ {s}"
 
 
+def ensure_df(obj):
+    """Garante um DataFrame (mesmo se vier torto)."""
+    if isinstance(obj, pd.DataFrame):
+        return obj
+    try:
+        return pd.DataFrame(obj)
+    except Exception:
+        return pd.DataFrame()
+
+def ensure_datetime_series(df: pd.DataFrame, col: str):
+    """Converte uma coluna para datetime sem quebrar."""
+    df = ensure_df(df)
+    if col not in df.columns:
+        df[col] = pd.NaT
+    try:
+        df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+    except Exception:
+        df[col] = pd.to_datetime(pd.Series([pd.NaT] * len(df)), errors="coerce")
+    return df
+
+
 def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
     # procura até 200 linhas
     max_linhas = min(200, len(df_raw))
@@ -955,12 +976,9 @@ if nav == "📊 Dashboard":
     df_fifo_view = df_fifo_filt.copy()
     if not df_fifo_view.empty:
         # Lista compacta de vendas (🔍 abre o produto na Pesquisa)
-        df_sales = df_fifo_view.copy()
-
-        # Blindagem total: garante DataFrame e colunas mínimas
-        if not isinstance(df_sales, pd.DataFrame):
-            st.error("Erro interno: lista de vendas ficou inválida (df_sales não é DataFrame).")
-            df_sales = pd.DataFrame()
+        df_sales = ensure_df(df_fifo_view).copy()
+        # Blindagem total (garante DataFrame)
+        df_sales = ensure_df(df_sales)
 
         # Colunas obrigatórias (se faltar, cria vazias/zero)
         for col, default in {
@@ -982,7 +1000,7 @@ if nav == "📊 Dashboard":
             df_sales['ESTOQUE_ATUAL'] = 0
 
         # DATA -> datetime antes de qualquer .dt
-        df_sales['DATA'] = pd.to_datetime(df_sales['DATA'], errors='coerce', dayfirst=True)
+        df_sales = ensure_datetime_series(df_sales, 'DATA')
         df_sales['DATA_FMT'] = df_sales['DATA'].dt.strftime('%d/%m/%Y').fillna('')
 
         # numéricos
@@ -1713,7 +1731,7 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                     unsafe_allow_html=True,
                 )
 
-                dfc_view = dfc_filt.copy()
+                dfc_view = ensure_df(dfc_filt).copy()
 
                 # Blindagem: se por algum motivo não for DataFrame, não quebra
                 if not isinstance(dfc_view, pd.DataFrame):
@@ -1727,8 +1745,8 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                     dfc_view["ESTOQUE_ATUAL"] = 0
 
                 if "DATA" in dfc_view.columns:
-                    dfc_view["DATA"] = pd.to_datetime(dfc_view["DATA"], errors="coerce", dayfirst=True)
-                    dfc_view["DATA_FMT"] = dfc_view["DATA"].dt.strftime("%d/%m/%Y")
+                    dfc_view = ensure_datetime_series(dfc_view, "DATA")
+                    dfc_view["DATA_FMT"] = dfc_view["DATA"].dt.strftime("%d/%m/%Y").fillna("")
                 else:
                     dfc_view["DATA_FMT"] = ""
                 dfc_view["CUSTO_UNIT_FMT"] = dfc_view["CUSTO UNITÁRIO"].map(format_reais)
