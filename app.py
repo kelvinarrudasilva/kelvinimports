@@ -818,6 +818,97 @@ if nav == "📊 Dashboard":
         unsafe_allow_html=True,
     )
 
+    
+    # --------------------------------------------------
+    # GRÁFICO – FATURAMENTO + LUCRO (mês atual e 2 anteriores)
+    # --------------------------------------------------
+    st.markdown(
+        """
+<div class="section-title">📈 Faturamento & Lucro – mês atual e 2 anteriores</div>
+<div class="section-sub">Dois termômetros do caixa: o que entrou e o que sobrou (lucro FIFO), lado a lado.</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    df_mes = df_fifo.dropna(subset=["MES_ANO"]).copy()
+    if df_mes.empty:
+        st.info("Sem dados suficientes para montar o gráfico mensal.")
+    else:
+        resumo_mes = (
+            df_mes.groupby("MES_ANO", as_index=False)[["VALOR_TOTAL", "LUCRO"]]
+            .sum()
+            .sort_values("MES_ANO")
+        )
+
+        meses_unicos = resumo_mes["MES_ANO"].tolist()
+        if not meses_unicos:
+            st.info("Sem meses para exibir no gráfico.")
+        else:
+            mes_atual_data = pd.Timestamp.now().strftime("%Y-%m")
+            if mes_atual_data in meses_unicos:
+                idx_atual = meses_unicos.index(mes_atual_data)
+                start_idx = max(0, idx_atual - 2)
+                meses_plot = meses_unicos[start_idx : idx_atual + 1]
+            else:
+                meses_plot = meses_unicos[-3:]
+
+            resumo_mes = resumo_mes[resumo_mes["MES_ANO"].isin(meses_plot)].copy()
+            resumo_mes = resumo_mes.sort_values("MES_ANO")
+
+            # formato longo para plotar duas métricas
+            plot_df = resumo_mes.melt(
+                id_vars=["MES_ANO"],
+                value_vars=["VALOR_TOTAL", "LUCRO"],
+                var_name="MÉTRICA",
+                value_name="VALOR",
+            )
+            plot_df["MÉTRICA"] = plot_df["MÉTRICA"].map(
+                {"VALOR_TOTAL": "Faturamento", "LUCRO": "Lucro (FIFO)"}
+            )
+            plot_df["VALOR_FMT"] = plot_df["VALOR"].map(format_reais)
+
+            fig = px.bar(
+                plot_df,
+                x="MES_ANO",
+                y="VALOR",
+                color="MÉTRICA",
+                barmode="group",
+                text="VALOR_FMT",
+                labels={"MES_ANO": "Mês", "VALOR": "Valor (R$)"},
+                color_discrete_map={
+                    "Faturamento": "#22c55e",
+                    "Lucro (FIFO)": "#14b8a6",
+                },
+            )
+            fig.update_traces(
+                textposition="inside",
+                texttemplate="<b>%{text}</b>",
+                insidetextanchor="middle",
+                textfont_size=12,
+            )
+            fig.update_layout(
+                height=380,
+                yaxis_title="R$",
+                xaxis_title="",
+                bargap=0.22,
+                bargroupgap=0.10,
+                uniformtext_minsize=9,
+                uniformtext_mode="hide",
+                plot_bgcolor="#050505",
+                paper_bgcolor="#050505",
+                font=dict(
+                    family="system-ui, -apple-system, 'Segoe UI', sans-serif",
+                    color="#e5e5e5",
+                ),
+                legend_title_text="",
+                margin=dict(l=10, r=10, t=10, b=10),
+            )
+            fig.update_xaxes(showgrid=False)
+            fig.update_yaxes(showgrid=True, gridcolor="#1f2937", zeroline=False)
+
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
     st.markdown("---")
 
     # Top produtos mais vendidos
@@ -856,39 +947,7 @@ if nav == "📊 Dashboard":
         top_prod["PRECO_MEDIO_VENDA"] = top_prod["RECEITA"] / top_prod["QTD_VENDIDA"].replace(0, pd.NA)
 
         top_view = top_prod.sort_values("QTD_VENDIDA", ascending=False).head(6).copy()
-        top_view["LABEL"] = top_view.apply(
-            lambda r: f"{int(r['QTD_VENDIDA'])} un\n{format_reais(r['RECEITA'])}",
-            axis=1,
-        )
 
-        fig_top = px.bar(
-            top_view,
-            x="PRODUTO",
-            y="QTD_VENDIDA",
-            text="LABEL",
-            labels={"PRODUTO": "Produto", "QTD_VENDIDA": "Qtd vendida"},
-            color="QTD_VENDIDA",
-            color_continuous_scale=["#1f2937", "#22c55e"],
-        )
-        fig_top.update_traces(
-            textposition="inside",
-            texttemplate="<b>%{text}</b>",
-            insidetextanchor="middle",
-            textfont_size=13,
-        )
-        fig_top.update_layout(
-            height=360,
-            plot_bgcolor="#050505",
-            paper_bgcolor="#050505",
-            font=dict(
-                family="system-ui, -apple-system, 'Segoe UI', sans-serif",
-                color="#e5e5e5",
-            ),
-            coloraxis_showscale=False,
-            uniformtext_minsize=10,
-            uniformtext_mode="hide",
-        )
-        st.plotly_chart(fig_top, use_container_width=True)
 
         top_view["CUSTO_MEDIO_FIFO_FMT"] = top_view["CUSTO_MEDIO_FIFO"].map(format_reais)
         top_view["PRECO_MEDIO_VENDA_FMT"] = top_view["PRECO_MEDIO_VENDA"].map(format_reais)
@@ -939,79 +998,6 @@ if nav == "📊 Dashboard":
 
     st.markdown("---")
 
-    # Gráfico mensal (mês atual + 2 anteriores)
-    st.markdown(
-        """
-<div class="section-title">📊 Faturamento – mês atual e 2 anteriores</div>
-<div class="section-sub">Valores em real dentro das colunas, com o mês atual em destaque.</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    df_mes = df_fifo.dropna(subset=["MES_ANO"]).copy()
-    if df_mes.empty:
-        st.info("Sem dados suficientes para montar o gráfico mensal.")
-    else:
-        resumo_mes = (
-            df_mes.groupby("MES_ANO", as_index=False)[["VALOR_TOTAL", "LUCRO"]]
-            .sum()
-            .sort_values("MES_ANO")
-        )
-
-        meses_unicos = resumo_mes["MES_ANO"].tolist()
-        if not meses_unicos:
-            st.info("Sem meses para exibir no gráfico.")
-        else:
-            mes_atual_data = pd.Timestamp.now().strftime("%Y-%m")
-            if mes_atual_data in meses_unicos:
-                idx_atual = meses_unicos.index(mes_atual_data)
-                start_idx = max(0, idx_atual - 2)
-                meses_plot = meses_unicos[start_idx : idx_atual + 1]
-            else:
-                meses_plot = meses_unicos[-3:]
-
-            resumo_mes = resumo_mes[resumo_mes["MES_ANO"].isin(meses_plot)]
-            resumo_mes = resumo_mes.sort_values("MES_ANO")
-
-            resumo_mes["VALOR_TOTAL_FMT"] = resumo_mes["VALOR_TOTAL"].map(format_reais)
-            resumo_mes["TIPO_MES"] = resumo_mes["MES_ANO"].apply(
-                lambda m: "Mês atual" if m == mes_atual_data else "Anterior"
-            )
-
-            fig = px.bar(
-                resumo_mes,
-                x="MES_ANO",
-                y="VALOR_TOTAL",
-                text="VALOR_TOTAL_FMT",
-                labels={"MES_ANO": "Mês", "VALOR_TOTAL": "Faturamento"},
-                color="TIPO_MES",
-                color_discrete_map={
-                    "Mês atual": "#22c55e",
-                    "Anterior": "#4b5563",
-                },
-            )
-            fig.update_traces(
-                textposition="inside",
-                texttemplate="<b>%{text}</b>",
-                insidetextanchor="middle",
-                textfont_size=13,
-            )
-            fig.update_layout(
-                height=360,
-                yaxis_title="Faturamento (R$)",
-                xaxis_title="Mês",
-                uniformtext_minsize=10,
-                uniformtext_mode="hide",
-                plot_bgcolor="#050505",
-                paper_bgcolor="#050505",
-                font=dict(
-                    family="system-ui, -apple-system, 'Segoe UI', sans-serif",
-                    color="#e5e5e5",
-                ),
-                legend_title_text="",
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
     st.markdown("---")
 
     # Vendas detalhadas + explicação FIFO
@@ -1049,25 +1035,22 @@ if nav == "📊 Dashboard":
             _est = pd.Series(0, index=df_sales.index)
         df_sales['ESTOQUE_ATUAL'] = _est.apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
 
-        # garante CUSTO_TOTAL (do FIFO) e calcula custo unitário FIFO
-        if 'CUSTO_TOTAL' not in df_sales.columns:
-            # possíveis aliases (só por segurança)
-            if 'CUSTO TOTAL' in df_sales.columns:
-                df_sales['CUSTO_TOTAL'] = df_sales['CUSTO TOTAL']
-            else:
-                df_sales['CUSTO_TOTAL'] = 0.0
-
-        df_sales['CUSTO_TOTAL'] = df_sales['CUSTO_TOTAL'].apply(parse_money).astype(float)
         df_sales['VALOR_TOTAL'] = df_sales['VALOR_TOTAL'].apply(parse_money).astype(float)
         df_sales['LUCRO'] = df_sales['LUCRO'].apply(parse_money).astype(float)
+
+        # custo total e custo unitário FIFO (blindado)
+        if 'CUSTO_TOTAL' in df_sales.columns:
+            df_sales['CUSTO_TOTAL'] = df_sales['CUSTO_TOTAL'].apply(parse_money).astype(float)
+        else:
+            df_sales['CUSTO_TOTAL'] = 0.0
 
         df_sales['CUSTO_UNIT_FIFO'] = df_sales['CUSTO_TOTAL'] / df_sales['QTD_NUM'].replace(0, pd.NA)
         df_sales['CUSTO_UNIT_FIFO'] = df_sales['CUSTO_UNIT_FIFO'].fillna(0.0)
 
-
         df_sales['VALOR_FMT'] = df_sales['VALOR_TOTAL'].map(format_reais)
-        df_sales['CUSTO_UNIT_FIFO_FMT'] = df_sales['CUSTO_UNIT_FIFO'].map(format_reais)
         df_sales['LUCRO_FMT'] = df_sales['LUCRO'].map(format_reais)
+        df_sales['CUSTO_UNIT_FIFO_FMT'] = df_sales['CUSTO_UNIT_FIFO'].map(format_reais)
+
         df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
 
         headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Custo un. (FIFO)', 'Valor', 'Lucro']
