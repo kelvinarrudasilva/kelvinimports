@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from urllib.parse import quote
 
 # --------------------------------------------------
 # CONFIG BÁSICA
@@ -194,6 +195,15 @@ html, body, [class*="css"] {
 .stDataFrame tbody tr:nth-child(even) {
   background-color:#0a0a0a;
 }
+/* HOVER + COMPACT GRID */
+.stDataFrame tbody tr:hover td{
+  background:#111827 !important;
+}
+.stDataFrame td, .stDataFrame th{
+  padding:6px 10px !important;
+  font-size:12px !important;
+  line-height:1.2 !important;
+}
 
 /* TABS */
 .stTabs [data-baseweb="tab-list"] {
@@ -219,6 +229,36 @@ html, body, [class*="css"] {
 
 /* HR */
 hr { border-color:#1f2933 !important; }
+
+/* TABELA HTML COMPACTA (GRID) */
+.compact-wrap{ width:100%; overflow:auto; border:1px solid var(--border-soft); border-radius:14px; }
+.compact-grid{ width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
+.compact-grid thead th{
+  position:sticky; top:0;
+  background:#111827;
+  color:#e5e7eb;
+  text-transform:uppercase;
+  letter-spacing:0.12em;
+  font-size:11px;
+  padding:8px 10px;
+  border-bottom:1px solid var(--border-soft);
+  text-align:left;
+  white-space:nowrap;
+}
+.compact-grid td{
+  padding:7px 10px;
+  border-bottom:1px solid #121212;
+  vertical-align:middle;
+  white-space:nowrap;
+}
+.compact-grid tbody tr:nth-child(odd) td{ background:#050505; }
+.compact-grid tbody tr:nth-child(even) td{ background:#0a0a0a; }
+.compact-grid tbody tr:hover td{ background:#111827 !important; }
+.compact-grid .prodcell{ display:flex; align-items:center; gap:8px; }
+.compact-grid a.lens{ text-decoration:none; font-size:13px; }
+.compact-grid a.lens:hover{ filter:brightness(1.2); }
+.compact-grid .muted{ color:var(--muted); }
+
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
@@ -496,6 +536,29 @@ def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
         out[nome_col] = out[nome_col].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
     else:
         out[nome_col] = 0
+
+def _render_compact_table(rows, headers):
+    """Renderiza uma tabela HTML compacta com hover e links na coluna Produto."""
+    thead = "".join([f"<th>{h}</th>" for h in headers])
+    tbody = "".join(rows)
+    return f'''
+<div class="compact-wrap">
+  <table class="compact-grid">
+    <thead><tr>{thead}</tr></thead>
+    <tbody>{tbody}</tbody>
+  </table>
+</div>
+'''
+
+def _td(txt, cls=""):
+    c = f' class="{cls}"' if cls else ""
+    return f"<td{c}>{txt}</td>"
+
+def _safe(s):
+    if s is None:
+        return ""
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
     return out
 
 
@@ -506,6 +569,24 @@ if "nav_tab" not in st.session_state:
     st.session_state.nav_tab = "📊 Dashboard"
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
+
+# Se veio de um link da 🔍 (query param), já abre a Pesquisa com o produto selecionado
+try:
+    qp = st.query_params
+    qp_prod = qp.get("produto", None)
+    if isinstance(qp_prod, list):
+        qp_prod = qp_prod[0] if qp_prod else None
+    if qp_prod:
+        st.session_state.produto_pesquisa = str(qp_prod)
+        st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
+        # limpa a URL (pra não ficar preso)
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+except Exception:
+    pass
+
 
 # aplica navegação pendente (evita erro de setar session_state do rádio após o widget existir)
 if "_nav_pending" in st.session_state:
@@ -764,101 +845,26 @@ if nav == "📊 Dashboard":
                 "LUCRO_FMT": "Lucro total (FIFO)",
             }
         )
-                # --- Tabela (lupa ao lado do produto) ---
-        # (renderizada em colunas para permitir clique na 🔍)
-        header = st.columns([0.36, 0.10, 0.12, 0.16, 0.16, 0.16, 0.16, 0.08])
-        header[0].markdown("**Produto**")
-        header[1].markdown("**Qtd**")
-        header[2].markdown("**Estoque**")
-        header[3].markdown("**Custo FIFO**")
-        header[4].markdown("**Preço médio**")
-        header[5].markdown("**Receita**")
-        header[6].markdown("**Lucro**")
-        header[7].markdown("**🔎**")
-
-        for idx, r in tabela_top.iterrows():
-            cols = st.columns([0.36, 0.10, 0.12, 0.16, 0.16, 0.16, 0.16, 0.08])
-            cols[0].write(r.get("Produto", ""))
-            cols[1].write(int(r.get("Qtd vendida", 0)))
-            cols[2].write(int(r.get("Estoque atual", 0)))
-            cols[3].write(r.get("Custo médio FIFO (unid.)", ""))
-            cols[4].write(r.get("Preço médio venda (unid.)", ""))
-            cols[5].write(r.get("Receita total", ""))
-            cols[6].write(r.get("Lucro total (FIFO)", ""))
-            if cols[7].button("🔍", key=f"top_search_{idx}", help="Abrir este produto na Pesquisa"):
-                st.session_state.produto_pesquisa = r["Produto"]
-                st.session_state._nav_pending = "🔎 Pesquisa de produto"
-                st.rerun()
-
-# ----------------------------------------
-        # INDICADOR DE PRODUTOS ÂNCORA
-        # ----------------------------------------
-        st.markdown(
-            """
-<div class="section-title">🧱 Produtos âncora da loja</div>
-<div class="section-sub">
-Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-        # margem em %
-        top_prod["MARGEM_PCT"] = (top_prod["LUCRO"] / top_prod["RECEITA"].replace(0, pd.NA)) * 100
-
-        # critérios
-        ANC_MIN_QTD = 10
-        ANC_MIN_RECEITA = 500
-        ANC_MIN_MARGEM = 20.0
-
-        ancora = top_prod[
-            (top_prod["QTD_VENDIDA"] >= ANC_MIN_QTD)
-            & (top_prod["RECEITA"] >= ANC_MIN_RECEITA)
-            & (top_prod["MARGEM_PCT"] >= ANC_MIN_MARGEM)
-        ].copy()
-
-        if ancora.empty:
-            st.info(
-                "Nenhum produto bateu todos os critérios de âncora nesse período "
-                f"(≥ {ANC_MIN_QTD} un, ≥ {format_reais(ANC_MIN_RECEITA)} em vendas e margem ≥ {ANC_MIN_MARGEM:.0f}%)."
-            )
-        else:
-            ancora["RECEITA_FMT"] = ancora["RECEITA"].map(format_reais)
-            ancora["LUCRO_FMT"] = ancora["LUCRO"].map(format_reais)
-            ancora["MARGEM_PCT_FMT"] = ancora["MARGEM_PCT"].map(lambda x: f"{x:.1f}%")
-
-            tabela_ancora = ancora.sort_values("RECEITA", ascending=False)[
-                [
-                    "PRODUTO",
-                    "QTD_VENDIDA",
-                    "SALDO_QTD",
-                    "RECEITA_FMT",
-                    "LUCRO_FMT",
-                    "MARGEM_PCT_FMT",
-                ]
-            ].rename(
-                columns={
-                    "PRODUTO": "Produto",
-                    "QTD_VENDIDA": "Qtd vendida",
-                    "SALDO_QTD": "Estoque atual",
-                    "RECEITA_FMT": "Receita período",
-                    "LUCRO_FMT": "Lucro período",
-                    "MARGEM_PCT_FMT": "Margem (%)",
-                }
+                # --- Tabela compacta (🔍 abre na Pesquisa) ---
+        headers = ["Produto", "Qtd", "Estoque", "Custo FIFO", "Preço médio", "Receita", "Lucro"]
+        rows = []
+        for _, r in tabela_top.iterrows():
+            prod = _safe(r.get("Produto", ""))
+            link = f"?produto={quote(prod)}"
+            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            rows.append(
+                "<tr>"
+                + _td(prod_html)
+                + _td(_safe(int(r.get("Qtd vendida", 0))))
+                + _td(_safe(int(r.get("Estoque atual", 0))))
+                + _td(_safe(r.get("Custo médio FIFO (unid.)", "")))
+                + _td(_safe(r.get("Preço médio venda (unid.)", "")))
+                + _td(_safe(r.get("Receita total", "")))
+                + _td(_safe(r.get("Lucro total (FIFO)", "")))
+                + "</tr>"
             )
 
-            st.dataframe(tabela_ancora, use_container_width=True)
-
-            st.markdown(
-                """
-- Esses são os itens que **mais carregam a loja** em volume + margem.
-- Ideias:
-  - destaque em anúncios,
-  - vitrine,
-  - kits,
-  - e cuidado para não deixar zerar estoque.
-                """
-            )
+        st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -948,43 +954,53 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
 
     df_fifo_view = df_fifo_filt.copy()
     if not df_fifo_view.empty:
-        # Lista de produtos (clique na 🔍 pra abrir detalhes na Pesquisa)
-        base = (
-            df_fifo_filt.groupby("PRODUTO", as_index=False)
-            .agg(
-                QTD_VENDIDA=("QTD", "sum"),
-                RECEITA=("VALOR_TOTAL", "sum"),
-                LUCRO=("LUCRO", "sum"),
+        # Lista compacta de vendas (🔍 abre o produto na Pesquisa)
+        df_sales = df_fifo_view.copy()
+
+        # garante colunas
+        if "CLIENTE" not in df_sales.columns:
+            df_sales["CLIENTE"] = ""
+        if "STATUS" not in df_sales.columns:
+            df_sales["STATUS"] = ""
+
+        # formatações
+        if "DATA" in df_sales.columns:
+            try:
+                df_sales["DATA_FMT"] = pd.to_datetime(df_sales["DATA"], errors="coerce").dt.strftime("%d/%m/%Y")
+            except Exception:
+                df_sales["DATA_FMT"] = ""
+        else:
+            df_sales["DATA_FMT"] = ""
+
+        df_sales["QTD_INT"] = df_sales["QTD"].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
+        df_sales["VALOR_FMT"] = df_sales["VALOR_TOTAL"].map(format_reais)
+        df_sales["LUCRO_FMT"] = df_sales["LUCRO"].map(format_reais)
+
+        df_sales = df_sales.sort_values("DATA", ascending=False).head(220)
+
+        headers = ["Data", "Produto", "Cliente", "Status", "Qtd", "Valor", "Lucro"]
+        rows = []
+        for _, r in df_sales.iterrows():
+            prod = _safe(r.get("PRODUTO", ""))
+            link = f"?produto={quote(prod)}"
+            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            rows.append(
+                "<tr>"
+                + _td(_safe(r.get("DATA_FMT", "")), "muted")
+                + _td(prod_html)
+                + _td(_safe(r.get("CLIENTE", "")))
+                + _td(_safe(r.get("STATUS", "")), "muted")
+                + _td(_safe(r.get("QTD_INT", 0)))
+                + _td(_safe(r.get("VALOR_FMT", "")))
+                + _td(_safe(r.get("LUCRO_FMT", "")))
+                + "</tr>"
             )
-            .sort_values(["QTD_VENDIDA", "RECEITA"], ascending=False)
-        )
 
-        base["ESTOQUE_ATUAL"] = base["PRODUTO"].map(estoque_atual_map).fillna(0).astype(int)
-        base["RECEITA_FMT"] = base["RECEITA"].map(format_reais)
-        base["LUCRO_FMT"] = base["LUCRO"].map(format_reais)
-
-        h = st.columns([0.40, 0.12, 0.14, 0.17, 0.17, 0.08])
-        h[0].markdown("**Produto**")
-        h[1].markdown("**Qtd**")
-        h[2].markdown("**Estoque**")
-        h[3].markdown("**Receita**")
-        h[4].markdown("**Lucro**")
-        h[5].markdown("**🔎**")
-
-        for i, r in base.head(120).iterrows():
-            c = st.columns([0.40, 0.12, 0.14, 0.17, 0.17, 0.08])
-            c[0].write(r["PRODUTO"])
-            c[1].write(int(r["QTD_VENDIDA"]))
-            c[2].write(int(r["ESTOQUE_ATUAL"]))
-            c[3].write(r["RECEITA_FMT"])
-            c[4].write(r["LUCRO_FMT"])
-            if c[5].button("🔍", key=f"det_search_{i}", help="Abrir este produto na Pesquisa"):
-                st.session_state.produto_pesquisa = r["PRODUTO"]
-                st.session_state._nav_pending = "🔎 Pesquisa de produto"
-                st.rerun()
+        st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
 
     else:
         st.info("Nenhuma venda no período selecionado.")
+
 
 elif nav == "🔎 Pesquisa de produto":
     st.markdown(
