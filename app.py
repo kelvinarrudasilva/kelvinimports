@@ -834,13 +834,43 @@ if nav == "📊 Dashboard":
     if df_mes.empty:
         st.info("Sem dados suficientes para montar o gráfico mensal.")
     else:
-        resumo_mes = (
+        # --- Resumo de VENDAS (faturamento + lucro) por mês ---
+        resumo_vendas = (
             df_mes.groupby("MES_ANO", as_index=False)[["VALOR_TOTAL", "LUCRO"]]
             .sum()
             .sort_values("MES_ANO")
         )
 
-        meses_unicos = resumo_mes["MES_ANO"].tolist()
+        # --- Resumo de COMPRAS (ENTREGUE) por mês ---
+        dfc_graf = df_compras.copy()
+        if isinstance(dfc_graf, pd.DataFrame) and not dfc_graf.empty:
+            dfc_graf.columns = [str(c).strip().upper() for c in dfc_graf.columns]
+            if "STATUS" in dfc_graf.columns:
+                dfc_graf = dfc_graf[dfc_graf["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
+            if "DATA" in dfc_graf.columns:
+                dfc_graf["DATA"] = pd.to_datetime(dfc_graf["DATA"], errors="coerce", dayfirst=True)
+                dfc_graf["MES_ANO"] = dfc_graf["DATA"].dt.strftime("%Y-%m")
+            if "QUANTIDADE" in dfc_graf.columns:
+                dfc_graf["QUANTIDADE"] = dfc_graf["QUANTIDADE"].apply(parse_money).astype(float)
+            if "CUSTO UNITÁRIO" in dfc_graf.columns:
+                dfc_graf["CUSTO UNITÁRIO"] = dfc_graf["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
+            if "MES_ANO" in dfc_graf.columns:
+                dfc_graf["CUSTO_TOTAL"] = dfc_graf.get("QUANTIDADE", 0) * dfc_graf.get("CUSTO UNITÁRIO", 0)
+                resumo_compras = (
+                    dfc_graf.groupby("MES_ANO", as_index=False)["CUSTO_TOTAL"]
+                    .sum()
+                    .rename(columns={"CUSTO_TOTAL": "COMPRAS"})
+                )
+            else:
+                resumo_compras = pd.DataFrame(columns=["MES_ANO", "COMPRAS"])
+        else:
+            resumo_compras = pd.DataFrame(columns=["MES_ANO", "COMPRAS"])
+
+        resumo_mes = resumo_vendas.merge(resumo_compras, on="MES_ANO", how="left")
+        resumo_mes["COMPRAS"] = resumo_mes["COMPRAS"].fillna(0.0)
+
+        # --- Escolhe mês atual + 2 anteriores (se existir) ---
+        meses_unicos = resumo_mes["MES_ANO"].dropna().tolist()
         if not meses_unicos:
             st.info("Sem meses para exibir no gráfico.")
         else:
@@ -855,29 +885,44 @@ if nav == "📊 Dashboard":
             resumo_mes = resumo_mes[resumo_mes["MES_ANO"].isin(meses_plot)].copy()
             resumo_mes = resumo_mes.sort_values("MES_ANO")
 
-            # formato longo para plotar duas métricas
+            # --- Rótulo de mês bonito (pt-BR) ---
+            _month_map = {
+                1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+                7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
+            }
+            resumo_mes["_MES_DT"] = pd.to_datetime(resumo_mes["MES_ANO"] + "-01", errors="coerce")
+            resumo_mes["MES_LABEL"] = resumo_mes["_MES_DT"].apply(
+                lambda d: f"{_month_map.get(int(d.month), '')}/{int(d.year)}" if pd.notna(d) else ""
+            )
+
+            # --- Formato longo para plotar 3 métricas ---
             plot_df = resumo_mes.melt(
-                id_vars=["MES_ANO"],
-                value_vars=["VALOR_TOTAL", "LUCRO"],
+                id_vars=["MES_ANO", "MES_LABEL"],
+                value_vars=["VALOR_TOTAL", "LUCRO", "COMPRAS"],
                 var_name="MÉTRICA",
                 value_name="VALOR",
             )
             plot_df["MÉTRICA"] = plot_df["MÉTRICA"].map(
-                {"VALOR_TOTAL": "Faturamento", "LUCRO": "Lucro (FIFO)"}
+                {"VALOR_TOTAL": "Faturamento", "LUCRO": "Lucro (FIFO)", "COMPRAS": "Compras (ENTREGUE)"}
             )
             plot_df["VALOR_FMT"] = plot_df["VALOR"].map(format_reais)
 
+            # Garante ordem correta no eixo X
+            ordem_x = resumo_mes["MES_LABEL"].tolist()
+
             fig = px.bar(
                 plot_df,
-                x="MES_ANO",
+                x="MES_LABEL",
                 y="VALOR",
                 color="MÉTRICA",
                 barmode="group",
                 text="VALOR_FMT",
-                labels={"MES_ANO": "Mês", "VALOR": "Valor (R$)"},
+                labels={"MES_LABEL": "Mês", "VALOR": "Valor (R$)"},
+                category_orders={"MES_LABEL": ordem_x},
                 color_discrete_map={
                     "Faturamento": "#22c55e",
                     "Lucro (FIFO)": "#14b8a6",
+                    "Compras (ENTREGUE)": "#f97316",
                 },
             )
             fig.update_traces(
@@ -887,7 +932,7 @@ if nav == "📊 Dashboard":
                 textfont_size=12,
             )
             fig.update_layout(
-                height=380,
+                height=390,
                 yaxis_title="R$",
                 xaxis_title="",
                 bargap=0.22,
