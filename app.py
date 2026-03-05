@@ -500,16 +500,35 @@ def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
 
 
 # --------------------------------------------------
-# TABS
+# NAVEGAÇÃO (no lugar de st.tabs, pra permitir ir pra Pesquisa via 🔍)
 # --------------------------------------------------
-tab_dash, tab_search, tab_alerts, tab_compras = st.tabs(
-    ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧾 Compras"]
+if "nav_tab" not in st.session_state:
+    st.session_state.nav_tab = "📊 Dashboard"
+if "produto_pesquisa" not in st.session_state:
+    st.session_state.produto_pesquisa = None
+
+NAV_OPTS = ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧾 Compras"]
+if st.session_state.nav_tab not in NAV_OPTS:
+    st.session_state.nav_tab = "📊 Dashboard"
+
+nav_index = NAV_OPTS.index(st.session_state.nav_tab)
+
+st.radio(
+    "Navegação",
+    options=NAV_OPTS,
+    index=nav_index,
+    key="nav_tab",
+    horizontal=True,
+    label_visibility="collapsed",
 )
 
+nav = st.session_state.nav_tab
+
 # --------------------------------------------------
-# TAB 1 – DASHBOARD
+# TELAS
 # --------------------------------------------------
-with tab_dash:
+if nav == "📊 Dashboard":
+
     st.markdown(
         """
 <div class="section-title">Visão geral do período selecionado</div>
@@ -740,9 +759,22 @@ with tab_dash:
                 "LUCRO_FMT": "Lucro total (FIFO)",
             }
         )
+        # --- Tabela interativa (lupa abre Pesquisa) ---
+        st.markdown("#### 📋 Ranking (clique na 🔍 para abrir na Pesquisa)")
+        h0, h1 = st.columns([0.08, 0.92])
+        h0.markdown("**🔎**")
+        h1.markdown("**Produto**")
 
+        for idx, r in tabela_top.iterrows():
+            c0, c1 = st.columns([0.08, 0.92])
+            if c0.button("🔍", key=f"top_search_{idx}", help="Abrir este produto na Pesquisa"):
+                st.session_state.produto_pesquisa = r["Produto"]
+                st.session_state.nav_tab = "🔎 Pesquisa de produto"
+                st.rerun()
+            c1.write(r["Produto"])
+
+        # Tabela completa (sem clique) com números
         st.dataframe(tabela_top, use_container_width=True)
-
         # ----------------------------------------
         # INDICADOR DE PRODUTOS ÂNCORA
         # ----------------------------------------
@@ -938,6 +970,42 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
         ]
         cols_ordem = [c for c in cols_ordem if c in df_fifo_view.columns]
 
+                # --- Lista rápida com lupa (🔍 abre na Pesquisa) ---
+        st.markdown("#### 🧷 Acesso rápido (clique na 🔍)")
+        df_quick_raw = df_fifo_filt.copy()
+        df_quick_raw = add_estoque_atual(df_quick_raw, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+        df_quick_raw = df_quick_raw.sort_values("DATA", ascending=False).head(120)
+
+        if df_quick_raw.empty:
+            st.info("Sem registros para mostrar no acesso rápido.")
+        else:
+            df_quick_disp = df_quick_raw.copy()
+            df_quick_disp["DATA"] = df_quick_disp["DATA"].dt.strftime("%d/%m/%Y")
+            df_quick_disp["VALOR_TOTAL"] = df_quick_disp["VALOR_TOTAL"].map(format_reais)
+            df_quick_disp["CUSTO_TOTAL"] = df_quick_disp["CUSTO_TOTAL"].map(format_reais)
+            df_quick_disp["LUCRO"] = df_quick_disp["LUCRO"].map(format_reais)
+
+            h = st.columns([0.06, 0.32, 0.10, 0.17, 0.17, 0.18])
+            h[0].markdown("**🔎**")
+            h[1].markdown("**Produto**")
+            h[2].markdown("**Qtd**")
+            h[3].markdown("**Venda**")
+            h[4].markdown("**Lucro**")
+            h[5].markdown("**Estoque**")
+
+            for i, r in df_quick_disp.iterrows():
+                c = st.columns([0.06, 0.32, 0.10, 0.17, 0.17, 0.18])
+                if c[0].button("🔍", key=f"venda_search_{i}", help="Abrir este produto na Pesquisa"):
+                    st.session_state.produto_pesquisa = r["PRODUTO"]
+                    st.session_state.nav_tab = "🔎 Pesquisa de produto"
+                    st.rerun()
+                c[1].write(r.get("PRODUTO", ""))
+                c[2].write(int(r.get("QTD", 0)))
+                c[3].write(r.get("VALOR_TOTAL", ""))
+                c[4].write(r.get("LUCRO", ""))
+                c[5].write(int(r.get("ESTOQUE_ATUAL", 0)))
+
+        # --- Tabela completa ---
         st.dataframe(
             df_fifo_view[cols_ordem].sort_values("DATA", ascending=False),
             use_container_width=True,
@@ -967,10 +1035,7 @@ Produtos que vendem bem, trazem boa margem e sustentam grande parte da receita.
     else:
         st.info("Nenhuma venda no período selecionado.")
 
-# --------------------------------------------------
-# TAB 2 – PESQUISA DE PRODUTO
-# --------------------------------------------------
-with tab_search:
+elif nav == "🔎 Pesquisa de produto":
     st.markdown(
         """
 <div class="section-title">🔎 Pesquisa de produto – baseado no FIFO</div>
@@ -986,13 +1051,18 @@ with tab_search:
         produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
         todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas))
 
+                # Se veio de uma lupinha, já seleciona o produto automaticamente
+        default_idx = 0
+        if st.session_state.get("produto_pesquisa") in todos_produtos:
+            default_idx = todos_produtos.index(st.session_state.get("produto_pesquisa")) + 1
+
         prod_sel = st.selectbox(
             "Escolha o produto:",
             options=["(selecione)"] + todos_produtos,
-            index=0,
+            index=default_idx,
         )
-
         if prod_sel != "(selecione)":
+            st.session_state.produto_pesquisa = prod_sel
             # --- Estoque + vendas agregadas ---
             linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
             if not linha_est.empty:
@@ -1230,10 +1300,7 @@ with tab_search:
         else:
             st.info("Selecione um produto para ver os detalhes baseados no FIFO.")
 
-# --------------------------------------------------
-# TAB 3 – ALERTAS + SAÚDE DA LOJA
-# --------------------------------------------------
-with tab_alerts:
+elif nav == "⚠️ Alertas":
     st.markdown(
         """
 <div class="section-title">⚠️ Alertas de estoque</div>
@@ -1484,10 +1551,7 @@ Indicadores de concentração de vendas, estoque parado e risco de dependência 
             f"*Critérios atuais:* vende bem ≥ **{LIM_VENDE_BEM} unid.**, estoque baixo ≤ **{LIM_ESTOQUE_BAIXO} unid.**, parado ≥ **{LIM_DIAS_PARADO} dias**."
         )
 
-# --------------------------------------------------
-# TAB 4 – COMPRAS
-# --------------------------------------------------
-with tab_compras:
+elif nav == "🧾 Compras":
     st.markdown(
         """
 <div class="section-title">🧾 Compras</div>
@@ -1694,3 +1758,4 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                     .sort_values("Data", ascending=False),
                     use_container_width=True,
                 )
+
