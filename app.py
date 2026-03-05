@@ -957,50 +957,65 @@ if nav == "📊 Dashboard":
         # Lista compacta de vendas (🔍 abre o produto na Pesquisa)
         df_sales = df_fifo_view.copy()
 
-        # garante colunas
-        if "CLIENTE" not in df_sales.columns:
-            df_sales["CLIENTE"] = ""
-        if "STATUS" not in df_sales.columns:
-            df_sales["STATUS"] = ""
-
-        # adiciona estoque atual por produto
-        df_sales = add_estoque_atual(df_sales, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
-
-        # formatações
+        # Blindagem total: garante DataFrame e colunas mínimas
         if not isinstance(df_sales, pd.DataFrame):
             st.error("Erro interno: lista de vendas ficou inválida (df_sales não é DataFrame).")
             df_sales = pd.DataFrame()
-        
-        if not df_sales.empty and ("DATA" in df_sales.columns):
-            df_sales["DATA"] = pd.to_datetime(df_sales["DATA"], errors="coerce", dayfirst=True)
-            df_sales["DATA_FMT"] = df_sales["DATA"].dt.strftime("%d/%m/%Y")
-        else:
-            df_sales["DATA_FMT"] = ""
 
-        df_sales["QTD_INT"] = df_sales["QTD"].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
-        df_sales["ESTOQUE_ATUAL"] = df_sales.get("ESTOQUE_ATUAL", 0).apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
-        df_sales["VALOR_FMT"] = df_sales["VALOR_TOTAL"].map(format_reais)
-        df_sales["LUCRO_FMT"] = df_sales["LUCRO"].map(format_reais)
+        # Colunas obrigatórias (se faltar, cria vazias/zero)
+        for col, default in {
+            'DATA': pd.NaT,
+            'PRODUTO': '',
+            'QTD': 0,
+            'VALOR_TOTAL': 0.0,
+            'LUCRO': 0.0,
+            'CLIENTE': '',
+            'STATUS': ''
+        }.items():
+            if col not in df_sales.columns:
+                df_sales[col] = default
 
-        df_sales = df_sales.sort_values("DATA", ascending=False).head(220)
+        # adiciona estoque atual por produto (se não der, segue com 0)
+        try:
+            df_sales = add_estoque_atual(df_sales, col_produto='PRODUTO', nome_col='ESTOQUE_ATUAL')
+        except Exception:
+            df_sales['ESTOQUE_ATUAL'] = 0
 
-        headers = ["Data", "Produto", "Cliente", "Status", "Qtd", "Estoque", "Valor", "Lucro"]
+        # DATA -> datetime antes de qualquer .dt
+        df_sales['DATA'] = pd.to_datetime(df_sales['DATA'], errors='coerce', dayfirst=True)
+        df_sales['DATA_FMT'] = df_sales['DATA'].dt.strftime('%d/%m/%Y').fillna('')
+
+        # numéricos
+        df_sales['QTD_NUM'] = df_sales['QTD'].apply(parse_money).astype(float)
+        df_sales['QTD_INT'] = df_sales['QTD_NUM'].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
+        df_sales['ESTOQUE_ATUAL'] = df_sales.get('ESTOQUE_ATUAL', 0).apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
+
+        df_sales['VALOR_TOTAL'] = df_sales['VALOR_TOTAL'].apply(parse_money).astype(float)
+        df_sales['LUCRO'] = df_sales['LUCRO'].apply(parse_money).astype(float)
+
+        df_sales['VALOR_FMT'] = df_sales['VALOR_TOTAL'].map(format_reais)
+        df_sales['LUCRO_FMT'] = df_sales['LUCRO'].map(format_reais)
+
+        df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
+
+        headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Valor', 'Lucro']
         rows = []
-        for _, r in df_sales.iterrows():
-            prod = _safe(r.get("PRODUTO", ""))
+        for i, r in df_sales.iterrows():
+            prod = _safe(r.get('PRODUTO', ''))
             link = f"?produto={quote(prod)}"
-            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            # target _self = mesma janela
+            prod_html = f"<div class='prodcell'><a class='lens' href='{link}' target='_self' title='Abrir na Pesquisa'>🔍</a><span>{prod}</span></div>"
             rows.append(
-                "<tr>"
-                + _td(_safe(r.get("DATA_FMT", "")), "muted")
+                '<tr>'
+                + _td(_safe(r.get('DATA_FMT', '')), 'muted')
                 + _td(prod_html)
-                + _td(_safe(r.get("CLIENTE", "")))
-                + _td(_safe(r.get("STATUS", "")), "muted")
-                + _td(_safe(r.get("QTD_INT", 0)))
-                + _td(_safe(r.get("ESTOQUE_ATUAL", 0)), "muted")
-                + _td(_safe(r.get("VALOR_FMT", "")))
-                + _td(_safe(r.get("LUCRO_FMT", "")))
-                + "</tr>"
+                + _td(_safe(r.get('CLIENTE', '')))
+                + _td(_safe(r.get('STATUS', '')), 'muted')
+                + _td(_safe(r.get('QTD_INT', 0)))
+                + _td(_safe(r.get('ESTOQUE_ATUAL', 0)), 'muted')
+                + _td(_safe(r.get('VALOR_FMT', '')))
+                + _td(_safe(r.get('LUCRO_FMT', '')))
+                + '</tr>'
             )
 
         st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
@@ -1700,8 +1715,16 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
 
                 dfc_view = dfc_filt.copy()
 
+                # Blindagem: se por algum motivo não for DataFrame, não quebra
+                if not isinstance(dfc_view, pd.DataFrame):
+                    st.error("Erro interno: compras detalhadas inválidas (dfc_view não é DataFrame).")
+                    st.stop()
+
                 # adiciona estoque atual em cada linha da compra
-                dfc_view = add_estoque_atual(dfc_view, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+                try:
+                    dfc_view = add_estoque_atual(dfc_view, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+                except Exception:
+                    dfc_view["ESTOQUE_ATUAL"] = 0
 
                 if "DATA" in dfc_view.columns:
                     dfc_view["DATA"] = pd.to_datetime(dfc_view["DATA"], errors="coerce", dayfirst=True)
