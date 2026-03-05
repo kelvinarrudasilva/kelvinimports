@@ -1049,14 +1049,28 @@ if nav == "📊 Dashboard":
             _est = pd.Series(0, index=df_sales.index)
         df_sales['ESTOQUE_ATUAL'] = _est.apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
 
+        # garante CUSTO_TOTAL (do FIFO) e calcula custo unitário FIFO
+        if 'CUSTO_TOTAL' not in df_sales.columns:
+            # possíveis aliases (só por segurança)
+            if 'CUSTO TOTAL' in df_sales.columns:
+                df_sales['CUSTO_TOTAL'] = df_sales['CUSTO TOTAL']
+            else:
+                df_sales['CUSTO_TOTAL'] = 0.0
+
+        df_sales['CUSTO_TOTAL'] = df_sales['CUSTO_TOTAL'].apply(parse_money).astype(float)
         df_sales['VALOR_TOTAL'] = df_sales['VALOR_TOTAL'].apply(parse_money).astype(float)
         df_sales['LUCRO'] = df_sales['LUCRO'].apply(parse_money).astype(float)
 
+        df_sales['CUSTO_UNIT_FIFO'] = df_sales['CUSTO_TOTAL'] / df_sales['QTD_NUM'].replace(0, pd.NA)
+        df_sales['CUSTO_UNIT_FIFO'] = df_sales['CUSTO_UNIT_FIFO'].fillna(0.0)
+
+
         df_sales['VALOR_FMT'] = df_sales['VALOR_TOTAL'].map(format_reais)
+        df_sales['CUSTO_UNIT_FIFO_FMT'] = df_sales['CUSTO_UNIT_FIFO'].map(format_reais)
         df_sales['LUCRO_FMT'] = df_sales['LUCRO'].map(format_reais)
         df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
 
-        headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Valor', 'Lucro']
+        headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Custo un. (FIFO)', 'Valor', 'Lucro']
         rows = []
         for i, r in df_sales.iterrows():
             prod = _safe(r.get('PRODUTO', ''))
@@ -1071,6 +1085,7 @@ if nav == "📊 Dashboard":
                 + _td(_safe(r.get('STATUS', '')), 'muted')
                 + _td(_safe(r.get('QTD_INT', 0)))
                 + _td(_safe(r.get('ESTOQUE_ATUAL', 0)), 'muted')
+                + _td(_safe(r.get('CUSTO_UNIT_FIFO_FMT', '')), 'muted')
                 + _td(_safe(r.get('VALOR_FMT', '')))
                 + _td(_safe(r.get('LUCRO_FMT', '')))
                 + '</tr>'
