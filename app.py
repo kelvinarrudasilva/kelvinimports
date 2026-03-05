@@ -535,6 +535,8 @@ with col_btn:
         st.rerun()
 
 df_compras, df_vendas = carregar_dados()
+st.write("COLUNAS VENDAS:", list(df_vendas.columns))
+st.stop()
 df_fifo, df_estoque = calcular_fifo(df_compras, df_vendas)
 
 if df_fifo.empty:
