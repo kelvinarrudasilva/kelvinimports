@@ -415,7 +415,7 @@ def limpar_aba(xls, nome_aba):
     if nome_aba.upper() == "COMPRAS":
         must_have = ["DATA", "PRODUTO", "STATUS", "QUANT", "CUSTO"]
     elif nome_aba.upper() == "VENDAS":
-        must_have = ["DATA", "PRODUTO", "QTD", "VALOR"]
+        must_have = ["DATA", "PRODUTO", "QTD", "VALOR", "STATUS", "CLIENTE"]
     else:
         must_have = ["DATA", "PRODUTO"]
 
@@ -450,7 +450,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     vendas.columns = [c.strip().upper() for c in vendas.columns]
 
     cols_compras_obrig = ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO"]
-    cols_vendas_obrig = ["DATA", "PRODUTO", "QTD", "VALOR TOTAL"]
+    cols_vendas_obrig = ["DATA", "PRODUTO", "QTD", "VALOR TOTAL", "STATUS", "CLIENTE"]
 
     faltando_compras = [c for c in cols_compras_obrig if c not in compras.columns]
     faltando_vendas = [c for c in cols_vendas_obrig if c not in vendas.columns]
@@ -1291,6 +1291,8 @@ elif nav == "🔎 Pesquisa de produto":
 
                 cols_hist = [
                     "DATA",
+                    "CLIENTE",
+                    "STATUS",
                     "QTD",
                     "VALOR_TOTAL",
                     "CUSTO_TOTAL",
