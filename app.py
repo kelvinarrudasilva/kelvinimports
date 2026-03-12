@@ -755,7 +755,7 @@ def _painel_resultado_text(row):
     if extras:
         linhas.append("")
         linhas.extend(extras[:2])
-    RETURN_PLACEHOLDER
+    return "\n".join(linhas)
 
 
 def _nivel_confianca(row):
