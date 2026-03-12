@@ -702,6 +702,30 @@ def _media_intervalo_em_dias(df_vendas_prod):
     return float(diffs.mean())
 
 
+def _dias_entre_compra_e_venda(c_df, v_df):
+    """Mede quanto tempo o item levou para começar a girar.
+    Para cada compra, procura a primeira venda no mesmo dia ou depois.
+    Retorna média e mediana em dias, quando existir histórico suficiente.
+    """
+    if c_df is None or v_df is None or c_df.empty or v_df.empty or "DATA" not in c_df.columns or "DATA" not in v_df.columns:
+        return np.nan, np.nan
+
+    compras_datas = pd.to_datetime(c_df["DATA"], errors="coerce").dropna().sort_values().dt.normalize().tolist()
+    vendas_datas = pd.to_datetime(v_df["DATA"], errors="coerce").dropna().sort_values().dt.normalize().tolist()
+    if not compras_datas or not vendas_datas:
+        return np.nan, np.nan
+
+    diffs = []
+    for dc in compras_datas:
+        prox_venda = next((dv for dv in vendas_datas if dv >= dc), None)
+        if prox_venda is not None:
+            diffs.append((prox_venda - dc).days)
+
+    if not diffs:
+        return np.nan, np.nan
+    return float(np.mean(diffs)), float(np.median(diffs))
+
+
 def build_reposicao_inteligente(df_fifo, df_estoque, df_compras):
     produtos = sorted(set(df_fifo.get("PRODUTO", pd.Series(dtype=str)).dropna().astype(str).tolist()) |
                       set(df_estoque.get("PRODUTO", pd.Series(dtype=str)).dropna().astype(str).tolist()) |
@@ -750,7 +774,12 @@ def build_reposicao_inteligente(df_fifo, df_estoque, df_compras):
 
         primeira_venda = v["DATA"].min() if not v.empty else pd.NaT
         ultima_venda = v["DATA"].max() if not v.empty else pd.NaT
+        primeira_compra = c["DATA"].min() if not c.empty else pd.NaT
         ultima_compra = c["DATA"].max() if not c.empty else pd.NaT
+
+        media_dias_compra_venda, mediana_dias_compra_venda = _dias_entre_compra_e_venda(c, v)
+        dias_primeira_compra_ate_primeira_venda = int((primeira_venda.normalize() - primeira_compra.normalize()).days) if pd.notna(primeira_compra) and pd.notna(primeira_venda) and primeira_venda >= primeira_compra else np.nan
+        dias_ultima_compra_ate_ultima_venda = int((ultima_venda.normalize() - ultima_compra.normalize()).days) if pd.notna(ultima_compra) and pd.notna(ultima_venda) and ultima_venda >= ultima_compra else np.nan
 
         dias_com_historico = max(1, int(((hoje - primeira_venda.normalize()).days + 1)) if pd.notna(primeira_venda) else 1)
         dias_desde_ult_venda = int((hoje - ultima_venda.normalize()).days) if pd.notna(ultima_venda) else 9999
@@ -849,11 +878,16 @@ def build_reposicao_inteligente(df_fifo, df_estoque, df_compras):
             "SELL_THROUGH": sell_through,
             "PRIMEIRA_VENDA": primeira_venda,
             "ULTIMA_VENDA": ultima_venda,
+            "PRIMEIRA_COMPRA": primeira_compra,
             "ULTIMA_COMPRA": ultima_compra,
             "ULTIMA_VENDA_SIMILAR": ultima_venda_similar,
             "ULTIMA_COMPRA_SIMILAR": ultima_compra_similar,
             "DIAS_DESDE_ULT_VENDA": dias_desde_ult_venda,
             "DIAS_DESDE_ULT_COMPRA": dias_desde_ult_compra,
+            "MEDIA_DIAS_COMPRA_VENDA": media_dias_compra_venda,
+            "MEDIANA_DIAS_COMPRA_VENDA": mediana_dias_compra_venda,
+            "DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA": dias_primeira_compra_ate_primeira_venda,
+            "DIAS_ULTIMA_COMPRA_ATE_ULTIMA_VENDA": dias_ultima_compra_ate_ultima_venda,
             "DIAS_DESDE_ULT_VENDA_SIMILAR": dias_desde_ult_venda_similar,
             "DIAS_DESDE_ULT_COMPRA_SIMILAR": dias_desde_ult_compra_similar,
             "INTERVALO_MEDIO_VENDAS": intervalo_medio_vendas,
@@ -883,13 +917,40 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     dias_sem_comprar = float(row.get("DIAS_DESDE_ULT_COMPRA", 9999) or 9999)
     margem = float(row.get("MARGEM_PCT", 0.0) or 0.0)
     sell_through = float(row.get("SELL_THROUGH", 0.0) or 0.0)
+    qtd_vendida_total = float(row.get("QTD_VENDIDA_TOTAL", 0.0) or 0.0)
+    qtd_comprada_total = float(row.get("QTD_COMPRADA_TOTAL", 0.0) or 0.0)
     v30 = float(row.get("V30", 0.0) or 0.0)
     v60 = float(row.get("V60", 0.0) or 0.0)
     v90 = float(row.get("V90", 0.0) or 0.0)
     v30_similares = float(row.get("V30_SIMILARES", 0.0) or 0.0)
     intervalo_esperado = float(row.get("INTERVALO_ESPERADO", np.nan)) if pd.notna(row.get("INTERVALO_ESPERADO", np.nan)) else np.nan
+    media_dias_compra_venda = float(row.get("MEDIA_DIAS_COMPRA_VENDA", np.nan)) if pd.notna(row.get("MEDIA_DIAS_COMPRA_VENDA", np.nan)) else np.nan
+    mediana_dias_compra_venda = float(row.get("MEDIANA_DIAS_COMPRA_VENDA", np.nan)) if pd.notna(row.get("MEDIANA_DIAS_COMPRA_VENDA", np.nan)) else np.nan
+    dias_primeira_compra_ate_primeira_venda = float(row.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA", np.nan)) if pd.notna(row.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA", np.nan)) else np.nan
+    dias_ultima_compra_ate_ultima_venda = float(row.get("DIAS_ULTIMA_COMPRA_ATE_ULTIMA_VENDA", np.nan)) if pd.notna(row.get("DIAS_ULTIMA_COMPRA_ATE_ULTIMA_VENDA", np.nan)) else np.nan
 
-    venda_mensal_ref = max(v30, v60 / 2.0, v90 / 3.0, demanda * 30.0)
+    # Base de venda mensal: primeiro olha janela recente, mas sem se deixar enganar por 1 venda isolada.
+    venda_mensal_bruta = max(v30, v60 / 2.0, v90 / 3.0, demanda * 30.0)
+    historico_fraco = qtd_vendida_total <= 1.0 or qtd_comprada_total <= 1.0
+    historico_muito_fraco = qtd_vendida_total <= 1.0 and qtd_comprada_total <= 2.0
+    venda_isolada_recente = historico_muito_fraco and v30 > 0 and v90 <= 1.0
+
+    lag_compra_venda_ref = np.nan
+    for cand in [mediana_dias_compra_venda, media_dias_compra_venda, dias_ultima_compra_ate_ultima_venda, dias_primeira_compra_ate_primeira_venda]:
+        if pd.notna(cand):
+            lag_compra_venda_ref = float(cand)
+            break
+
+    giro_lote_lento = pd.notna(lag_compra_venda_ref) and lag_compra_venda_ref >= 60
+    giro_lote_muito_lento = pd.notna(lag_compra_venda_ref) and lag_compra_venda_ref >= 90
+
+    if venda_isolada_recente and pd.notna(lag_compra_venda_ref):
+        venda_mensal_ref = min(venda_mensal_bruta, 30.0 / max(lag_compra_venda_ref, 1.0))
+    elif historico_muito_fraco and pd.notna(lag_compra_venda_ref):
+        venda_mensal_ref = min(venda_mensal_bruta, 30.0 / max(lag_compra_venda_ref, 1.0))
+    else:
+        venda_mensal_ref = venda_mensal_bruta
+
     estoque_meses = (estoque / venda_mensal_ref) if venda_mensal_ref > 0 else (999.0 if estoque > 0 else 0.0)
     similar_quente = v30_similares > 1.5 and dias_sem_vender_similar <= 35
 
@@ -897,21 +958,23 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
         (pd.notna(intervalo_esperado) and intervalo_esperado >= 45)
         or (v90 <= 2 and dias_sem_vender >= 45)
         or venda_mensal_ref < 1.2
+        or giro_lote_lento
     )
     muito_lento = (
         (pd.notna(intervalo_esperado) and intervalo_esperado >= 75)
         or (v90 <= 1 and dias_sem_vender >= 80)
         or venda_mensal_ref < 0.55
+        or giro_lote_muito_lento
     )
     bom_giro = (
         v30 >= 3
         or venda_mensal_ref >= 3.2
-        or (pd.notna(intervalo_esperado) and intervalo_esperado <= 14)
+        or (pd.notna(intervalo_esperado) and intervalo_esperado <= 14 and qtd_vendida_total >= 3)
     )
     otimo_giro = (
         v30 >= 6
         or venda_mensal_ref >= 6
-        or (pd.notna(intervalo_esperado) and intervalo_esperado <= 7)
+        or (pd.notna(intervalo_esperado) and intervalo_esperado <= 7 and qtd_vendida_total >= 4)
     )
     excesso = (
         estoque > 0
@@ -948,7 +1011,7 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     if margem >= 0.22:
         urgencia += 5.0
         motivo.append("margem boa")
-    if sell_through >= 0.75:
+    if sell_through >= 0.75 and qtd_comprada_total >= 3:
         urgencia += 5.0
         motivo.append("vende boa parte do que compra")
     if estoque <= 0 and bom_giro:
@@ -959,10 +1022,10 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
         motivo.append("estoque curto para o ritmo atual")
     elif cobertura <= max(alvo_dias * 0.55, lead_time + 7) and venda_mensal_ref >= 1.2:
         urgencia += 10.0
-    if dias_sem_comprar >= 45 and venda_mensal_ref >= 2:
+    if dias_sem_comprar >= 45 and venda_mensal_ref >= 2 and qtd_vendida_total >= 3:
         urgencia += 6.0
         motivo.append("faz tempo que não recompra")
-    if similar_quente and estoque <= 0 and not bom_giro:
+    if similar_quente and estoque <= 0 and not bom_giro and not historico_muito_fraco:
         urgencia += 8.0
         motivo.append("itens parecidos seguem vendendo")
 
@@ -988,6 +1051,20 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     if muito_lento:
         urgencia -= 16.0
         motivo.append("vende muito devagar")
+    if giro_lote_lento:
+        urgencia -= 16.0
+        motivo.append("demorou muito para girar depois da compra")
+    if giro_lote_muito_lento:
+        urgencia -= 20.0
+        motivo.append("primeiro giro do lote foi muito demorado")
+    if historico_fraco:
+        urgencia -= 8.0
+        motivo.append("histórico ainda fraco")
+    if historico_muito_fraco:
+        urgencia -= 10.0
+    if venda_isolada_recente:
+        urgencia -= 14.0
+        motivo.append("1 venda isolada recente não prova giro")
     if excesso:
         urgencia -= 30.0
         motivo.append("já tem estoque suficiente por bastante tempo")
@@ -996,11 +1073,15 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     if estoque <= 0 and muito_lento and not similar_quente:
         comprar = 0.0
     elif estoque <= 0 and lento and not bom_giro:
-        comprar = min(comprar, 1.0)
+        comprar = 0.0 if historico_muito_fraco else min(comprar, 1.0)
     elif lento:
         comprar = min(comprar, max(0.0, round(venda_mensal_ref * 0.8)))
 
-    if not bom_giro and similar_quente and estoque <= 0 and comprar <= 0:
+    if historico_muito_fraco and giro_lote_muito_lento:
+        comprar = 0.0
+    if venda_isolada_recente and giro_lote_lento:
+        comprar = 0.0
+    if not bom_giro and similar_quente and estoque <= 0 and comprar <= 0 and not historico_muito_fraco:
         comprar = 1.0
 
     urgencia = max(0.0, min(100.0, urgencia))
@@ -1009,22 +1090,27 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
         acao = "Não comprar agora"
         urgencia = min(urgencia, 18.0)
         comprar = 0.0
+    elif historico_muito_fraco and giro_lote_muito_lento:
+        acao = "Não comprar agora"
+        urgencia = min(urgencia, 10.0)
+        comprar = 0.0
+        motivo.append("zerou, mas levou meses para vender")
     elif estoque <= 0 and muito_lento and not similar_quente:
         acao = "Não comprar agora"
         urgencia = min(urgencia, 15.0)
         comprar = 0.0
         motivo.append("zerou, mas o histórico é fraco")
-    elif estoque <= 0 and bom_giro:
+    elif estoque <= 0 and bom_giro and not giro_lote_lento:
         acao = "Comprar já"
         comprar = max(comprar, max(1.0, round(venda_mensal_ref * 0.9)))
         urgencia = max(urgencia, 82.0)
-    elif cobertura <= max(lead_time, 7) and bom_giro:
+    elif cobertura <= max(lead_time, 7) and bom_giro and not giro_lote_lento:
         acao = "Comprar já"
         urgencia = max(urgencia, 76.0)
-    elif cobertura <= max(alvo_dias * 0.55, lead_time + 7) and venda_mensal_ref >= 1.2:
+    elif cobertura <= max(alvo_dias * 0.55, lead_time + 7) and venda_mensal_ref >= 1.2 and not giro_lote_muito_lento:
         acao = "Planejar compra"
         urgencia = max(urgencia, 56.0)
-    elif estoque <= 0 and similar_quente:
+    elif estoque <= 0 and similar_quente and not historico_muito_fraco:
         acao = "Teste leve"
         comprar = max(1.0, min(2.0, comprar if comprar > 0 else 1.0))
         urgencia = max(urgencia, 40.0)
@@ -1048,8 +1134,10 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     else:
         leitura.append("sem venda recente no histórico")
 
-    if pd.notna(intervalo_esperado):
-        leitura.append(f"costuma sair a cada {float(intervalo_esperado):.0f} dias")
+    if pd.notna(intervalo_esperado) and qtd_vendida_total >= 2:
+        leitura.append(f"este item costuma sair a cada {float(intervalo_esperado):.0f} dias")
+    if pd.notna(lag_compra_venda_ref):
+        leitura.append(f"levou cerca de {float(lag_compra_venda_ref):.0f} dias da compra até vender")
     if dias_sem_vender < 9999:
         leitura.append(f"última venda há {int(dias_sem_vender)} dias")
     if dias_sem_comprar < 9999:
