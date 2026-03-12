@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from urllib.parse import quote
+import re
+import unicodedata
 
 # --------------------------------------------------
 # CONFIG BÁSICA
@@ -632,6 +634,233 @@ def _safe(s):
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def normalize_name(s):
+    s = "" if s is None else str(s)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("utf-8")
+    s = s.lower().strip()
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+STOPWORDS_NOME = {
+    "de", "do", "da", "dos", "das", "para", "pro", "plus", "com", "sem", "e", "a", "o",
+    "wireless", "bluetooth", "usb", "rgb", "led", "gamer", "fone", "mouse", "teclado", "caixa",
+    "som", "tws", "pro", "max", "mini", "ultra", "novo", "nova"
+}
+
+
+def tokenizar_produto(s):
+    s = normalize_name(s)
+    tokens = [t for t in s.split() if t and t not in STOPWORDS_NOME and not t.isdigit()]
+    return tokens
+
+
+def similaridade_produto(a, b):
+    ta = set(tokenizar_produto(a))
+    tb = set(tokenizar_produto(b))
+    if not ta or not tb:
+        na, nb = normalize_name(a), normalize_name(b)
+        if not na or not nb:
+            return 0.0
+        return 1.0 if na == nb else 0.0
+    inter = len(ta & tb)
+    union = len(ta | tb)
+    jacc = inter / union if union else 0.0
+    prefix_bonus = 0.15 if normalize_name(a)[:10] == normalize_name(b)[:10] else 0.0
+    return min(1.0, jacc + prefix_bonus)
+
+
+def top_similares(produto, universo, limite=3, min_score=0.34):
+    sims = []
+    for other in universo:
+        if other == produto:
+            continue
+        score = similaridade_produto(produto, other)
+        if score >= min_score:
+            sims.append((other, score))
+    sims.sort(key=lambda x: (-x[1], x[0]))
+    return sims[:limite]
+
+
+def build_reposicao_inteligente(df_fifo, df_estoque, df_compras):
+    produtos = sorted(set(df_fifo.get("PRODUTO", pd.Series(dtype=str)).dropna().astype(str).tolist()) |
+                      set(df_estoque.get("PRODUTO", pd.Series(dtype=str)).dropna().astype(str).tolist()))
+    if not produtos:
+        return pd.DataFrame()
+
+    fifo = df_fifo.copy()
+    fifo = ensure_datetime_series(fifo, "DATA")
+    fifo["QTD"] = fifo.get("QTD", 0).apply(parse_money).astype(float)
+    fifo["VALOR_TOTAL"] = fifo.get("VALOR_TOTAL", 0).apply(parse_money).astype(float)
+    fifo["CUSTO_TOTAL"] = fifo.get("CUSTO_TOTAL", 0).apply(parse_money).astype(float)
+    fifo["LUCRO"] = fifo.get("LUCRO", 0).apply(parse_money).astype(float)
+
+    compras = df_compras.copy()
+    compras.columns = [str(c).strip().upper() for c in compras.columns]
+    compras = ensure_datetime_series(compras, "DATA")
+    if "STATUS" in compras.columns:
+        compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
+    compras["QUANTIDADE"] = compras.get("QUANTIDADE", 0).apply(parse_money).astype(float)
+    compras["CUSTO UNITÁRIO"] = compras.get("CUSTO UNITÁRIO", 0).apply(parse_money).astype(float)
+    compras["CUSTO_TOTAL"] = compras["QUANTIDADE"] * compras["CUSTO UNITÁRIO"]
+
+    estoque = df_estoque.copy() if isinstance(df_estoque, pd.DataFrame) else pd.DataFrame()
+    if not estoque.empty:
+        estoque["SALDO_QTD"] = estoque.get("SALDO_QTD", 0).apply(parse_money).astype(float)
+        estoque["VALOR_ESTOQUE"] = estoque.get("VALOR_ESTOQUE", 0).apply(parse_money).astype(float)
+        estoque["CUSTO_MEDIO_FIFO"] = estoque.get("CUSTO_MEDIO_FIFO", 0).apply(parse_money).astype(float)
+
+    hoje = pd.Timestamp.now().normalize()
+    linhas = []
+
+    for prod in produtos:
+        v = fifo[fifo["PRODUTO"] == prod].copy()
+        c = compras[compras["PRODUTO"] == prod].copy() if "PRODUTO" in compras.columns else pd.DataFrame()
+        e = estoque[estoque["PRODUTO"] == prod].copy() if not estoque.empty and "PRODUTO" in estoque.columns else pd.DataFrame()
+
+        estoque_atual = float(e["SALDO_QTD"].iloc[0]) if not e.empty else 0.0
+        valor_estoque = float(e["VALOR_ESTOQUE"].iloc[0]) if not e.empty else 0.0
+        custo_fifo = float(e["CUSTO_MEDIO_FIFO"].iloc[0]) if not e.empty else 0.0
+
+        qtd_vendida = float(v["QTD"].sum()) if not v.empty else 0.0
+        receita_total = float(v["VALOR_TOTAL"].sum()) if not v.empty else 0.0
+        lucro_total = float(v["LUCRO"].sum()) if not v.empty else 0.0
+        qtd_comprada = float(c["QUANTIDADE"].sum()) if not c.empty else 0.0
+
+        primeira_venda = v["DATA"].min() if not v.empty else pd.NaT
+        ultima_venda = v["DATA"].max() if not v.empty else pd.NaT
+        ultima_compra = c["DATA"].max() if not c.empty else pd.NaT
+
+        dias_com_historico = max(1, int(((hoje - primeira_venda.normalize()).days + 1)) if pd.notna(primeira_venda) else 1)
+        dias_desde_ult_venda = int((hoje - ultima_venda.normalize()).days) if pd.notna(ultima_venda) else 9999
+        dias_desde_ult_compra = int((hoje - ultima_compra.normalize()).days) if pd.notna(ultima_compra) else 9999
+
+        v30 = v[v["DATA"] >= (hoje - pd.Timedelta(days=30))]["QTD"].sum() if not v.empty else 0.0
+        v60 = v[v["DATA"] >= (hoje - pd.Timedelta(days=60))]["QTD"].sum() if not v.empty else 0.0
+        v90 = v[v["DATA"] >= (hoje - pd.Timedelta(days=90))]["QTD"].sum() if not v.empty else 0.0
+
+        vel_30 = v30 / 30.0
+        vel_60 = v60 / 60.0
+        vel_90 = v90 / 90.0
+        vel_hist = qtd_vendida / dias_com_historico if dias_com_historico else 0.0
+
+        velocidade = (vel_30 * 0.45) + (vel_60 * 0.25) + (vel_90 * 0.15) + (vel_hist * 0.15)
+        if dias_desde_ult_venda > 45:
+            velocidade *= 0.65
+        if dias_desde_ult_venda > 90:
+            velocidade *= 0.45
+
+        cobertura_dias = (estoque_atual / velocidade) if velocidade > 0 else 999.0
+        preco_medio = (receita_total / qtd_vendida) if qtd_vendida > 0 else 0.0
+        margem_pct = (lucro_total / receita_total) if receita_total > 0 else 0.0
+        sell_through = (qtd_vendida / qtd_comprada) if qtd_comprada > 0 else 0.0
+
+        similares = top_similares(prod, produtos, limite=3, min_score=0.34)
+        similares_txt = ", ".join([f"{nome} ({score:.0%})" for nome, score in similares])
+        boost_similares = 0.0
+        for nome, score in similares:
+            vv = fifo[fifo["PRODUTO"] == nome].copy()
+            if vv.empty:
+                continue
+            vv30 = vv[vv["DATA"] >= (hoje - pd.Timedelta(days=30))]["QTD"].sum() / 30.0
+            boost_similares += vv30 * score
+        demanda_ajustada = velocidade + (boost_similares * 0.12)
+
+        linhas.append({
+            "PRODUTO": prod,
+            "ESTOQUE_ATUAL": estoque_atual,
+            "VALOR_ESTOQUE": valor_estoque,
+            "CUSTO_MEDIO_FIFO": custo_fifo,
+            "QTD_VENDIDA_TOTAL": qtd_vendida,
+            "QTD_COMPRADA_TOTAL": qtd_comprada,
+            "RECEITA_TOTAL": receita_total,
+            "LUCRO_TOTAL": lucro_total,
+            "PRECO_MEDIO": preco_medio,
+            "MARGEM_PCT": margem_pct,
+            "SELL_THROUGH": sell_through,
+            "PRIMEIRA_VENDA": primeira_venda,
+            "ULTIMA_VENDA": ultima_venda,
+            "ULTIMA_COMPRA": ultima_compra,
+            "DIAS_DESDE_ULT_VENDA": dias_desde_ult_venda,
+            "DIAS_DESDE_ULT_COMPRA": dias_desde_ult_compra,
+            "V30": v30,
+            "V60": v60,
+            "V90": v90,
+            "VEL_DIA": velocidade,
+            "DEMANDA_AJUSTADA_DIA": demanda_ajustada,
+            "COBERTURA_DIAS": cobertura_dias,
+            "SIMILARES": similares_txt,
+            "SCORE_SIMILARES": boost_similares,
+        })
+
+    return pd.DataFrame(linhas)
+
+
+def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
+    demanda = float(row.get("DEMANDA_AJUSTADA_DIA", 0.0) or 0.0)
+    estoque = float(row.get("ESTOQUE_ATUAL", 0.0) or 0.0)
+    cobertura = float(row.get("COBERTURA_DIAS", 999.0) or 999.0)
+    dias_sem_vender = float(row.get("DIAS_DESDE_ULT_VENDA", 9999) or 9999)
+    margem = float(row.get("MARGEM_PCT", 0.0) or 0.0)
+    sell_through = float(row.get("SELL_THROUGH", 0.0) or 0.0)
+    v30 = float(row.get("V30", 0.0) or 0.0)
+
+    janela = max(7, int(alvo_dias + lead_time))
+    estoque_seguranca = demanda * janela * seguranca
+    ponto_pedido = (demanda * lead_time) + estoque_seguranca
+    estoque_alvo = (demanda * janela) + estoque_seguranca
+    comprar = max(0.0, estoque_alvo - estoque)
+
+    urgencia = 0.0
+    if demanda > 0:
+        urgencia += min(45.0, max(0.0, (ponto_pedido - estoque) * 6.0))
+        urgencia += min(30.0, max(0.0, (18.0 - cobertura) * 1.5))
+        urgencia += min(10.0, v30 * 0.8)
+        if margem > 0.22:
+            urgencia += 6.0
+        if sell_through > 0.75:
+            urgencia += 5.0
+    else:
+        comprar = 0.0
+
+    if dias_sem_vender > 60:
+        urgencia -= 15.0
+    if dias_sem_vender > 120:
+        urgencia -= 20.0
+    if estoque > 0 and dias_sem_vender > 90:
+        urgencia -= 10.0
+
+    urgencia = max(0.0, min(100.0, urgencia))
+
+    if demanda <= 0.03 and estoque <= 0:
+        acao = "Testar reposição leve"
+        comprar = max(comprar, 1.0)
+    elif estoque <= 0 and v30 > 0:
+        acao = "Ruptura"
+        comprar = max(comprar, max(2.0, v30 * 1.2))
+        urgencia = max(urgencia, 82.0)
+    elif cobertura <= 12 and demanda > 0.05:
+        acao = "Comprar já"
+        urgencia = max(urgencia, 74.0)
+    elif cobertura <= 25 and demanda > 0.03:
+        acao = "Planejar compra"
+        urgencia = max(urgencia, 52.0)
+    elif dias_sem_vender > 90 and estoque > 0:
+        acao = "Segurar estoque"
+        comprar = 0.0
+        urgencia = min(urgencia, 22.0)
+    else:
+        acao = "Monitorar"
+
+    return pd.Series({
+        "PONTO_PEDIDO": ponto_pedido,
+        "ESTOQUE_ALVO": estoque_alvo,
+        "QTD_RECOMENDADA": round(comprar),
+        "URGENCIA": urgencia,
+        "ACAO": acao,
+    })
+
 
 # --------------------------------------------------
 # NAVEGAÇÃO (no lugar de st.tabs, pra permitir ir pra Pesquisa via 🔍)
@@ -664,7 +893,7 @@ if "_nav_pending" in st.session_state:
     st.session_state.nav_tab = st.session_state["_nav_pending"]
     del st.session_state["_nav_pending"]
 
-NAV_OPTS = ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧾 Compras"]
+NAV_OPTS = ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧠 IA de reposição", "🧾 Compras"]
 if st.session_state.nav_tab not in NAV_OPTS:
     st.session_state.nav_tab = "📊 Dashboard"
 
@@ -1643,6 +1872,212 @@ Indicadores de concentração de vendas, estoque parado e risco de dependência 
         st.markdown(
             f"*Critérios atuais:* vende bem ≥ **{LIM_VENDE_BEM} unid.**, estoque baixo ≤ **{LIM_ESTOQUE_BAIXO} unid.**, parado ≥ **{LIM_DIAS_PARADO} dias**."
         )
+
+elif nav == "🧠 IA de reposição":
+    st.markdown(
+        """
+<div class="section-title">🧠 IA de reposição de estoque</div>
+<div class="section-sub">
+Protótipo inteligente para sugerir o que recomprar, usando estoque atual, giro real, recência de vendas, última compra e produtos parecidos.
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    base_ia = build_reposicao_inteligente(df_fifo, df_estoque, df_compras)
+
+    if base_ia.empty:
+        st.info("Ainda não há base suficiente para sugerir reposição.")
+    else:
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            alvo_dias = st.slider("Cobertura desejada (dias)", 15, 90, 35, 5)
+        with s2:
+            lead_time = st.slider("Lead time estimado (dias)", 3, 45, 12, 1)
+        with s3:
+            seguranca = st.slider("Estoque de segurança", 0.0, 0.8, 0.25, 0.05)
+        with s4:
+            min_urgencia = st.slider("Urgência mínima", 0, 100, 35, 5)
+
+        calc = base_ia.apply(lambda row: classificar_reposicao(row, alvo_dias=alvo_dias, lead_time=lead_time, seguranca=seguranca), axis=1)
+        base_ia = pd.concat([base_ia, calc], axis=1)
+
+        # score final: puxa para cima itens de boa margem e boa saída recente
+        base_ia["SCORE_FINAL"] = (
+            base_ia["URGENCIA"]
+            + (base_ia["MARGEM_PCT"].clip(lower=0) * 20)
+            + (base_ia["SELL_THROUGH"].clip(lower=0, upper=2) * 8)
+        )
+
+        # filtros úteis
+        universo_acoes = ["Todos"] + sorted(base_ia["ACAO"].dropna().unique().tolist())
+        f1, f2 = st.columns([2, 3])
+        with f1:
+            acao_sel = st.selectbox("Filtrar por ação", universo_acoes, index=0)
+        with f2:
+            busca = st.text_input("Buscar produto ou família", value="")
+
+        view = base_ia.copy()
+        if acao_sel != "Todos":
+            view = view[view["ACAO"] == acao_sel].copy()
+        if busca.strip():
+            termo = normalize_name(busca)
+            view = view[view["PRODUTO"].astype(str).apply(lambda x: termo in normalize_name(x))].copy()
+
+        view = view[view["URGENCIA"] >= min_urgencia].copy()
+        view = view.sort_values(["SCORE_FINAL", "QTD_RECOMENDADA", "QTD_VENDIDA_TOTAL"], ascending=[False, False, False])
+
+        total_para_comprar = int(view["QTD_RECOMENDADA"].fillna(0).sum()) if not view.empty else 0
+        produtos_criticos = int((view["ACAO"].isin(["Comprar já", "Ruptura"])).sum()) if not view.empty else 0
+        capital_estimado = float((view["QTD_RECOMENDADA"].fillna(0) * view["CUSTO_MEDIO_FIFO"].fillna(0)).sum()) if not view.empty else 0.0
+        margem_media_view = float(view["MARGEM_PCT"].mean()) if not view.empty else 0.0
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Itens críticos</div>
+  <div class="kpi-value">{produtos_criticos}</div>
+  <div class="kpi-pill">Ruptura ou compra imediata</div>
+</div>
+""", unsafe_allow_html=True)
+        with k2:
+            st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Qtd sugerida</div>
+  <div class="kpi-value">{total_para_comprar} unid.</div>
+  <div class="kpi-pill">Soma das recomendações no filtro</div>
+</div>
+""", unsafe_allow_html=True)
+        with k3:
+            st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Capital estimado</div>
+  <div class="kpi-value">{format_reais(capital_estimado)}</div>
+  <div class="kpi-pill">Baseado no custo FIFO atual</div>
+</div>
+""", unsafe_allow_html=True)
+        with k4:
+            st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Margem média</div>
+  <div class="kpi-value">{margem_media_view*100:,.1f}%</div>
+  <div class="kpi-pill">Ajuda a priorizar o que remunera melhor</div>
+</div>
+""", unsafe_allow_html=True)
+
+        top_repor = view.head(15).copy()
+        st.markdown("---")
+        st.markdown(
+            """
+<div class="section-title">🎯 Prioridade de compra</div>
+<div class="section-sub">
+A ordem mistura giro recente, cobertura de estoque, recência da última venda, margem e sinais vindos de produtos parecidos.
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        if top_repor.empty:
+            st.info("Nenhum item bateu os critérios atuais. O estoque, pelo visto, respirou fundo e ganhou mais alguns dias de paz.")
+        else:
+            tabela = top_repor.copy()
+            tabela["ESTOQUE_ATUAL"] = tabela["ESTOQUE_ATUAL"].round(0).astype(int)
+            tabela["QTD_RECOMENDADA"] = tabela["QTD_RECOMENDADA"].round(0).astype(int)
+            tabela["COBERTURA_DIAS_FMT"] = tabela["COBERTURA_DIAS"].apply(lambda x: f"{x:,.1f}" if x < 999 else "∞")
+            tabela["VEL_DIA_FMT"] = tabela["DEMANDA_AJUSTADA_DIA"].apply(lambda x: f"{x:,.2f}/dia")
+            tabela["MARGEM_FMT"] = tabela["MARGEM_PCT"].apply(lambda x: f"{x*100:,.1f}%")
+            tabela["URG_FMT"] = tabela["URGENCIA"].apply(lambda x: f"{x:,.0f}/100")
+            tabela["ULTIMA_COMPRA_FMT"] = pd.to_datetime(tabela["ULTIMA_COMPRA"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("—")
+            tabela["ULTIMA_VENDA_FMT"] = pd.to_datetime(tabela["ULTIMA_VENDA"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("—")
+
+            headers = ["Produto", "Ação", "Urgência", "Estoque", "Cobertura", "Sugestão", "Demanda", "Margem", "Últ. venda", "Últ. compra"]
+            rows = []
+            for _, r in tabela.iterrows():
+                prod = _safe(r.get("PRODUTO", ""))
+                link = f"?produto={quote(prod)}"
+                prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+                rows.append(
+                    "<tr>"
+                    + _td(prod_html)
+                    + _td(_safe(r.get("ACAO", "")))
+                    + _td(_safe(r.get("URG_FMT", "")))
+                    + _td(_safe(r.get("ESTOQUE_ATUAL", 0)))
+                    + _td(_safe(r.get("COBERTURA_DIAS_FMT", "")))
+                    + _td(_safe(r.get("QTD_RECOMENDADA", 0)))
+                    + _td(_safe(r.get("VEL_DIA_FMT", "")), "muted")
+                    + _td(_safe(r.get("MARGEM_FMT", "")), "muted")
+                    + _td(_safe(r.get("ULTIMA_VENDA_FMT", "")), "muted")
+                    + _td(_safe(r.get("ULTIMA_COMPRA_FMT", "")), "muted")
+                    + "</tr>"
+                )
+            st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown(
+            """
+<div class="section-title">🧬 Leitura inteligente por item</div>
+<div class="section-sub">
+Aqui mora o lado mais fino da coisa: o motor tenta entender contexto, não só saldo seco.
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        detalhe_cols = [
+            "PRODUTO", "ACAO", "QTD_RECOMENDADA", "URGENCIA", "ESTOQUE_ATUAL", "QTD_VENDIDA_TOTAL",
+            "V30", "V60", "V90", "DEMANDA_AJUSTADA_DIA", "COBERTURA_DIAS", "DIAS_DESDE_ULT_VENDA",
+            "DIAS_DESDE_ULT_COMPRA", "MARGEM_PCT", "SELL_THROUGH", "SIMILARES"
+        ]
+        detalhe = view[detalhe_cols].copy() if not view.empty else pd.DataFrame(columns=detalhe_cols)
+        if not detalhe.empty:
+            detalhe = detalhe.rename(columns={
+                "PRODUTO": "Produto",
+                "ACAO": "Ação sugerida",
+                "QTD_RECOMENDADA": "Qtd sugerida",
+                "URGENCIA": "Urgência",
+                "ESTOQUE_ATUAL": "Estoque atual",
+                "QTD_VENDIDA_TOTAL": "Qtd vendida hist.",
+                "V30": "Vendas 30d",
+                "V60": "Vendas 60d",
+                "V90": "Vendas 90d",
+                "DEMANDA_AJUSTADA_DIA": "Demanda/dia ajustada",
+                "COBERTURA_DIAS": "Cobertura (dias)",
+                "DIAS_DESDE_ULT_VENDA": "Dias desde última venda",
+                "DIAS_DESDE_ULT_COMPRA": "Dias desde última compra",
+                "MARGEM_PCT": "Margem",
+                "SELL_THROUGH": "Sell-through",
+                "SIMILARES": "Produtos parecidos"
+            })
+            detalhe["Urgência"] = detalhe["Urgência"].apply(lambda x: f"{x:,.0f}/100")
+            detalhe["Margem"] = detalhe["Margem"].apply(lambda x: f"{x*100:,.1f}%")
+            detalhe["Sell-through"] = detalhe["Sell-through"].apply(lambda x: f"{x*100:,.1f}%")
+            detalhe["Demanda/dia ajustada"] = detalhe["Demanda/dia ajustada"].apply(lambda x: round(float(x), 3))
+            detalhe["Cobertura (dias)"] = detalhe["Cobertura (dias)"].apply(lambda x: round(float(x), 1) if x < 999 else None)
+            st.dataframe(detalhe, use_container_width=True)
+        else:
+            st.info("Nada para detalhar com o filtro atual.")
+
+        st.markdown("---")
+        st.markdown(
+            """
+<div class="section-title">🪄 Como a estimativa pensa</div>
+<div class="section-sub">
+Ela pesa mais as vendas recentes, castiga item que esfriou, observa há quantos dias não vende, lê a última compra e ainda espreme pistas de produtos com nome parecido para não deixar família boa morrer na praia.
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+- **Demanda ajustada por dia:** mistura vendas dos últimos **30, 60 e 90 dias** com o histórico inteiro.  
+- **Cobertura:** estoque atual dividido pela demanda estimada.  
+- **Ponto de pedido:** demanda durante o lead time + uma camada de segurança de **{seguranca*100:,.0f}%**.  
+- **Sugestão final:** tenta levar o produto até **{alvo_dias} dias** de cobertura útil.  
+- **Produtos parecidos:** usados como tempero, não como dono da verdade — IA boa não grita, sussurra no ouvido do estoque.
+"""
+        )
+
 
 elif nav == "🧾 Compras":
     st.markdown(
