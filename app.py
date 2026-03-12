@@ -2592,6 +2592,12 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
                     f'<div class="muted">cobertura: {_safe(r.get("COBERTURA_FMT", ""))}</div>'
                     f'</div>'
                 )
+                confiar_html = (
+                    f'<div style="line-height:1.25">'
+                    f'<div><span class="pill-soft">{_safe(r.get("CONFIANCA_IA", "—"))}</span></div>'
+                    f'<div class="muted" style="margin-top:4px"><span class="pill-soft">risco: {_safe(r.get("RISCO_IA", "—"))}</span></div>'
+                    f'</div>'
+                )
                 rows.append(
                     "<tr>"
                     + _td(_acao_badge(r.get("ACAO", "")))
