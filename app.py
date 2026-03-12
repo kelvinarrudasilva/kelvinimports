@@ -5,6 +5,7 @@ import numpy as np
 from urllib.parse import quote
 import re
 import unicodedata
+import html
 
 # --------------------------------------------------
 # CONFIG BÁSICA
@@ -656,7 +657,12 @@ def _safe(s):
 
 
 def _attr_safe(s):
-    return _safe(s).replace('"', '&quot;').replace("'", '&#39;')
+    if s is None:
+        return ""
+    s = html.escape(str(s), quote=True)
+    s = s.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "&#10;")
+    return s
+
 
 
 def _hint_icon(text, icon="⚠️"):
@@ -689,9 +695,22 @@ def _painel_resultado_text(row):
     v30 = float(row.get("V30", 0) or 0)
     v60 = float(row.get("V60", 0) or 0)
     v90 = float(row.get("V90", 0) or 0)
-    dias_sem_vender = row.get("DIAS_DESDE_ULT_VENDA")
-    dias_para_vender = row.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA")
+
     estoque = float(row.get("ESTOQUE_ATUAL", 0) or 0)
+
+    hoje = pd.Timestamp.now().normalize()
+    ultima_venda_data = pd.to_datetime(row.get("ULTIMA_VENDA"), errors="coerce")
+    dias_desde_ult_venda = None
+    dias_ate_prox_venda = None
+    if pd.notna(ultima_venda_data):
+        ultima_norm = ultima_venda_data.normalize()
+        diff = int((hoje - ultima_norm).days)
+        if diff >= 0:
+            dias_desde_ult_venda = diff
+        else:
+            dias_ate_prox_venda = abs(diff)
+
+    dias_para_vender = row.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA")
 
     pontos = []
     if qtd_total <= 1:
@@ -703,12 +722,12 @@ def _painel_resultado_text(row):
     else:
         pontos.append("não teve venda recente")
 
-    if qtd_total <= 1:
-        pontos.append("histórico ainda fraco")
-    elif qtd_total <= 3:
+    if qtd_total >= 4 or v30 >= 2:
+        pontos.append("histórico bom para tomar decisão")
+    elif qtd_total >= 2:
         pontos.append("histórico razoável, mas ainda observando")
     else:
-        pontos.append("histórico bom para tomar decisão")
+        pontos.append("histórico ainda fraco para cravar compra")
 
     if acao == "Comprar já":
         pontos.append("vale comprar agora")
@@ -724,31 +743,38 @@ def _painel_resultado_text(row):
         pontos.append("já tem estoque suficiente por enquanto")
 
     extras = []
-    try:
-        if pd.notna(dias_sem_vender) and float(dias_sem_vender) < 9999:
-            extras.append(f"Última venda há {max(0, int(round(float(dias_sem_vender))))} dias")
-    except Exception:
-        pass
+    if dias_desde_ult_venda is not None:
+        extras.append(f"Última venda há {dias_desde_ult_venda} dias")
+    elif dias_ate_prox_venda is not None:
+        extras.append(f"Há venda lançada para daqui a {dias_ate_prox_venda} dias")
+
     try:
         if pd.notna(dias_para_vender):
-            extras.append(f"Demorou cerca de {max(0, int(round(float(dias_para_vender))))} dias da compra até vender")
+            extras.append(f"Demorou cerca de {int(round(float(dias_para_vender)))} dias da compra até vender")
     except Exception:
         pass
+
     if estoque <= 0:
         extras.append("Estoque atual zerado")
 
     linhas = [
         "📦 Resultado no painel",
+        "",
         f"Produto: {produto}",
+        "",
         f"Ação: {acao}",
         "",
     ]
+
     for p in pontos[:3]:
         linhas.append(f"• {p}")
+
     if extras:
         linhas.append("")
         linhas.extend(extras[:2])
+
     return "\n".join(linhas)
+
 
 
 def _nivel_confianca(row):
