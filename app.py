@@ -885,101 +885,187 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     sell_through = float(row.get("SELL_THROUGH", 0.0) or 0.0)
     v30 = float(row.get("V30", 0.0) or 0.0)
     v60 = float(row.get("V60", 0.0) or 0.0)
+    v90 = float(row.get("V90", 0.0) or 0.0)
     v30_similares = float(row.get("V30_SIMILARES", 0.0) or 0.0)
     intervalo_esperado = float(row.get("INTERVALO_ESPERADO", np.nan)) if pd.notna(row.get("INTERVALO_ESPERADO", np.nan)) else np.nan
 
-    janela = max(7, int(alvo_dias + lead_time))
-    estoque_seguranca = demanda * janela * seguranca
+    venda_mensal_ref = max(v30, v60 / 2.0, v90 / 3.0, demanda * 30.0)
+    estoque_meses = (estoque / venda_mensal_ref) if venda_mensal_ref > 0 else (999.0 if estoque > 0 else 0.0)
+    similar_quente = v30_similares > 1.5 and dias_sem_vender_similar <= 35
+
+    lento = (
+        (pd.notna(intervalo_esperado) and intervalo_esperado >= 45)
+        or (v90 <= 2 and dias_sem_vender >= 45)
+        or venda_mensal_ref < 1.2
+    )
+    muito_lento = (
+        (pd.notna(intervalo_esperado) and intervalo_esperado >= 75)
+        or (v90 <= 1 and dias_sem_vender >= 80)
+        or venda_mensal_ref < 0.55
+    )
+    bom_giro = (
+        v30 >= 3
+        or venda_mensal_ref >= 3.2
+        or (pd.notna(intervalo_esperado) and intervalo_esperado <= 14)
+    )
+    otimo_giro = (
+        v30 >= 6
+        or venda_mensal_ref >= 6
+        or (pd.notna(intervalo_esperado) and intervalo_esperado <= 7)
+    )
+    excesso = (
+        estoque > 0
+        and (
+            cobertura >= max(alvo_dias * 2.2, 75)
+            or estoque_meses >= 3.0
+            or (lento and estoque >= max(2.0, venda_mensal_ref * 2.5))
+        )
+    )
+
+    janela_planejada = max(7, int(alvo_dias + lead_time))
+    janela_enxuta = max(lead_time + 7, int(alvo_dias * 0.65) + lead_time)
+    if muito_lento:
+        janela_repor = max(lead_time + 5, min(janela_enxuta, 20))
+    elif lento:
+        janela_repor = max(lead_time + 7, min(janela_enxuta, 28))
+    else:
+        janela_repor = janela_planejada
+
+    estoque_seguranca = demanda * janela_repor * seguranca
     ponto_pedido = (demanda * lead_time) + estoque_seguranca
-    estoque_alvo = (demanda * janela) + estoque_seguranca
+    estoque_alvo = (demanda * janela_repor) + estoque_seguranca
     comprar = max(0.0, estoque_alvo - estoque)
 
     urgencia = 0.0
     motivo = []
 
-    if demanda > 0:
-        falta_para_ponto = max(0.0, ponto_pedido - estoque)
-        urgencia += min(44.0, falta_para_ponto * 7.0)
-        urgencia += min(22.0, max(0.0, (18.0 - cobertura) * 1.45))
-        urgencia += min(12.0, v30 * 0.85)
-        if margem >= 0.22:
-            urgencia += 6.0
-            motivo.append("margem boa")
-        if sell_through >= 0.75:
-            urgencia += 6.0
-            motivo.append("vende quase tudo que entra")
-        if estoque <= 0:
-            urgencia += 12.0
-            motivo.append("estoque zerado")
-        if dias_sem_comprar >= 45 and (v30 > 0 or v60 > 0):
-            urgencia += 7.0
-            motivo.append("faz tempo que não recompra")
-    else:
-        comprar = 0.0
+    if bom_giro:
+        urgencia += 18.0
+        motivo.append("tem giro real")
+    if otimo_giro:
+        urgencia += 12.0
+        motivo.append("gira rápido")
+    if margem >= 0.22:
+        urgencia += 5.0
+        motivo.append("margem boa")
+    if sell_through >= 0.75:
+        urgencia += 5.0
+        motivo.append("vende boa parte do que compra")
+    if estoque <= 0 and bom_giro:
+        urgencia += 22.0
+        motivo.append("zerou mas continua com saída")
+    if cobertura <= max(lead_time, 7) and venda_mensal_ref >= 2:
+        urgencia += 20.0
+        motivo.append("estoque curto para o ritmo atual")
+    elif cobertura <= max(alvo_dias * 0.55, lead_time + 7) and venda_mensal_ref >= 1.2:
+        urgencia += 10.0
+    if dias_sem_comprar >= 45 and venda_mensal_ref >= 2:
+        urgencia += 6.0
+        motivo.append("faz tempo que não recompra")
+    if similar_quente and estoque <= 0 and not bom_giro:
+        urgencia += 8.0
+        motivo.append("itens parecidos seguem vendendo")
 
     if pd.notna(intervalo_esperado) and intervalo_esperado > 0:
         relacao = dias_sem_vender / max(intervalo_esperado, 1.0)
-        if relacao >= 2.5:
-            urgencia -= 18.0
-            motivo.append("ritmo esfriou")
-        elif relacao >= 1.4:
-            urgencia -= 8.0
+        if relacao >= 2.8:
+            urgencia -= 24.0
+            motivo.append("já passou muito do ritmo normal de venda")
+        elif relacao >= 1.8:
+            urgencia -= 14.0
+            motivo.append("venda recente esfriou")
+        elif relacao >= 1.2:
+            urgencia -= 6.0
     else:
         if dias_sem_vender > 60:
-            urgencia -= 12.0
+            urgencia -= 10.0
         if dias_sem_vender > 120:
             urgencia -= 14.0
 
-    if v30 <= 0 and v60 <= 0 and v30_similares > 0 and estoque <= 0 and dias_sem_vender_similar <= 30:
-        urgencia = max(urgencia, 48.0)
-        comprar = max(comprar, 1.0)
-        motivo.append("família parecida continua vendendo")
+    if lento:
+        urgencia -= 10.0
+        motivo.append("giro lento")
+    if muito_lento:
+        urgencia -= 16.0
+        motivo.append("vende muito devagar")
+    if excesso:
+        urgencia -= 30.0
+        motivo.append("já tem estoque suficiente por bastante tempo")
+        comprar = 0.0
+
+    if estoque <= 0 and muito_lento and not similar_quente:
+        comprar = 0.0
+    elif estoque <= 0 and lento and not bom_giro:
+        comprar = min(comprar, 1.0)
+    elif lento:
+        comprar = min(comprar, max(0.0, round(venda_mensal_ref * 0.8)))
+
+    if not bom_giro and similar_quente and estoque <= 0 and comprar <= 0:
+        comprar = 1.0
 
     urgencia = max(0.0, min(100.0, urgencia))
 
-    if estoque <= 0 and (v30 > 0 or (v30_similares > 0 and dias_sem_vender_similar <= 30)):
+    if excesso:
+        acao = "Não comprar agora"
+        urgencia = min(urgencia, 18.0)
+        comprar = 0.0
+    elif estoque <= 0 and muito_lento and not similar_quente:
+        acao = "Não comprar agora"
+        urgencia = min(urgencia, 15.0)
+        comprar = 0.0
+        motivo.append("zerou, mas o histórico é fraco")
+    elif estoque <= 0 and bom_giro:
         acao = "Comprar já"
-        comprar = max(comprar, max(1.0, v30 * 1.15, v30_similares * 0.35))
+        comprar = max(comprar, max(1.0, round(venda_mensal_ref * 0.9)))
         urgencia = max(urgencia, 82.0)
-    elif cobertura <= max(lead_time, 7) and demanda > 0.03:
+    elif cobertura <= max(lead_time, 7) and bom_giro:
         acao = "Comprar já"
-        urgencia = max(urgencia, 75.0)
-        motivo.append("estoque acaba antes da próxima chegada")
-    elif cobertura <= max(alvo_dias * 0.45, lead_time + 5) and demanda > 0.02:
+        urgencia = max(urgencia, 76.0)
+    elif cobertura <= max(alvo_dias * 0.55, lead_time + 7) and venda_mensal_ref >= 1.2:
         acao = "Planejar compra"
         urgencia = max(urgencia, 56.0)
-    elif dias_sem_vender > 90 and estoque > 0 and v30 <= 0 and v60 <= 0:
+    elif estoque <= 0 and similar_quente:
+        acao = "Teste leve"
+        comprar = max(1.0, min(2.0, comprar if comprar > 0 else 1.0))
+        urgencia = max(urgencia, 40.0)
+    elif lento and estoque > 0:
         acao = "Segurar estoque"
         comprar = 0.0
-        urgencia = min(urgencia, 20.0)
-    elif estoque <= 0 and v30_similares > 0 and dias_sem_vender_similar <= 45:
-        acao = "Teste leve"
-        comprar = max(comprar, 1.0)
-        urgencia = max(urgencia, 42.0)
+        urgencia = min(urgencia, 28.0)
     else:
         acao = "Monitorar"
 
     leitura = []
     if estoque <= 0:
         leitura.append("sem estoque hoje")
+    else:
+        leitura.append(f"estoque atual de {int(round(estoque))} unid.")
+
     if v30 > 0:
         leitura.append(f"vendeu {int(round(v30))} unid. nos últimos 30 dias")
+    elif v90 > 0:
+        leitura.append(f"vendeu {int(round(v90))} unid. nos últimos 90 dias")
+    else:
+        leitura.append("sem venda recente no histórico")
+
     if pd.notna(intervalo_esperado):
-        leitura.append(f"costuma girar a cada {float(intervalo_esperado):.0f} dias")
+        leitura.append(f"costuma sair a cada {float(intervalo_esperado):.0f} dias")
     if dias_sem_vender < 9999:
         leitura.append(f"última venda há {int(dias_sem_vender)} dias")
     if dias_sem_comprar < 9999:
         leitura.append(f"última compra há {int(dias_sem_comprar)} dias")
-    if v30_similares > 0:
-        leitura.append("há produtos parecidos com saída recente")
+    if similar_quente:
+        leitura.append("há item parecido com saída recente")
+    if excesso:
+        leitura.append("já tem estoque para vários meses")
 
-    resumo = " • ".join(leitura[:5]) if leitura else "sem histórico suficiente"
+    resumo = " • ".join(leitura[:6]) if leitura else "sem histórico suficiente"
     motivo_txt = ", ".join(dict.fromkeys(motivo)) if motivo else "combinação de estoque, giro e recência"
 
     return pd.Series({
         "PONTO_PEDIDO": ponto_pedido,
         "ESTOQUE_ALVO": estoque_alvo,
-        "QTD_RECOMENDADA": round(comprar),
+        "QTD_RECOMENDADA": int(max(0, round(comprar))),
         "URGENCIA": urgencia,
         "ACAO": acao,
         "RESUMO_IA": resumo,
@@ -2003,7 +2089,7 @@ elif nav == "🧠 IA de reposição":
         """
 <div class="section-title">🧠 IA de reposição de estoque</div>
 <div class="section-sub">
-Agora a leitura ficou mais humana: ela tenta entender o que está vendendo, em quanto tempo gira, quando foi a última compra, quando foi a última venda e se a família parecida continua com saída.
+Agora a leitura ficou mais humana: estoque zerado não significa comprar no automático, e estoque alto também não. A IA tenta separar o que gira bem do que só ocupa espaço, olhando tempo entre vendas, última compra, última venda, estoque atual e produtos parecidos.
 </div>
 """,
         unsafe_allow_html=True,
@@ -2018,10 +2104,11 @@ Agora a leitura ficou mais humana: ela tenta entender o que está vendendo, em q
             """
 <div class="section-sub">
 <b>Como mexer sem mistério:</b><br>
-• <b>Cobertura desejada</b> = por quantos dias você quer ficar abastecido.<br>
+• <b>Cobertura desejada</b> = por quantos dias você quer ficar abastecido nos itens que realmente giram.<br>
 • <b>Prazo do fornecedor</b> = em quantos dias a reposição costuma chegar.<br>
-• <b>Reserva extra</b> = colchão para não faltar produto se vender acima do normal.<br>
-• <b>Nível mínimo de prioridade</b> = o filtro do que você quer ver primeiro.
+• <b>Reserva extra</b> = colchão para não faltar produto bom de giro.<br>
+• <b>Nível mínimo de prioridade</b> = mostra só o que mais merece seu dinheiro agora.<br>
+• <b>Importante:</b> produto zerado e fraco pode aparecer como <b>Não comprar agora</b>.
 </div>
 """,
             unsafe_allow_html=True,
@@ -2132,7 +2219,7 @@ Agora a leitura ficou mais humana: ela tenta entender o que está vendendo, em q
 <div class="kpi-card">
   <div class="kpi-label">Comprar agora</div>
   <div class="kpi-value">{produtos_criticos}</div>
-  <div class="kpi-pill">Itens que pedem recompra imediata</div>
+  <div class="kpi-pill">Itens realmente fortes que pedem recompra imediata</div>
 </div>
 """, unsafe_allow_html=True)
         with k2:
