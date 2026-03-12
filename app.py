@@ -246,13 +246,13 @@ hr { border-color:#1f2933 !important; }
   padding:8px 10px;
   border-bottom:1px solid var(--border-soft);
   text-align:left;
-  white-space:nowrap;
+  white-space:normal;
 }
 .compact-grid td{
   padding:7px 10px;
   border-bottom:1px solid #121212;
   vertical-align:middle;
-  white-space:nowrap;
+  white-space:normal;
 }
 .compact-grid tbody tr:nth-child(odd) td{ background:#050505; }
 .compact-grid tbody tr:nth-child(even) td{ background:#0a0a0a; }
@@ -2445,31 +2445,49 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
             detalhe["INTERVALO_FMT"] = detalhe["INTERVALO_ESPERADO"].apply(lambda x: "—" if pd.isna(x) else round(float(x), 1))
             detalhe["COBERTURA_FMT"] = detalhe["COBERTURA_DIAS"].apply(lambda x: "sem giro" if pd.isna(x) or float(x) >= 999 else f"{float(x):.1f} dias")
 
-            headers = ["Ação sugerida", "Produto", "Prioridade", "Qtd", "Estoque", "Vendeu 30d", "Vendeu 60d", "Dias desde venda", "Dias desde compra", "Venda de parecido", "Ritmo médio", "Cobertura", "Motivo principal", "Leitura da IA", "Parecidos"]
+            headers = ["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Motivo", "IA"]
             rows = []
             for _, r in detalhe.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
                 link = f"?produto={quote(prod)}"
                 prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
-                motivo_hover = f'<span class="hover-cell">{_mini_hover(r.get("MOTIVO_IA", "Sem motivo disponível"), icon="⚠️")}<span class="muted">passar mouse</span></span>'
-                resumo_hover = f'<span class="hover-cell">{_mini_hover(r.get("RESUMO_IA", "Sem leitura disponível"), icon="🧠")}<span class="muted">passar mouse</span></span>'
+                motivo_hover = f'<span class="hover-cell">{_mini_hover(r.get("MOTIVO_IA", "Sem motivo disponível"), icon="⚠️")}<span class="muted">ver</span></span>'
+                resumo_hover = f'<span class="hover-cell">{_mini_hover(r.get("RESUMO_IA", "Sem leitura disponível"), icon="🧠")}<span class="muted">ver</span></span>'
+                estoque_sug_html = (
+                    f'<div style="line-height:1.25">'
+                    f'<div><strong>{_safe(r.get("ESTOQUE_FMT", 0))}</strong> em estoque</div>'
+                    f'<div class="muted">sugestão: {_safe(r.get("QTD_FMT", 0))}</div>'
+                    f'</div>'
+                )
+                movimento_html = (
+                    f'<div style="line-height:1.25">'
+                    f'<div>30d: <strong>{_safe(r.get("V30_FMT", 0))}</strong></div>'
+                    f'<div class="muted">60d: {_safe(r.get("V60_FMT", 0))}</div>'
+                    f'</div>'
+                )
+                datas_html = (
+                    f'<div style="line-height:1.25">'
+                    f'<div>venda: <strong>{_safe(r.get("DIAS_VENDA_FMT", "—"))}</strong>d</div>'
+                    f'<div class="muted">compra: {_safe(r.get("DIAS_COMPRA_FMT", "—"))}d • parecido: {_safe(r.get("DIAS_SIMILAR_FMT", "—"))}d</div>'
+                    f'</div>'
+                )
+                ritmo_html = (
+                    f'<div style="line-height:1.25">'
+                    f'<div>médio: <strong>{_safe(r.get("INTERVALO_FMT", "—"))}</strong>d</div>'
+                    f'<div class="muted">cobertura: {_safe(r.get("COBERTURA_FMT", ""))}</div>'
+                    f'</div>'
+                )
                 rows.append(
                     "<tr>"
                     + _td(_safe(r.get("ACAO", "")))
                     + _td(prod_html)
                     + _td(_safe(r.get("PRIORIDADE_FMT", "")), "muted")
-                    + _td(_safe(r.get("QTD_FMT", 0)))
-                    + _td(_safe(r.get("ESTOQUE_FMT", 0)))
-                    + _td(_safe(r.get("V30_FMT", 0)))
-                    + _td(_safe(r.get("V60_FMT", 0)))
-                    + _td(_safe(r.get("DIAS_VENDA_FMT", "—")), "muted")
-                    + _td(_safe(r.get("DIAS_COMPRA_FMT", "—")), "muted")
-                    + _td(_safe(r.get("DIAS_SIMILAR_FMT", "—")), "muted")
-                    + _td(_safe(r.get("INTERVALO_FMT", "—")), "muted")
-                    + _td(_safe(r.get("COBERTURA_FMT", "")), "muted")
+                    + _td(estoque_sug_html)
+                    + _td(movimento_html)
+                    + _td(datas_html, "muted")
+                    + _td(ritmo_html, "muted")
                     + _td(motivo_hover, "muted")
                     + _td(resumo_hover, "muted")
-                    + _td(_safe(r.get("SIMILARES", "")), "muted")
                     + "</tr>"
                 )
             st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
