@@ -262,6 +262,18 @@ hr { border-color:#1f2933 !important; }
 .compact-grid a.lens:hover{ filter:brightness(1.2); }
 .compact-grid .muted{ color:var(--muted); }
 
+.hint-row{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px 0;}
+.hint-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;border:1px solid var(--border-soft);background:#0b0b0b;color:#d4d4d8;font-size:12px;}
+.hint-icon,.mini-hover{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:999px;
+  background:#151515;border:1px solid #2a2a2a;color:#facc15;
+  font-size:11px;cursor:help;line-height:1;
+}
+.mini-hover{width:20px;height:20px;color:#93c5fd;border-color:#1f2937;background:#0f172a;}
+.hover-cell{display:inline-flex;align-items:center;gap:6px;}
+.help-inline{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
@@ -633,6 +645,18 @@ def _safe(s):
     if s is None:
         return ""
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _attr_safe(s):
+    return _safe(s).replace('"', '&quot;').replace("'", '&#39;')
+
+
+def _hint_icon(text, icon="⚠️"):
+    return f'<span class="hint-icon" title="{_attr_safe(text)}">{icon}</span>'
+
+
+def _mini_hover(text, icon="🧠"):
+    return f'<span class="mini-hover" title="{_attr_safe(text)}">{icon}</span>'
 
 
 def normalize_name(s):
@@ -2191,12 +2215,19 @@ Agora a leitura ficou mais humana: estoque zerado não significa comprar no auto
         st.markdown(
             """
 <div class="section-sub">
-<b>Como mexer sem mistério:</b><br>
-• <b>Cobertura desejada</b> = por quantos dias você quer ficar abastecido nos itens que realmente giram.<br>
-• <b>Prazo do fornecedor</b> = em quantos dias a reposição costuma chegar.<br>
-• <b>Reserva extra</b> = colchão para não faltar produto bom de giro.<br>
-• <b>Nível mínimo de prioridade</b> = mostra só o que mais merece seu dinheiro agora.<br>
-• <b>Importante:</b> produto zerado e fraco pode aparecer como <b>Não comprar agora</b>.
+Passe o mouse nos ícones de atenção para entender cada parte sem poluir a tela.
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+<div class="hint-row">
+  <span class="hint-chip">Cobertura desejada {_hint_icon('Por quantos dias você quer ficar abastecido nos itens que realmente giram. Quanto menor, mais enxuto fica o estoque.')}</span>
+  <span class="hint-chip">Prazo do fornecedor {_hint_icon('Em quantos dias a reposição costuma chegar. Se seu fornecedor demora, o sistema sobe a necessidade de cobertura.')}</span>
+  <span class="hint-chip">Reserva extra {_hint_icon('É um colchão de segurança para não faltar produto que vende bem quando a procura aperta.')}</span>
+  <span class="hint-chip">Nível mínimo de prioridade {_hint_icon('Serve para esconder itens fracos e mostrar primeiro o que mais merece seu dinheiro agora.')}</span>
+  <span class="hint-chip">Importante {_hint_icon('Produto zerado não significa compra automática. Se ele gira devagar ou demorou muito para vender, a IA pode marcar Não comprar agora.')}</span>
 </div>
 """,
             unsafe_allow_html=True,
@@ -2368,6 +2399,7 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
                 prod = _safe(r.get("PRODUTO", ""))
                 link = f"?produto={quote(prod)}"
                 prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+                leitura_hover = f'<span class="hover-cell">{_mini_hover(r.get("LEITURA_FMT", "Sem leitura disponível"), icon="🧠")}<span class="muted">passar mouse</span></span>'
                 rows.append(
                     "<tr>"
                     + _td(_safe(r.get("ACAO", "")))
@@ -2378,7 +2410,7 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
                     + _td(_safe(r.get("COBERTURA_DIAS_FMT", "")), "muted")
                     + _td(_safe(r.get("ULTIMA_VENDA_FMT", "")), "muted")
                     + _td(_safe(r.get("ULTIMA_COMPRA_FMT", "")), "muted")
-                    + _td(_safe(r.get("LEITURA_FMT", "")), "muted")
+                    + _td(leitura_hover, "muted")
                     + "</tr>"
                 )
             st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
@@ -2413,12 +2445,14 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
             detalhe["INTERVALO_FMT"] = detalhe["INTERVALO_ESPERADO"].apply(lambda x: "—" if pd.isna(x) else round(float(x), 1))
             detalhe["COBERTURA_FMT"] = detalhe["COBERTURA_DIAS"].apply(lambda x: "sem giro" if pd.isna(x) or float(x) >= 999 else f"{float(x):.1f} dias")
 
-            headers = ["Ação sugerida", "Produto", "Prioridade", "Qtd", "Estoque", "Vendeu 30d", "Vendeu 60d", "Dias desde venda", "Dias desde compra", "Venda de parecido", "Ritmo médio", "Cobertura", "Motivo principal", "Resumo", "Parecidos"]
+            headers = ["Ação sugerida", "Produto", "Prioridade", "Qtd", "Estoque", "Vendeu 30d", "Vendeu 60d", "Dias desde venda", "Dias desde compra", "Venda de parecido", "Ritmo médio", "Cobertura", "Motivo principal", "Leitura da IA", "Parecidos"]
             rows = []
             for _, r in detalhe.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
                 link = f"?produto={quote(prod)}"
                 prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+                motivo_hover = f'<span class="hover-cell">{_mini_hover(r.get("MOTIVO_IA", "Sem motivo disponível"), icon="⚠️")}<span class="muted">passar mouse</span></span>'
+                resumo_hover = f'<span class="hover-cell">{_mini_hover(r.get("RESUMO_IA", "Sem leitura disponível"), icon="🧠")}<span class="muted">passar mouse</span></span>'
                 rows.append(
                     "<tr>"
                     + _td(_safe(r.get("ACAO", "")))
@@ -2433,8 +2467,8 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
                     + _td(_safe(r.get("DIAS_SIMILAR_FMT", "—")), "muted")
                     + _td(_safe(r.get("INTERVALO_FMT", "—")), "muted")
                     + _td(_safe(r.get("COBERTURA_FMT", "")), "muted")
-                    + _td(_safe(r.get("MOTIVO_IA", "")), "muted")
-                    + _td(_safe(r.get("RESUMO_IA", "")), "muted")
+                    + _td(motivo_hover, "muted")
+                    + _td(resumo_hover, "muted")
                     + _td(_safe(r.get("SIMILARES", "")), "muted")
                     + "</tr>"
                 )
