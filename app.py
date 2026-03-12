@@ -273,6 +273,14 @@ hr { border-color:#1f2933 !important; }
 .mini-hover{width:20px;height:20px;color:#93c5fd;border-color:#1f2937;background:#0f172a;}
 .hover-cell{display:inline-flex;align-items:center;gap:6px;}
 .help-inline{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+.badge-action{display:inline-flex;align-items:center;justify-content:center;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.02em;border:1px solid transparent;white-space:nowrap;}
+.badge-buy{background:rgba(34,197,94,.14);color:#86efac;border-color:rgba(34,197,94,.28);}
+.badge-plan{background:rgba(59,130,246,.14);color:#93c5fd;border-color:rgba(59,130,246,.28);}
+.badge-test{background:rgba(168,85,247,.14);color:#d8b4fe;border-color:rgba(168,85,247,.28);}
+.badge-watch{background:rgba(245,158,11,.14);color:#fcd34d;border-color:rgba(245,158,11,.28);}
+.badge-skip{background:rgba(239,68,68,.14);color:#fca5a5;border-color:rgba(239,68,68,.28);}
+.badge-hold{background:rgba(107,114,128,.18);color:#d1d5db;border-color:rgba(107,114,128,.30);}
+.pill-soft{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:999px;border:1px solid var(--border-soft);background:#0b0b0b;color:#d4d4d8;font-size:11px;white-space:nowrap;}
 
 </style>
 """
@@ -657,6 +665,75 @@ def _hint_icon(text, icon="⚠️"):
 
 def _mini_hover(text, icon="🧠"):
     return f'<span class="mini-hover" title="{_attr_safe(text)}">{icon}</span>'
+
+
+def _acao_badge(acao):
+    acao = "" if acao is None else str(acao)
+    mapa = {
+        "Comprar já": "badge-buy",
+        "Planejar compra": "badge-plan",
+        "Teste leve": "badge-test",
+        "Monitorar": "badge-watch",
+        "Não comprar agora": "badge-skip",
+        "Segurar estoque": "badge-hold",
+    }
+    cls = mapa.get(acao, "badge-hold")
+    return f'<span class="badge-action {cls}">{_safe(acao)}</span>'
+
+
+def _nivel_confianca(row):
+    qtd = float(row.get("QTD_VENDIDA_TOTAL", 0) or 0)
+    v30 = float(row.get("V30", 0) or 0)
+    v60 = float(row.get("V60", 0) or 0)
+    intervalo = row.get("INTERVALO_ESPERADO")
+    lag = row.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA")
+    sim = float(row.get("V30_SIMILARES", 0) or 0)
+    pontos = 0
+    if qtd >= 6:
+        pontos += 45
+    elif qtd >= 4:
+        pontos += 36
+    elif qtd >= 2:
+        pontos += 24
+    elif qtd >= 1:
+        pontos += 10
+    if v30 >= 3:
+        pontos += 25
+    elif v60 >= 4:
+        pontos += 18
+    elif v60 >= 2:
+        pontos += 10
+    if pd.notna(intervalo):
+        pontos += 15
+    if pd.notna(lag) and float(lag) >= 90:
+        pontos -= 18
+    elif pd.notna(lag) and float(lag) >= 60:
+        pontos -= 10
+    if qtd <= 1:
+        pontos -= 18
+    if qtd <= 1 and sim > 0:
+        pontos -= 8
+    pontos = max(0, min(100, int(round(pontos))))
+    if pontos >= 70:
+        return "Alta"
+    if pontos >= 45:
+        return "Média"
+    return "Baixa"
+
+
+def _risco_analise(row):
+    conf = _nivel_confianca(row)
+    qtd = float(row.get("QTD_VENDIDA_TOTAL", 0) or 0)
+    sim = float(row.get("V30_SIMILARES", 0) or 0)
+    if conf == "Alta":
+        risco = "Baixo"
+    elif conf == "Média":
+        risco = "Médio"
+    else:
+        risco = "Alto"
+    if qtd <= 1 and sim > 0:
+        risco = "Alto"
+    return risco
 
 
 def normalize_name(s):
@@ -2310,7 +2387,18 @@ Passe o mouse nos ícones de atenção para entender cada parte sem poluir a tel
             + ((base_ia["V30_SIMILARES"].fillna(0) > 0).astype(int) * 4)
         )
 
-        universo_acoes = ["Todos"] + sorted(base_ia["ACAO"].dropna().unique().tolist())
+        ordem_acoes = ["Comprar já", "Planejar compra", "Teste leve", "Monitorar", "Não comprar agora", "Segurar estoque"]
+        ordem_map = {acao: i + 1 for i, acao in enumerate(ordem_acoes)}
+        base_ia["ORDEM_ACAO_NUM"] = base_ia["ACAO"].map(ordem_map).fillna(99).astype(int)
+        base_ia["ORDEM_ACAO"] = pd.Categorical(base_ia["ACAO"], categories=ordem_acoes, ordered=True)
+        base_ia["CONFIANCA_IA"] = base_ia.apply(_nivel_confianca, axis=1)
+        base_ia["RISCO_IA"] = base_ia.apply(_risco_analise, axis=1)
+        base_ia["CAPITAL_PARADO_DIAS"] = base_ia.apply(
+            lambda r: int(round(float(r.get("COBERTURA_DIAS", 0)))) if pd.notna(r.get("COBERTURA_DIAS", np.nan)) and float(r.get("COBERTURA_DIAS", 0)) < 999 else int(round(float(r.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA", 0) or 0))),
+            axis=1,
+        )
+
+        universo_acoes = ["Todos"] + [a for a in ordem_acoes if a in base_ia["ACAO"].dropna().unique().tolist()]
         f1, f2 = st.columns([1.2, 2.8])
         with f1:
             acao_sel = st.selectbox("Filtrar por ação", universo_acoes, index=0)
@@ -2326,16 +2414,15 @@ Passe o mouse nos ícones de atenção para entender cada parte sem poluir a tel
 
         view = view[view["URGENCIA"] >= min_urgencia].copy()
 
-        ordem_acoes = ["Comprar já", "Planejar compra", "Teste leve", "Monitorar", "Segurar estoque", "Não comprar agora"]
-        view["ORDEM_ACAO"] = pd.Categorical(view["ACAO"], categories=ordem_acoes, ordered=True)
-        view = view.sort_values(["ORDEM_ACAO", "SCORE_FINAL", "QTD_RECOMENDADA", "QTD_VENDIDA_TOTAL"], ascending=[True, False, False, False])
+        view = view.sort_values(["ORDEM_ACAO_NUM", "QTD_RECOMENDADA", "URGENCIA", "SCORE_FINAL", "PRODUTO"], ascending=[True, False, False, False, True], kind="mergesort")
 
         total_para_comprar = int(view["QTD_RECOMENDADA"].fillna(0).sum()) if not view.empty else 0
         produtos_criticos = int((view["ACAO"].isin(["Comprar já"])).sum()) if not view.empty else 0
         capital_estimado = float((view["QTD_RECOMENDADA"].fillna(0) * view["CUSTO_MEDIO_FIFO"].fillna(0)).sum()) if not view.empty else 0.0
         itens_teste = int((view["ACAO"] == "Teste leve").sum()) if not view.empty else 0
+        capital_parado_medio = int(view["CAPITAL_PARADO_DIAS"].clip(lower=0).mean()) if not view.empty else 0
 
-        k1, k2, k3, k4 = st.columns(4)
+        k1, k2, k3, k4, k5 = st.columns(5)
         with k1:
             st.markdown(f"""
 <div class="kpi-card">
@@ -2368,6 +2455,14 @@ Passe o mouse nos ícones de atenção para entender cada parte sem poluir a tel
   <div class="kpi-pill">Produtos sem histórico forte, mas com sinais na família</div>
 </div>
 """, unsafe_allow_html=True)
+        with k5:
+            st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Capital parado</div>
+  <div class="kpi-value">{capital_parado_medio} dias</div>
+  <div class="kpi-pill">Média de quanto o dinheiro tende a ficar preso nesse grupo</div>
+</div>
+""", unsafe_allow_html=True)
 
         top_repor = view.head(18).copy()
         st.markdown("---")
@@ -2393,7 +2488,7 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
             tabela["LEITURA_FMT"] = tabela["RESUMO_IA"].fillna("")
             tabela["PRIORIDADE_FMT"] = tabela["URGENCIA"].apply(lambda x: f"{float(x):.0f}/100")
 
-            headers = ["Ação sugerida", "Produto", "Prioridade", "Sugestão", "Estoque", "Cobertura", "Últ. venda", "Últ. compra", "Leitura da IA"]
+            headers = ["Ação sugerida", "Produto", "Prioridade", "Sugestão", "Estoque", "Cobertura", "Confiança", "Risco", "Leitura da IA"]
             rows = []
             for _, r in tabela.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
@@ -2402,14 +2497,14 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
                 leitura_hover = f'<span class="hover-cell">{_mini_hover(r.get("LEITURA_FMT", "Sem leitura disponível"), icon="🧠")}<span class="muted">passar mouse</span></span>'
                 rows.append(
                     "<tr>"
-                    + _td(_safe(r.get("ACAO", "")))
+                    + _td(_acao_badge(r.get("ACAO", "")))
                     + _td(prod_html)
                     + _td(_safe(r.get("PRIORIDADE_FMT", "")), "muted")
                     + _td(_safe(r.get("QTD_RECOMENDADA", 0)))
                     + _td(_safe(r.get("ESTOQUE_ATUAL", 0)))
                     + _td(_safe(r.get("COBERTURA_DIAS_FMT", "")), "muted")
-                    + _td(_safe(r.get("ULTIMA_VENDA_FMT", "")), "muted")
-                    + _td(_safe(r.get("ULTIMA_COMPRA_FMT", "")), "muted")
+                    + _td(f"<span class=\"pill-soft\">{_safe(r.get('CONFIANCA_IA', '—'))}</span>")
+                    + _td(f"<span class=\"pill-soft\">{_safe(r.get('RISCO_IA', '—'))}</span>")
                     + _td(leitura_hover, "muted")
                     + "</tr>"
                 )
@@ -2429,23 +2524,14 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
         detalhe_cols = [
             "PRODUTO", "ACAO", "QTD_RECOMENDADA", "URGENCIA", "ESTOQUE_ATUAL", "V30", "V60",
             "DIAS_DESDE_ULT_VENDA", "DIAS_DESDE_ULT_COMPRA", "DIAS_DESDE_ULT_VENDA_SIMILAR",
-            "INTERVALO_ESPERADO", "COBERTURA_DIAS", "SIMILARES", "MOTIVO_IA", "RESUMO_IA", "ORDEM_ACAO"
+            "INTERVALO_ESPERADO", "COBERTURA_DIAS", "SIMILARES", "MOTIVO_IA", "RESUMO_IA", "ORDEM_ACAO", "ORDEM_ACAO_NUM",
+            "CONFIANCA_IA", "RISCO_IA", "CAPITAL_PARADO_DIAS"
         ]
         detalhe = view[detalhe_cols].copy() if not view.empty else pd.DataFrame(columns=detalhe_cols)
         if not detalhe.empty:
-            detalhe["ACAO_ORD"] = detalhe["ACAO"].astype(str).str.lower().map({
-                "comprar já": 1,
-                "comprar ja": 1,
-                "compra teste": 2,
-                "planejar compra": 3,
-                "monitorar": 4,
-                "não comprar agora": 5,
-                "nao comprar agora": 5,
-                "segurar estoque": 6,
-            }).fillna(99)
             detalhe = detalhe.sort_values(
-                ["QTD_RECOMENDADA", "ACAO_ORD", "ORDEM_ACAO", "PRODUTO"],
-                ascending=[False, True, True, True],
+                ["ORDEM_ACAO_NUM", "QTD_RECOMENDADA", "URGENCIA", "PRODUTO"],
+                ascending=[True, False, False, True],
                 kind="mergesort"
             ).copy()
             detalhe["PRIORIDADE_FMT"] = detalhe["URGENCIA"].apply(lambda x: f"{float(x):.0f}/100")
@@ -2459,7 +2545,7 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
             detalhe["INTERVALO_FMT"] = detalhe["INTERVALO_ESPERADO"].apply(lambda x: "—" if pd.isna(x) else round(float(x), 1))
             detalhe["COBERTURA_FMT"] = detalhe["COBERTURA_DIAS"].apply(lambda x: "sem giro" if pd.isna(x) or float(x) >= 999 else f"{float(x):.1f} dias")
 
-            headers = ["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Motivo", "IA"]
+            headers = ["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Confiar?", "Motivo", "IA"]
             rows = []
             for _, r in detalhe.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
@@ -2493,13 +2579,14 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
                 )
                 rows.append(
                     "<tr>"
-                    + _td(_safe(r.get("ACAO", "")))
+                    + _td(_acao_badge(r.get("ACAO", "")))
                     + _td(prod_html)
                     + _td(_safe(r.get("PRIORIDADE_FMT", "")), "muted")
                     + _td(estoque_sug_html)
                     + _td(movimento_html)
                     + _td(datas_html, "muted")
                     + _td(ritmo_html, "muted")
+                    + _td(confiar_html, "muted")
                     + _td(motivo_hover, "muted")
                     + _td(resumo_hover, "muted")
                     + "</tr>"
@@ -2525,6 +2612,8 @@ Nada de mágica de fumaça: ela segue sinais reais da sua operação.
 - **Última venda x última compra:** compara há quantos dias vendeu pela última vez e há quantos dias você não recompra. Isso evita comprar cedo demais ou tarde demais.  
 - **Produtos parecidos:** quando um item tem pouco histórico, a IA olha a família parecida como pista extra — não manda no resultado sozinha, só ajuda a iluminar a trilha.  
 - **Estoque atual hoje:** se a cobertura não aguenta o prazo do fornecedor e sua meta de {int(cobertura_dias)} dias, a compra sobe na fila.  
+- **Confiança e risco:** quando o histórico do item é curto, a IA assume menos e o painel mostra isso para você não comprar no escuro.  
+- **Capital parado:** o painel estima quantos dias seu dinheiro tende a ficar preso naquele item para ajudar no estoque enxuto.  
 - **Reserva extra:** foi configurada em **{int(seguranca*100)}%**, para segurar o tranco se a procura apertar.  
 """
         )
