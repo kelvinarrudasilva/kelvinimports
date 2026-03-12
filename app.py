@@ -704,11 +704,11 @@ def _painel_resultado_text(row):
         pontos.append("não teve venda recente")
 
     if qtd_total <= 1:
-        pontos.append("sistema ainda não tem histórico suficiente")
+        pontos.append("histórico ainda fraco")
     elif qtd_total <= 3:
-        pontos.append("sistema tem alguns sinais, mas ainda observa")
+        pontos.append("histórico razoável, mas ainda observando")
     else:
-        pontos.append("sistema já enxerga um padrão mais confiável")
+        pontos.append("histórico bom para tomar decisão")
 
     if acao == "Comprar já":
         pontos.append("vale comprar agora")
@@ -726,12 +726,12 @@ def _painel_resultado_text(row):
     extras = []
     try:
         if pd.notna(dias_sem_vender) and float(dias_sem_vender) < 9999:
-            extras.append(f"Última venda há {int(round(float(dias_sem_vender)))} dias")
+            extras.append(f"Última venda há {max(0, int(round(float(dias_sem_vender))))} dias")
     except Exception:
         pass
     try:
         if pd.notna(dias_para_vender):
-            extras.append(f"Demorou cerca de {int(round(float(dias_para_vender)))} dias da compra até vender")
+            extras.append(f"Demorou cerca de {max(0, int(round(float(dias_para_vender))))} dias da compra até vender")
     except Exception:
         pass
     if estoque <= 0:
@@ -739,14 +739,12 @@ def _painel_resultado_text(row):
 
     linhas = [
         "📦 Resultado no painel",
-        "",
         f"Produto: {produto}",
-        "",
         f"Ação: {acao}",
         "",
     ]
     for p in pontos[:3]:
-        linhas.append(f"👉 {p}")
+        linhas.append(f"• {p}")
     if extras:
         linhas.append("")
         linhas.extend(extras[:2])
@@ -955,8 +953,8 @@ def build_reposicao_inteligente(df_fifo, df_estoque, df_compras):
         dias_ultima_compra_ate_ultima_venda = int((ultima_venda.normalize() - ultima_compra.normalize()).days) if pd.notna(ultima_compra) and pd.notna(ultima_venda) and ultima_venda >= ultima_compra else np.nan
 
         dias_com_historico = max(1, int(((hoje - primeira_venda.normalize()).days + 1)) if pd.notna(primeira_venda) else 1)
-        dias_desde_ult_venda = int((hoje - ultima_venda.normalize()).days) if pd.notna(ultima_venda) else 9999
-        dias_desde_ult_compra = int((hoje - ultima_compra.normalize()).days) if pd.notna(ultima_compra) else 9999
+        dias_desde_ult_venda = max(0, int((hoje - ultima_venda.normalize()).days)) if pd.notna(ultima_venda) else 9999
+        dias_desde_ult_compra = max(0, int((hoje - ultima_compra.normalize()).days)) if pd.notna(ultima_compra) else 9999
 
         v30 = v[v["DATA"] >= (hoje - pd.Timedelta(days=30))]["QTD"].sum() if not v.empty else 0.0
         v60 = v[v["DATA"] >= (hoje - pd.Timedelta(days=60))]["QTD"].sum() if not v.empty else 0.0
@@ -1031,8 +1029,8 @@ def build_reposicao_inteligente(df_fifo, df_estoque, df_compras):
         preco_medio = (receita_total / qtd_vendida) if qtd_vendida > 0 else 0.0
         margem_pct = (lucro_total / receita_total) if receita_total > 0 else 0.0
         sell_through = (qtd_vendida / qtd_comprada) if qtd_comprada > 0 else 0.0
-        dias_desde_ult_venda_similar = int((hoje - ultima_venda_similar.normalize()).days) if pd.notna(ultima_venda_similar) else 9999
-        dias_desde_ult_compra_similar = int((hoje - ultima_compra_similar.normalize()).days) if pd.notna(ultima_compra_similar) else 9999
+        dias_desde_ult_venda_similar = max(0, int((hoje - ultima_venda_similar.normalize()).days)) if pd.notna(ultima_venda_similar) else 9999
+        dias_desde_ult_compra_similar = max(0, int((hoje - ultima_compra_similar.normalize()).days)) if pd.notna(ultima_compra_similar) else 9999
 
         if pd.isna(intervalo_esperado) and pd.notna(intervalo_similar):
             intervalo_esperado = float(intervalo_similar)
