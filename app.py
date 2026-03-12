@@ -2393,10 +2393,25 @@ Passe o mouse nos ícones de atenção para entender cada parte sem poluir a tel
         base_ia["ORDEM_ACAO"] = pd.Categorical(base_ia["ACAO"], categories=ordem_acoes, ordered=True)
         base_ia["CONFIANCA_IA"] = base_ia.apply(_nivel_confianca, axis=1)
         base_ia["RISCO_IA"] = base_ia.apply(_risco_analise, axis=1)
-        base_ia["CAPITAL_PARADO_DIAS"] = base_ia.apply(
-            lambda r: int(round(float(r.get("COBERTURA_DIAS", 0)))) if pd.notna(r.get("COBERTURA_DIAS", np.nan)) and float(r.get("COBERTURA_DIAS", 0)) < 999 else int(round(float(r.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA", 0) or 0))),
-            axis=1,
-        )
+
+        def _numero_seguro(valor, padrao=0.0):
+            try:
+                n = float(valor)
+                if pd.isna(n) or np.isinf(n):
+                    return float(padrao)
+                return n
+            except Exception:
+                return float(padrao)
+
+        def _capital_parado_dias(row):
+            cobertura = _numero_seguro(row.get("COBERTURA_DIAS", np.nan), np.nan)
+            primeira_saida = _numero_seguro(row.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA", 0), 0)
+
+            if pd.notna(cobertura) and cobertura < 999:
+                return int(round(max(cobertura, 0)))
+            return int(round(max(primeira_saida, 0)))
+
+        base_ia["CAPITAL_PARADO_DIAS"] = base_ia.apply(_capital_parado_dias, axis=1)
 
         universo_acoes = ["Todos"] + [a for a in ordem_acoes if a in base_ia["ACAO"].dropna().unique().tolist()]
         f1, f2 = st.columns([1.2, 2.8])
