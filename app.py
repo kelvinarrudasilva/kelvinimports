@@ -2433,7 +2433,7 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
         ]
         detalhe = view[detalhe_cols].copy() if not view.empty else pd.DataFrame(columns=detalhe_cols)
         if not detalhe.empty:
-            detalhe = detalhe.sort_values(["ORDEM_ACAO", "URGENCIA", "QTD_RECOMENDADA", "PRODUTO"], ascending=[True, False, False, True]).copy()
+            detalhe = detalhe.sort_values(["QTD_RECOMENDADA", "ORDEM_ACAO", "PRODUTO"], ascending=[False, True, True]).copy()
             detalhe["PRIORIDADE_FMT"] = detalhe["URGENCIA"].apply(lambda x: f"{float(x):.0f}/100")
             detalhe["QTD_FMT"] = detalhe["QTD_RECOMENDADA"].round(0).astype(int)
             detalhe["ESTOQUE_FMT"] = detalhe["ESTOQUE_ATUAL"].round(0).astype(int)
