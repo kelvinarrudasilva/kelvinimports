@@ -681,6 +681,83 @@ def _acao_badge(acao):
     return f'<span class="badge-action {cls}">{_safe(acao)}</span>'
 
 
+def _painel_resultado_text(row):
+    produto = _safe(row.get("PRODUTO", "")) or "Produto"
+    acao = _safe(row.get("ACAO", "Monitorar")) or "Monitorar"
+    prova = _safe(row.get("CONFIANCA_IA", "—")) or "—"
+    chance = _safe(row.get("RISCO_IA", "—")) or "—"
+
+    qtd_total = float(row.get("QTD_VENDIDA_TOTAL", 0) or 0)
+    v30 = float(row.get("V30", 0) or 0)
+    v60 = float(row.get("V60", 0) or 0)
+    v90 = float(row.get("V90", 0) or 0)
+    dias_sem_vender = row.get("DIAS_DESDE_ULT_VENDA")
+    dias_para_vender = row.get("DIAS_PRIMEIRA_COMPRA_ATE_PRIMEIRA_VENDA")
+    estoque = float(row.get("ESTOQUE_ATUAL", 0) or 0)
+
+    pontos = []
+    if qtd_total <= 1:
+        pontos.append("vendeu pouco")
+    elif v30 > 0:
+        pontos.append("tem venda recente")
+    elif v60 > 0 or v90 > 0:
+        pontos.append("tem algum histórico de venda")
+    else:
+        pontos.append("não teve venda recente")
+
+    prova_l = prova.lower()
+    if prova_l.startswith("ba"):
+        pontos.append("sistema ainda não tem histórico suficiente")
+    elif prova_l.startswith("mé") or prova_l.startswith("me"):
+        pontos.append("sistema tem alguns sinais, mas ainda observa")
+    else:
+        pontos.append("sistema já enxerga um padrão mais confiável")
+
+    if acao == "Comprar já":
+        pontos.append("vale comprar agora")
+    elif acao == "Planejar compra":
+        pontos.append("vale planejar a próxima compra")
+    elif acao == "Teste leve":
+        pontos.append("melhor repor pouco e testar")
+    elif acao == "Monitorar":
+        pontos.append("melhor não comprar agora")
+    elif acao == "Não comprar agora":
+        pontos.append("não vale repor neste momento")
+    elif acao == "Segurar estoque":
+        pontos.append("já tem estoque suficiente por enquanto")
+
+    extras = []
+    try:
+        if pd.notna(dias_sem_vender) and float(dias_sem_vender) < 9999:
+            extras.append(f"Última venda há {int(round(float(dias_sem_vender)))} dias")
+    except Exception:
+        pass
+    try:
+        if pd.notna(dias_para_vender):
+            extras.append(f"Demorou cerca de {int(round(float(dias_para_vender)))} dias da compra até vender")
+    except Exception:
+        pass
+    if estoque <= 0:
+        extras.append("Estoque atual zerado")
+
+    linhas = [
+        "📦 Resultado no painel",
+        "",
+        f"Produto: {produto}",
+        "",
+        f"Ação: {acao}",
+        f"Prova de venda: {prova}",
+        f"Chance de erro: {chance}",
+        "",
+    ]
+    for p in pontos[:3]:
+        linhas.append(f"👉 {p}")
+    if extras:
+        linhas.append("")
+        linhas.extend(extras[:2])
+    RETURN_PLACEHOLDER
+
+
 def _nivel_confianca(row):
     qtd = float(row.get("QTD_VENDIDA_TOTAL", 0) or 0)
     v30 = float(row.get("V30", 0) or 0)
@@ -2503,13 +2580,13 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
             tabela["LEITURA_FMT"] = tabela["RESUMO_IA"].fillna("")
             tabela["PRIORIDADE_FMT"] = tabela["URGENCIA"].apply(lambda x: f"{float(x):.0f}/100")
 
-            headers = ["Ação sugerida", "Produto", "Prioridade", "Sugestão", "Estoque", "Cobertura", "Confiança", "Risco", "Leitura da IA"]
+            headers = ["Ação sugerida", "Produto", "Prioridade", "Sugestão", "Estoque", "Cobertura", "Prova de venda", "Chance de erro", "Leitura da IA"]
             rows = []
             for _, r in tabela.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
                 link = f"?produto={quote(prod)}"
                 prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
-                leitura_hover = f'<span class="hover-cell">{_mini_hover(r.get("LEITURA_FMT", "Sem leitura disponível"), icon="🧠")}<span class="muted">passar mouse</span></span>'
+                leitura_hover = f'<span class="hover-cell">{_mini_hover(_painel_resultado_text(r), icon="🧠")}<span class="muted">passar mouse</span></span>'
                 rows.append(
                     "<tr>"
                     + _td(_acao_badge(r.get("ACAO", "")))
@@ -2560,14 +2637,14 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
             detalhe["INTERVALO_FMT"] = detalhe["INTERVALO_ESPERADO"].apply(lambda x: "—" if pd.isna(x) else round(float(x), 1))
             detalhe["COBERTURA_FMT"] = detalhe["COBERTURA_DIAS"].apply(lambda x: "sem giro" if pd.isna(x) or float(x) >= 999 else f"{float(x):.1f} dias")
 
-            headers = ["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Confiar?", "Motivo", "IA"]
+            headers = ["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Painel", "Motivo", "IA"]
             rows = []
             for _, r in detalhe.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
                 link = f"?produto={quote(prod)}"
                 prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
                 motivo_hover = f'<span class="hover-cell">{_mini_hover(r.get("MOTIVO_IA", "Sem motivo disponível"), icon="⚠️")}<span class="muted">ver</span></span>'
-                resumo_hover = f'<span class="hover-cell">{_mini_hover(r.get("RESUMO_IA", "Sem leitura disponível"), icon="🧠")}<span class="muted">ver</span></span>'
+                resumo_hover = f'<span class="hover-cell">{_mini_hover(_painel_resultado_text(r), icon="🧠")}<span class="muted">ver</span></span>'
                 estoque_sug_html = (
                     f'<div style="line-height:1.25">'
                     f'<div><strong>{_safe(r.get("ESTOQUE_FMT", 0))}</strong> em estoque</div>'
@@ -2595,7 +2672,7 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
                 confiar_html = (
                     f'<div style="line-height:1.25">'
                     f'<div><span class="pill-soft">{_safe(r.get("CONFIANCA_IA", "—"))}</span></div>'
-                    f'<div class="muted" style="margin-top:4px"><span class="pill-soft">risco: {_safe(r.get("RISCO_IA", "—"))}</span></div>'
+                    f'<div class="muted" style="margin-top:4px"><span class="pill-soft">chance de erro: {_safe(r.get("RISCO_IA", "—"))}</span></div>'
                     f'</div>'
                 )
                 rows.append(
@@ -2633,7 +2710,7 @@ Nada de mágica de fumaça: ela segue sinais reais da sua operação.
 - **Última venda x última compra:** compara há quantos dias vendeu pela última vez e há quantos dias você não recompra. Isso evita comprar cedo demais ou tarde demais.  
 - **Produtos parecidos:** quando um item tem pouco histórico, a IA olha a família parecida como pista extra — não manda no resultado sozinha, só ajuda a iluminar a trilha.  
 - **Estoque atual hoje:** se a cobertura não aguenta o prazo do fornecedor e sua meta de {int(cobertura_dias)} dias, a compra sobe na fila.  
-- **Confiança e risco:** quando o histórico do item é curto, a IA assume menos e o painel mostra isso para você não comprar no escuro.  
+- **Prova de venda e chance de erro:** quando o histórico do item é curto, a IA assume menos e o painel mostra isso para você não comprar no escuro.  
 - **Capital parado:** o painel estima quantos dias seu dinheiro tende a ficar preso naquele item para ajudar no estoque enxuto.  
 - **Reserva extra:** foi configurada em **{int(seguranca*100)}%**, para segurar o tranco se a procura apertar.  
 """
