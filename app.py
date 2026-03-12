@@ -2203,7 +2203,7 @@ Agora a leitura ficou mais humana: estoque zerado não significa comprar no auto
         )
 
         perfis = {
-            "Enxuto (compra mais no limite)": {"alvo_dias": 20, "seguranca": 0.10},
+            "Estoque enxuto": {"alvo_dias": 20, "seguranca": 0.10},
             "Equilibrado (recomendado)": {"alvo_dias": 30, "seguranca": 0.20},
             "Protegido (evita faltar)": {"alvo_dias": 45, "seguranca": 0.35},
         }
@@ -2222,7 +2222,7 @@ Agora a leitura ficou mais humana: estoque zerado não significa comprar no auto
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            perfil_sel = st.selectbox("Estratégia de reposição", list(perfis.keys()), index=1)
+            perfil_sel = st.selectbox("Estratégia de reposição", list(perfis.keys()), index=0)
         with c2:
             prazo_sel = st.selectbox("Prazo do fornecedor", list(prazos.keys()), index=1)
         with c3:
@@ -2230,12 +2230,12 @@ Agora a leitura ficou mais humana: estoque zerado não significa comprar no auto
                 "Cobertura desejada (dias)",
                 min_value=10,
                 max_value=120,
-                value=int(perfis[perfil_sel]["alvo_dias"]),
+                value=60,
                 step=5,
                 help="Quantos dias de estoque você quer ter depois da compra.",
             )
         with c4:
-            prioridade_sel = st.selectbox("Nível mínimo de prioridade", list(filtros_prioridade.keys()), index=1)
+            prioridade_sel = st.selectbox("Nível mínimo de prioridade", list(filtros_prioridade.keys()), index=0)
 
         c5, c6 = st.columns([1.2, 2.8])
         with c5:
@@ -2294,7 +2294,10 @@ Agora a leitura ficou mais humana: estoque zerado não significa comprar no auto
             view = view[view["PRODUTO"].astype(str).apply(lambda x: termo in normalize_name(x))].copy()
 
         view = view[view["URGENCIA"] >= min_urgencia].copy()
-        view = view.sort_values(["SCORE_FINAL", "QTD_RECOMENDADA", "QTD_VENDIDA_TOTAL"], ascending=[False, False, False])
+
+        ordem_acoes = ["Comprar já", "Planejar compra", "Teste leve", "Monitorar", "Segurar estoque", "Não comprar agora"]
+        view["ORDEM_ACAO"] = pd.Categorical(view["ACAO"], categories=ordem_acoes, ordered=True)
+        view = view.sort_values(["ORDEM_ACAO", "SCORE_FINAL", "QTD_RECOMENDADA", "QTD_VENDIDA_TOTAL"], ascending=[True, False, False, False])
 
         total_para_comprar = int(view["QTD_RECOMENDADA"].fillna(0).sum()) if not view.empty else 0
         produtos_criticos = int((view["ACAO"].isin(["Comprar já"])).sum()) if not view.empty else 0
@@ -2354,12 +2357,12 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
             tabela["ESTOQUE_ATUAL"] = tabela["ESTOQUE_ATUAL"].round(0).astype(int)
             tabela["QTD_RECOMENDADA"] = tabela["QTD_RECOMENDADA"].round(0).astype(int)
             tabela["COBERTURA_DIAS_FMT"] = tabela["COBERTURA_DIAS"].apply(lambda x: f"{x:,.1f} dias" if x < 999 else "sem giro")
-            tabela["VEL_DIA_FMT"] = tabela["DEMANDA_AJUSTADA_DIA"].apply(lambda x: f"{x:,.2f}/dia")
             tabela["ULTIMA_COMPRA_FMT"] = pd.to_datetime(tabela["ULTIMA_COMPRA"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("—")
             tabela["ULTIMA_VENDA_FMT"] = pd.to_datetime(tabela["ULTIMA_VENDA"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("—")
             tabela["LEITURA_FMT"] = tabela["RESUMO_IA"].fillna("")
+            tabela["PRIORIDADE_FMT"] = tabela["URGENCIA"].apply(lambda x: f"{float(x):.0f}/100")
 
-            headers = ["Produto", "Ação", "Sugestão", "Estoque", "Cobertura", "Últ. venda", "Últ. compra", "Leitura da IA"]
+            headers = ["Ação sugerida", "Produto", "Prioridade", "Sugestão", "Estoque", "Cobertura", "Últ. venda", "Últ. compra", "Leitura da IA"]
             rows = []
             for _, r in tabela.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
@@ -2367,8 +2370,9 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
                 prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
                 rows.append(
                     "<tr>"
-                    + _td(prod_html)
                     + _td(_safe(r.get("ACAO", "")))
+                    + _td(prod_html)
+                    + _td(_safe(r.get("PRIORIDADE_FMT", "")), "muted")
                     + _td(_safe(r.get("QTD_RECOMENDADA", 0)))
                     + _td(_safe(r.get("ESTOQUE_ATUAL", 0)))
                     + _td(_safe(r.get("COBERTURA_DIAS_FMT", "")), "muted")
@@ -2393,31 +2397,48 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
         detalhe_cols = [
             "PRODUTO", "ACAO", "QTD_RECOMENDADA", "URGENCIA", "ESTOQUE_ATUAL", "V30", "V60",
             "DIAS_DESDE_ULT_VENDA", "DIAS_DESDE_ULT_COMPRA", "DIAS_DESDE_ULT_VENDA_SIMILAR",
-            "INTERVALO_ESPERADO", "COBERTURA_DIAS", "SIMILARES", "MOTIVO_IA", "RESUMO_IA"
+            "INTERVALO_ESPERADO", "COBERTURA_DIAS", "SIMILARES", "MOTIVO_IA", "RESUMO_IA", "ORDEM_ACAO"
         ]
         detalhe = view[detalhe_cols].copy() if not view.empty else pd.DataFrame(columns=detalhe_cols)
         if not detalhe.empty:
-            detalhe = detalhe.rename(columns={
-                "PRODUTO": "Produto",
-                "ACAO": "Ação sugerida",
-                "QTD_RECOMENDADA": "Qtd sugerida",
-                "URGENCIA": "Prioridade",
-                "ESTOQUE_ATUAL": "Estoque atual",
-                "V30": "Vendeu 30d",
-                "V60": "Vendeu 60d",
-                "DIAS_DESDE_ULT_VENDA": "Dias desde a última venda",
-                "DIAS_DESDE_ULT_COMPRA": "Dias desde a última compra",
-                "DIAS_DESDE_ULT_VENDA_SIMILAR": "Dias desde a última venda de item parecido",
-                "INTERVALO_ESPERADO": "Costuma vender a cada (dias)",
-                "COBERTURA_DIAS": "Cobertura atual (dias)",
-                "SIMILARES": "Itens parecidos considerados",
-                "MOTIVO_IA": "Motivo principal",
-                "RESUMO_IA": "Resumo em linguagem simples",
-            })
-            detalhe["Prioridade"] = detalhe["Prioridade"].apply(lambda x: f"{x:,.0f}/100")
-            detalhe["Costuma vender a cada (dias)"] = detalhe["Costuma vender a cada (dias)"].apply(lambda x: round(float(x), 1) if pd.notna(x) else None)
-            detalhe["Cobertura atual (dias)"] = detalhe["Cobertura atual (dias)"].apply(lambda x: round(float(x), 1) if x < 999 else None)
-            st.dataframe(detalhe, use_container_width=True)
+            detalhe = detalhe.sort_values(["ORDEM_ACAO", "URGENCIA", "QTD_RECOMENDADA", "PRODUTO"], ascending=[True, False, False, True]).copy()
+            detalhe["PRIORIDADE_FMT"] = detalhe["URGENCIA"].apply(lambda x: f"{float(x):.0f}/100")
+            detalhe["QTD_FMT"] = detalhe["QTD_RECOMENDADA"].round(0).astype(int)
+            detalhe["ESTOQUE_FMT"] = detalhe["ESTOQUE_ATUAL"].round(0).astype(int)
+            detalhe["V30_FMT"] = detalhe["V30"].round(0).astype(int)
+            detalhe["V60_FMT"] = detalhe["V60"].round(0).astype(int)
+            detalhe["DIAS_VENDA_FMT"] = detalhe["DIAS_DESDE_ULT_VENDA"].apply(lambda x: "—" if pd.isna(x) or float(x) >= 9999 else int(round(float(x))))
+            detalhe["DIAS_COMPRA_FMT"] = detalhe["DIAS_DESDE_ULT_COMPRA"].apply(lambda x: "—" if pd.isna(x) or float(x) >= 9999 else int(round(float(x))))
+            detalhe["DIAS_SIMILAR_FMT"] = detalhe["DIAS_DESDE_ULT_VENDA_SIMILAR"].apply(lambda x: "—" if pd.isna(x) or float(x) >= 9999 else int(round(float(x))))
+            detalhe["INTERVALO_FMT"] = detalhe["INTERVALO_ESPERADO"].apply(lambda x: "—" if pd.isna(x) else round(float(x), 1))
+            detalhe["COBERTURA_FMT"] = detalhe["COBERTURA_DIAS"].apply(lambda x: "sem giro" if pd.isna(x) or float(x) >= 999 else f"{float(x):.1f} dias")
+
+            headers = ["Ação sugerida", "Produto", "Prioridade", "Qtd", "Estoque", "Vendeu 30d", "Vendeu 60d", "Dias desde venda", "Dias desde compra", "Venda de parecido", "Ritmo médio", "Cobertura", "Motivo principal", "Resumo", "Parecidos"]
+            rows = []
+            for _, r in detalhe.iterrows():
+                prod = _safe(r.get("PRODUTO", ""))
+                link = f"?produto={quote(prod)}"
+                prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+                rows.append(
+                    "<tr>"
+                    + _td(_safe(r.get("ACAO", "")))
+                    + _td(prod_html)
+                    + _td(_safe(r.get("PRIORIDADE_FMT", "")), "muted")
+                    + _td(_safe(r.get("QTD_FMT", 0)))
+                    + _td(_safe(r.get("ESTOQUE_FMT", 0)))
+                    + _td(_safe(r.get("V30_FMT", 0)))
+                    + _td(_safe(r.get("V60_FMT", 0)))
+                    + _td(_safe(r.get("DIAS_VENDA_FMT", "—")), "muted")
+                    + _td(_safe(r.get("DIAS_COMPRA_FMT", "—")), "muted")
+                    + _td(_safe(r.get("DIAS_SIMILAR_FMT", "—")), "muted")
+                    + _td(_safe(r.get("INTERVALO_FMT", "—")), "muted")
+                    + _td(_safe(r.get("COBERTURA_FMT", "")), "muted")
+                    + _td(_safe(r.get("MOTIVO_IA", "")), "muted")
+                    + _td(_safe(r.get("RESUMO_IA", "")), "muted")
+                    + _td(_safe(r.get("SIMILARES", "")), "muted")
+                    + "</tr>"
+                )
+            st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
         else:
             st.info("Nada para detalhar com o filtro atual.")
 
