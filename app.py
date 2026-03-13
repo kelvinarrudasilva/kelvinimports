@@ -2248,14 +2248,93 @@ elif nav == "⚠️ Alertas":
                 df_p["ULT_COMPRA_FMT"] = ""
 
             df_p["VALOR_ESTOQUE_FMT"] = df_p["VALOR_ESTOQUE"].map(format_reais)
-            df_p = df_p.sort_values("DIAS_PARADO", ascending=False)
+            valor_estoque_total_alert_base = df_estoque["VALOR_ESTOQUE"].sum() if "VALOR_ESTOQUE" in df_estoque.columns else 0.0
+            df_p["PESO_ESTOQUE_PCT"] = np.where(
+                valor_estoque_total_alert_base > 0,
+                (df_p["VALOR_ESTOQUE"] / valor_estoque_total_alert_base) * 100,
+                0.0,
+            )
+
+            def faixa_parado(dias):
+                if pd.isna(dias):
+                    return "—"
+                if dias >= max(LIM_DIAS_PARADO * 3, 120):
+                    return "Crítico"
+                if dias >= max(int(LIM_DIAS_PARADO * 1.8), 75):
+                    return "Alto"
+                if dias >= max(int(LIM_DIAS_PARADO * 1.2), 45):
+                    return "Atenção"
+                return "Moderado"
+
+            df_p["FAIXA"] = df_p["DIAS_PARADO"].apply(faixa_parado)
+            df_p = df_p.sort_values(["DIAS_PARADO", "VALOR_ESTOQUE"], ascending=[False, False])
+
+            total_itens_parados = int(len(df_p))
+            total_unidades_paradas = float(df_p["SALDO_QTD"].sum()) if "SALDO_QTD" in df_p.columns else 0.0
+            total_valor_parado_tela = float(df_p["VALOR_ESTOQUE"].sum()) if "VALOR_ESTOQUE" in df_p.columns else 0.0
+            media_dias_parado = float(df_p["DIAS_PARADO"].mean()) if "DIAS_PARADO" in df_p.columns else 0.0
+            pico_dias_parado = int(df_p["DIAS_PARADO"].max()) if "DIAS_PARADO" in df_p.columns and not df_p.empty else 0
+            peso_parado_tela = ((total_valor_parado_tela / valor_estoque_total_alert_base) * 100) if valor_estoque_total_alert_base > 0 else 0.0
+            produto_mais_pesado = df_p.iloc[0]["PRODUTO"] if not df_p.empty else "—"
+
+            st.markdown(
+                f"""
+<div class="hint-row" style="margin-bottom:10px;">
+  <span class="hint-chip">📦 Em tela: <b>{total_itens_parados}</b> itens</span>
+  <span class="hint-chip">🧮 Soma das unidades: <b>{int(round(total_unidades_paradas))}</b></span>
+  <span class="hint-chip">💸 Capital parado em tela: <b>{format_reais(total_valor_parado_tela)}</b></span>
+  <span class="hint-chip">🕰️ Média: <b>{int(round(media_dias_parado))} dias</b></span>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+
+            s1, s2, s3, s4 = st.columns(4)
+            with s1:
+                st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Capital parado</div>
+  <div class="kpi-value">{format_reais(total_valor_parado_tela)}</div>
+  <div class="kpi-pill">Somatória de tudo que está aparecendo na lista</div>
+</div>
+""", unsafe_allow_html=True)
+            with s2:
+                st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Unidades paradas</div>
+  <div class="kpi-value">{int(round(total_unidades_paradas))}</div>
+  <div class="kpi-pill">Quantidade total presa nesse trecho do estoque</div>
+</div>
+""", unsafe_allow_html=True)
+            with s3:
+                st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Peso no estoque</div>
+  <div class="kpi-value">{peso_parado_tela:,.1f}%</div>
+  <div class="kpi-pill">Quanto a lista em tela representa do estoque total</div>
+</div>
+""", unsafe_allow_html=True)
+            with s4:
+                st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Mais encalhado</div>
+  <div class="kpi-value">{pico_dias_parado} dias</div>
+  <div class="kpi-pill">Puxado por <b>{_safe(produto_mais_pesado)}</b></div>
+</div>
+""", unsafe_allow_html=True)
+
+            st.caption("Dica esperta: quando o valor parado sobe mais rápido que as vendas, o estoque começa a virar vitrine de museu.")
+
+            df_p["PESO_ESTOQUE_FMT"] = df_p["PESO_ESTOQUE_PCT"].map(lambda x: f"{x:,.1f}%")
 
             st.dataframe(
                 df_p[
                     [
                         "PRODUTO",
+                        "FAIXA",
                         "SALDO_QTD",
                         "VALOR_ESTOQUE_FMT",
+                        "PESO_ESTOQUE_FMT",
                         "DIAS_PARADO",
                         "ULT_VENDA_FMT",
                         "ULT_COMPRA_FMT",
@@ -2263,8 +2342,10 @@ elif nav == "⚠️ Alertas":
                 ].rename(
                     columns={
                         "PRODUTO": "Produto",
+                        "FAIXA": "Faixa",
                         "SALDO_QTD": "Estoque atual",
                         "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)",
+                        "PESO_ESTOQUE_FMT": "% do estoque",
                         "DIAS_PARADO": "Dias parado",
                         "ULT_VENDA_FMT": "Última venda",
                         "ULT_COMPRA_FMT": "Última compra (ENTREGUE)",
