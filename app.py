@@ -2212,7 +2212,31 @@ elif nav == "⚠️ Alertas":
     else:
         LIM_VENDE_BEM = st.slider("Vende bem a partir de (unid.)", 5, 50, 10, 1)
         LIM_ESTOQUE_BAIXO = st.slider("Considerar estoque baixo abaixo de (unid.)", 1, 20, 3, 1)
-        LIM_DIAS_PARADO = st.slider("Parado há mais de (dias)", 7, 180, 30, 1)
+        max_dias_fifo_parado = 0
+        if "df_lotes_fifo" in globals() and not df_lotes_fifo.empty and "DIAS_PARADO_LOTE" in df_lotes_fifo.columns:
+            max_dias_fifo_parado = int(pd.to_numeric(df_lotes_fifo["DIAS_PARADO_LOTE"], errors="coerce").fillna(0).max())
+
+        if max_dias_fifo_parado >= 30:
+            opcoes_dias_parado = list(range(30, ((max_dias_fifo_parado + 29) // 30) * 30 + 1, 30))
+        elif max_dias_fifo_parado > 0:
+            opcoes_dias_parado = [max_dias_fifo_parado]
+        else:
+            opcoes_dias_parado = [30]
+
+        def _label_dias_parado(dias):
+            meses = max(1, int(round(float(dias) / 30)))
+            if int(dias) == 30:
+                return "1 mês ou mais"
+            if int(dias) % 30 == 0:
+                return f"{meses} meses ou mais"
+            return f"{int(dias)} dias ou mais"
+
+        LIM_DIAS_PARADO = st.select_slider(
+            "Estoque parado a partir de",
+            options=opcoes_dias_parado,
+            value=opcoes_dias_parado[-1],
+            format_func=_label_dias_parado,
+        )
 
         # Base para "vendendo bem e com pouco estoque"
         vendas_tot = (
@@ -2255,6 +2279,7 @@ elif nav == "⚠️ Alertas":
         valor_estoque_total_geral = float(df_estoque["VALOR_ESTOQUE"].sum()) if (not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns) else 0.0
         st.markdown("### 🐌 Estoque parado há muito tempo")
         st.caption("FIFO do saldo atual: a venda consome os lotes mais antigos primeiro, então o tempo parado olha só para o que realmente sobrou no estoque.")
+        st.caption(f"Corte em blocos de 30 dias, indo até o máximo encontrado no saldo remanescente por FIFO: {max_dias_fifo_parado} dias.")
 
         if df_lotes_fifo.empty:
             parado_filtrado = pd.DataFrame()
