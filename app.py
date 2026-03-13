@@ -599,6 +599,85 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
     return df_fifo, df_estoque
 
 
+def calcular_lotes_remanescentes_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame) -> pd.DataFrame:
+    compras = df_compras_raw.copy()
+    vendas = df_vendas_raw.copy()
+
+    compras.columns = [c.strip().upper() for c in compras.columns]
+    vendas.columns = [c.strip().upper() for c in vendas.columns]
+
+    cols_compras_obrig = ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO"]
+    cols_vendas_obrig = ["DATA", "PRODUTO", "QTD"]
+
+    if any(c not in compras.columns for c in cols_compras_obrig) or any(c not in vendas.columns for c in cols_vendas_obrig):
+        return pd.DataFrame(columns=["PRODUTO", "QTD_REMANESCENTE", "DATA_LOTE", "CUSTO_UNIT", "VALOR_LOTE", "DIAS_PARADO_LOTE"])
+
+    compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
+    if compras.empty:
+        return pd.DataFrame(columns=["PRODUTO", "QTD_REMANESCENTE", "DATA_LOTE", "CUSTO_UNIT", "VALOR_LOTE", "DIAS_PARADO_LOTE"])
+
+    compras["DATA"] = pd.to_datetime(compras["DATA"], errors="coerce", dayfirst=True)
+    vendas["DATA"] = pd.to_datetime(vendas["DATA"], errors="coerce", dayfirst=True)
+
+    compras["QUANTIDADE"] = compras["QUANTIDADE"].apply(parse_money).astype(float)
+    compras["CUSTO UNITÁRIO"] = compras["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
+    compras["CUSTO TOTAL"] = compras["QUANTIDADE"] * compras["CUSTO UNITÁRIO"]
+    compras["CUSTO_UNIT_CALC"] = compras["CUSTO TOTAL"] / compras["QUANTIDADE"].replace(0, pd.NA)
+    compras = compras[
+        (compras["CUSTO_UNIT_CALC"].notna())
+        & (compras["CUSTO_UNIT_CALC"] >= 0)
+        & (compras["CUSTO_UNIT_CALC"] <= CUSTO_MAX_PLAUSIVEL)
+        & (compras["QUANTIDADE"] > 0)
+        & (compras["DATA"].notna())
+    ].sort_values(["PRODUTO", "DATA"]).copy()
+
+    vendas["QTD"] = vendas["QTD"].apply(parse_money).astype(float)
+    vendas = vendas[(vendas["QTD"] > 0) & (vendas["DATA"].notna())].sort_values(["PRODUTO", "DATA"]).copy()
+
+    estoque = {}
+    for _, row in compras.iterrows():
+        produto = str(row["PRODUTO"])
+        estoque.setdefault(produto, []).append({
+            "qtd": float(row["QUANTIDADE"]),
+            "custo": float(row["CUSTO_UNIT_CALC"]),
+            "data": row["DATA"],
+        })
+
+    for _, row in vendas.iterrows():
+        produto = str(row["PRODUTO"])
+        restante = float(row["QTD"])
+        lotes = estoque.get(produto, [])
+        while restante > 0 and lotes:
+            lote = lotes[0]
+            if lote["qtd"] <= restante:
+                restante -= lote["qtd"]
+                lotes.pop(0)
+            else:
+                lote["qtd"] -= restante
+                restante = 0
+
+    today = pd.Timestamp.now().normalize()
+    registros = []
+    for produto, lotes in estoque.items():
+        for lote in lotes:
+            qtd = float(lote.get("qtd", 0))
+            if qtd <= 0:
+                continue
+            data_lote = lote.get("data")
+            dias = (today - data_lote.normalize()).days if pd.notna(data_lote) else pd.NA
+            custo_unit = float(lote.get("custo", 0))
+            registros.append({
+                "PRODUTO": produto,
+                "QTD_REMANESCENTE": qtd,
+                "DATA_LOTE": data_lote,
+                "CUSTO_UNIT": custo_unit,
+                "VALOR_LOTE": qtd * custo_unit,
+                "DIAS_PARADO_LOTE": dias,
+            })
+
+    return pd.DataFrame(registros)
+
+
 # --------------------------------------------------
 # CARREGAMENTO + BOTÃO ATUALIZAR
 # --------------------------------------------------
@@ -610,6 +689,7 @@ with col_btn:
 
 df_compras, df_vendas = carregar_dados()
 df_fifo, df_estoque = calcular_fifo(df_compras, df_vendas)
+df_lotes_fifo = calcular_lotes_remanescentes_fifo(df_compras, df_vendas)
 
 if df_fifo.empty:
     st.warning("Não foi possível calcular FIFO (sem vendas ou sem compras ENTREGUE válidas).")
@@ -2172,187 +2252,152 @@ elif nav == "⚠️ Alertas":
                 use_container_width=True,
             )
 
+        valor_estoque_total_geral = float(df_estoque["VALOR_ESTOQUE"].sum()) if (not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns) else 0.0
         st.markdown("### 🐌 Estoque parado há muito tempo")
+        st.caption("FIFO do saldo atual: a venda consome os lotes mais antigos primeiro, então o tempo parado olha só para o que realmente sobrou no estoque.")
 
-        df_compras_alert = df_compras.copy()
-        df_compras_alert.columns = [c.strip().upper() for c in df_compras_alert.columns]
-        if "STATUS" in df_compras_alert.columns:
-            df_compras_alert = df_compras_alert[
-                df_compras_alert["STATUS"].astype(str).str.upper() == "ENTREGUE"
+        if df_lotes_fifo.empty:
+            parado_filtrado = pd.DataFrame()
+            st.info("Sem lotes remanescentes para analisar no estoque parado.")
+        else:
+            lotes_alerta = df_lotes_fifo.copy()
+            lotes_alerta = lotes_alerta[
+                (lotes_alerta["QTD_REMANESCENTE"] > 0)
+                & (lotes_alerta["DIAS_PARADO_LOTE"].notna())
             ].copy()
-        if "DATA" in df_compras_alert.columns:
-            df_compras_alert["DATA"] = pd.to_datetime(
-                df_compras_alert["DATA"], errors="coerce", dayfirst=True
-            )
 
-        df_vendas_alert = df_vendas.copy()
-        df_vendas_alert.columns = [c.strip().upper() for c in df_vendas_alert.columns]
-        if "DATA" in df_vendas_alert.columns:
-            df_vendas_alert["DATA"] = pd.to_datetime(
-                df_vendas_alert["DATA"], errors="coerce", dayfirst=True
-            )
-
-        if not df_vendas_alert.empty and "DATA" in df_vendas_alert.columns:
-            last_sale = (
-                df_vendas_alert.groupby("PRODUTO", as_index=False)["DATA"]
-                .max()
-                .rename(columns={"DATA": "ULT_VENDA"})
-            )
-        else:
-            last_sale = pd.DataFrame(columns=["PRODUTO", "ULT_VENDA"])
-
-        if not df_compras_alert.empty and "DATA" in df_compras_alert.columns:
-            last_buy = (
-                df_compras_alert.groupby("PRODUTO", as_index=False)["DATA"]
-                .max()
-                .rename(columns={"DATA": "ULT_COMPRA"})
-            )
-        else:
-            last_buy = pd.DataFrame(columns=["PRODUTO", "ULT_COMPRA"])
-
-        parado = (
-            df_estoque.merge(last_sale, on="PRODUTO", how="left")
-            .merge(last_buy, on="PRODUTO", how="left")
-        )
-        parado = parado[parado["SALDO_QTD"] > 0].copy()
-
-        today = pd.Timestamp.now().normalize()
-
-        def dias_parado(row):
-            ult_venda = row.get("ULT_VENDA")
-            ult_compra = row.get("ULT_COMPRA")
-            if pd.notna(ult_venda):
-                return (today - ult_venda.normalize()).days
-            if pd.notna(ult_compra):
-                return (today - ult_compra.normalize()).days
-            return None
-
-        parado["DIAS_PARADO"] = parado.apply(dias_parado, axis=1)
-
-        parado_filtrado = parado[
-            (parado["DIAS_PARADO"].notna())
-            & (parado["DIAS_PARADO"] >= LIM_DIAS_PARADO)
-        ].copy()
-
-        if parado_filtrado.empty:
-            st.info(f"Nenhum produto com estoque parado há mais de {LIM_DIAS_PARADO} dias.")
-        else:
-            df_p = parado_filtrado.copy()
-            if "ULT_VENDA" in df_p.columns:
-                df_p["ULT_VENDA_FMT"] = df_p["ULT_VENDA"].dt.strftime("%d/%m/%Y")
+            if lotes_alerta.empty:
+                parado_filtrado = pd.DataFrame()
+                st.info("Sem lotes remanescentes válidos para analisar.")
             else:
-                df_p["ULT_VENDA_FMT"] = ""
-            if "ULT_COMPRA" in df_p.columns:
-                df_p["ULT_COMPRA_FMT"] = df_p["ULT_COMPRA"].dt.strftime("%d/%m/%Y")
-            else:
-                df_p["ULT_COMPRA_FMT"] = ""
+                lotes_alerta["DATA_LOTE"] = pd.to_datetime(lotes_alerta["DATA_LOTE"], errors="coerce")
+                lotes_filtrados = lotes_alerta[lotes_alerta["DIAS_PARADO_LOTE"] >= LIM_DIAS_PARADO].copy()
 
-            df_p["VALOR_ESTOQUE_FMT"] = df_p["VALOR_ESTOQUE"].map(format_reais)
-            valor_estoque_total_alert_base = df_estoque["VALOR_ESTOQUE"].sum() if "VALOR_ESTOQUE" in df_estoque.columns else 0.0
-            df_p["PESO_ESTOQUE_PCT"] = np.where(
-                valor_estoque_total_alert_base > 0,
-                (df_p["VALOR_ESTOQUE"] / valor_estoque_total_alert_base) * 100,
-                0.0,
-            )
+                if lotes_filtrados.empty:
+                    parado_filtrado = pd.DataFrame()
+                    st.info(f"Nenhum produto com saldo remanescente parado há mais de {LIM_DIAS_PARADO} dias pelo FIFO.")
+                else:
+                    resumo_parado = (
+                        lotes_filtrados.groupby("PRODUTO", as_index=False)
+                        .agg(
+                            SALDO_QTD=("QTD_REMANESCENTE", "sum"),
+                            VALOR_ESTOQUE=("VALOR_LOTE", "sum"),
+                            DIAS_PARADO=("DIAS_PARADO_LOTE", "max"),
+                            DIAS_MEDIO_PONDERADO=("DIAS_PARADO_LOTE", lambda s: 0),
+                            LOTES_ABERTOS=("QTD_REMANESCENTE", "size"),
+                            DATA_LOTE_ANTIGO=("DATA_LOTE", "min"),
+                            DATA_LOTE_RECENTE=("DATA_LOTE", "max"),
+                        )
+                    )
 
-            def faixa_parado(dias):
-                if pd.isna(dias):
-                    return "—"
-                if dias >= max(LIM_DIAS_PARADO * 3, 120):
-                    return "Crítico"
-                if dias >= max(int(LIM_DIAS_PARADO * 1.8), 75):
-                    return "Alto"
-                if dias >= max(int(LIM_DIAS_PARADO * 1.2), 45):
-                    return "Atenção"
-                return "Moderado"
+                    media_ponderada = (
+                        lotes_filtrados.assign(PESO_DIAS=lotes_filtrados["QTD_REMANESCENTE"] * lotes_filtrados["DIAS_PARADO_LOTE"])
+                        .groupby("PRODUTO", as_index=False)
+                        .agg(PESO_DIAS=("PESO_DIAS", "sum"), QTD_TOTAL=("QTD_REMANESCENTE", "sum"))
+                    )
+                    media_ponderada["DIAS_MEDIO_PONDERADO"] = (
+                        media_ponderada["PESO_DIAS"] / media_ponderada["QTD_TOTAL"].replace(0, pd.NA)
+                    )
 
-            df_p["FAIXA"] = df_p["DIAS_PARADO"].apply(faixa_parado)
-            df_p = df_p.sort_values(["DIAS_PARADO", "VALOR_ESTOQUE"], ascending=[False, False])
+                    parado_filtrado = resumo_parado.drop(columns=["DIAS_MEDIO_PONDERADO"]).merge(
+                        media_ponderada[["PRODUTO", "DIAS_MEDIO_PONDERADO"]],
+                        on="PRODUTO",
+                        how="left",
+                    )
+                    parado_filtrado["PCT_ESTOQUE_TOTAL"] = (
+                        parado_filtrado["VALOR_ESTOQUE"] / max(valor_estoque_total_geral, 1e-9) * 100
+                        if 'valor_estoque_total_geral' in locals() else 0.0
+                    )
 
-            total_itens_parados = int(len(df_p))
-            total_unidades_paradas = float(df_p["SALDO_QTD"].sum()) if "SALDO_QTD" in df_p.columns else 0.0
-            total_valor_parado_tela = float(df_p["VALOR_ESTOQUE"].sum()) if "VALOR_ESTOQUE" in df_p.columns else 0.0
-            media_dias_parado = float(df_p["DIAS_PARADO"].mean()) if "DIAS_PARADO" in df_p.columns else 0.0
-            pico_dias_parado = int(df_p["DIAS_PARADO"].max()) if "DIAS_PARADO" in df_p.columns and not df_p.empty else 0
-            peso_parado_tela = ((total_valor_parado_tela / valor_estoque_total_alert_base) * 100) if valor_estoque_total_alert_base > 0 else 0.0
-            produto_mais_pesado = df_p.iloc[0]["PRODUTO"] if not df_p.empty else "—"
+                    def faixa_parado(dias):
+                        if dias >= 120:
+                            return "Crítico"
+                        if dias >= 90:
+                            return "Alto"
+                        if dias >= 60:
+                            return "Atenção"
+                        return "Moderado"
 
-            st.markdown(
-                f"""
-<div class="hint-row" style="margin-bottom:10px;">
-  <span class="hint-chip">📦 Em tela: <b>{total_itens_parados}</b> itens</span>
-  <span class="hint-chip">🧮 Soma das unidades: <b>{int(round(total_unidades_paradas))}</b></span>
-  <span class="hint-chip">💸 Capital parado em tela: <b>{format_reais(total_valor_parado_tela)}</b></span>
-  <span class="hint-chip">🕰️ Média: <b>{int(round(media_dias_parado))} dias</b></span>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
+                    parado_filtrado["FAIXA"] = parado_filtrado["DIAS_PARADO"].apply(faixa_parado)
+                    parado_filtrado["VALOR_ESTOQUE_FMT"] = parado_filtrado["VALOR_ESTOQUE"].map(format_reais)
+                    parado_filtrado["DATA_LOTE_ANTIGO_FMT"] = parado_filtrado["DATA_LOTE_ANTIGO"].dt.strftime("%d/%m/%Y")
+                    parado_filtrado["DATA_LOTE_RECENTE_FMT"] = parado_filtrado["DATA_LOTE_RECENTE"].dt.strftime("%d/%m/%Y")
+                    parado_filtrado["DIAS_MEDIO_PONDERADO"] = parado_filtrado["DIAS_MEDIO_PONDERADO"].fillna(0).round(0).astype(int)
+                    parado_filtrado["PCT_ESTOQUE_TOTAL"] = parado_filtrado["PCT_ESTOQUE_TOTAL"].fillna(0)
+                    parado_filtrado = parado_filtrado.sort_values(["DIAS_PARADO", "VALOR_ESTOQUE"], ascending=[False, False])
 
-            s1, s2, s3, s4 = st.columns(4)
-            with s1:
-                st.markdown(f"""
+                    total_parado_valor = float(parado_filtrado["VALOR_ESTOQUE"].sum())
+                    total_parado_qtd = float(parado_filtrado["SALDO_QTD"].sum())
+                    pct_total_parado = (total_parado_valor / valor_estoque_total_geral * 100) if valor_estoque_total_geral > 0 else 0.0
+                    item_mais_antigo = parado_filtrado.iloc[0]
+
+                    a1, a2, a3, a4 = st.columns(4)
+                    with a1:
+                        st.markdown(f"""
 <div class="kpi-card">
-  <div class="kpi-label">Capital parado</div>
-  <div class="kpi-value">{format_reais(total_valor_parado_tela)}</div>
-  <div class="kpi-pill">Somatória de tudo que está aparecendo na lista</div>
+  <div class="kpi-label">Valor parado na tela</div>
+  <div class="kpi-value">{format_reais(total_parado_valor)}</div>
+  <div class="kpi-pill">Soma dos lotes que passaram do corte atual</div>
 </div>
 """, unsafe_allow_html=True)
-            with s2:
-                st.markdown(f"""
+                    with a2:
+                        st.markdown(f"""
 <div class="kpi-card">
   <div class="kpi-label">Unidades paradas</div>
-  <div class="kpi-value">{int(round(total_unidades_paradas))}</div>
-  <div class="kpi-pill">Quantidade total presa nesse trecho do estoque</div>
+  <div class="kpi-value">{int(round(total_parado_qtd))}</div>
+  <div class="kpi-pill">Quantidade remanescente analisada por FIFO</div>
 </div>
 """, unsafe_allow_html=True)
-            with s3:
-                st.markdown(f"""
+                    with a3:
+                        st.markdown(f"""
 <div class="kpi-card">
   <div class="kpi-label">Peso no estoque</div>
-  <div class="kpi-value">{peso_parado_tela:,.1f}%</div>
-  <div class="kpi-pill">Quanto a lista em tela representa do estoque total</div>
+  <div class="kpi-value">{pct_total_parado:,.1f}%</div>
+  <div class="kpi-pill">Parte do valor total do estoque presa nessa lista</div>
 </div>
 """, unsafe_allow_html=True)
-            with s4:
-                st.markdown(f"""
+                    with a4:
+                        st.markdown(f"""
 <div class="kpi-card">
-  <div class="kpi-label">Mais encalhado</div>
-  <div class="kpi-value">{pico_dias_parado} dias</div>
-  <div class="kpi-pill">Puxado por <b>{_safe(produto_mais_pesado)}</b></div>
+  <div class="kpi-label">Mais antigo</div>
+  <div class="kpi-value">{int(item_mais_antigo['DIAS_PARADO'])} dias</div>
+  <div class="kpi-pill">{item_mais_antigo['PRODUTO']}</div>
 </div>
 """, unsafe_allow_html=True)
 
-            st.caption("Dica esperta: quando o valor parado sobe mais rápido que as vendas, o estoque começa a virar vitrine de museu.")
-
-            df_p["PESO_ESTOQUE_FMT"] = df_p["PESO_ESTOQUE_PCT"].map(lambda x: f"{x:,.1f}%")
-
-            st.dataframe(
-                df_p[
-                    [
-                        "PRODUTO",
-                        "FAIXA",
-                        "SALDO_QTD",
-                        "VALOR_ESTOQUE_FMT",
-                        "PESO_ESTOQUE_FMT",
-                        "DIAS_PARADO",
-                        "ULT_VENDA_FMT",
-                        "ULT_COMPRA_FMT",
-                    ]
-                ].rename(
-                    columns={
-                        "PRODUTO": "Produto",
-                        "FAIXA": "Faixa",
-                        "SALDO_QTD": "Estoque atual",
-                        "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)",
-                        "PESO_ESTOQUE_FMT": "% do estoque",
-                        "DIAS_PARADO": "Dias parado",
-                        "ULT_VENDA_FMT": "Última venda",
-                        "ULT_COMPRA_FMT": "Última compra (ENTREGUE)",
-                    }
-                ),
-                use_container_width=True,
-            )
+                    st.dataframe(
+                        parado_filtrado[
+                            [
+                                "PRODUTO",
+                                "SALDO_QTD",
+                                "VALOR_ESTOQUE_FMT",
+                                "DIAS_PARADO",
+                                "DIAS_MEDIO_PONDERADO",
+                                "LOTES_ABERTOS",
+                                "FAIXA",
+                                "PCT_ESTOQUE_TOTAL",
+                                "DATA_LOTE_ANTIGO_FMT",
+                                "DATA_LOTE_RECENTE_FMT",
+                            ]
+                        ].rename(
+                            columns={
+                                "PRODUTO": "Produto",
+                                "SALDO_QTD": "Estoque atual",
+                                "VALOR_ESTOQUE_FMT": "Valor parado (FIFO)",
+                                "DIAS_PARADO": "Maior idade",
+                                "DIAS_MEDIO_PONDERADO": "Idade média",
+                                "LOTES_ABERTOS": "Lotes abertos",
+                                "FAIXA": "Faixa",
+                                "PCT_ESTOQUE_TOTAL": "% do estoque",
+                                "DATA_LOTE_ANTIGO_FMT": "Lote mais antigo",
+                                "DATA_LOTE_RECENTE_FMT": "Lote mais recente",
+                            }
+                        ),
+                        use_container_width=True,
+                        column_config={
+                            "% do estoque": st.column_config.NumberColumn(format="%.1f%%")
+                        },
+                    )
 
         # ----------------------------------------
         # PAINEL SAÚDE DA LOJA
