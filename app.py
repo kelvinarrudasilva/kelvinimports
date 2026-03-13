@@ -2217,19 +2217,26 @@ elif nav == "⚠️ Alertas":
             max_dias_fifo_parado = int(pd.to_numeric(df_lotes_fifo["DIAS_PARADO_LOTE"], errors="coerce").fillna(0).max())
 
         if max_dias_fifo_parado >= 30:
-            opcoes_dias_parado = list(range(30, ((max_dias_fifo_parado + 29) // 30) * 30 + 1, 30))
+            topo_redondo = (max_dias_fifo_parado // 30) * 30
+            opcoes_dias_parado = list(range(30, topo_redondo + 1, 30)) if topo_redondo >= 30 else []
+            if not opcoes_dias_parado or opcoes_dias_parado[-1] != max_dias_fifo_parado:
+                opcoes_dias_parado.append(max_dias_fifo_parado)
         elif max_dias_fifo_parado > 0:
             opcoes_dias_parado = [max_dias_fifo_parado]
         else:
             opcoes_dias_parado = [30]
 
         def _label_dias_parado(dias):
-            meses = max(1, int(round(float(dias) / 30)))
-            if int(dias) == 30:
+            dias = int(dias)
+            meses = max(1, dias // 30)
+            if max_dias_fifo_parado > 0 and dias == max_dias_fifo_parado and dias % 30 != 0:
+                meses_txt = f"{meses} meses" if meses > 1 else "1 mês"
+                return f"{meses_txt} ou mais (máx. atual: {dias} dias)"
+            if dias == 30:
                 return "1 mês ou mais"
-            if int(dias) % 30 == 0:
+            if dias % 30 == 0:
                 return f"{meses} meses ou mais"
-            return f"{int(dias)} dias ou mais"
+            return f"{dias} dias ou mais"
 
         LIM_DIAS_PARADO = st.select_slider(
             "Estoque parado a partir de",
@@ -2300,7 +2307,7 @@ elif nav == "⚠️ Alertas":
 
                 if lotes_filtrados.empty:
                     parado_filtrado = pd.DataFrame()
-                    st.info(f"Nenhum produto com saldo remanescente parado há mais de {LIM_DIAS_PARADO} dias pelo FIFO.")
+                    st.info(f"Nenhum produto com saldo remanescente parado a partir de {LIM_DIAS_PARADO} dias pelo FIFO.")
                 else:
                     resumo_parado = (
                         lotes_filtrados.groupby("PRODUTO", as_index=False)
