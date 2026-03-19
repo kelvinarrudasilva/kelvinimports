@@ -1041,6 +1041,81 @@ def label_produto_busca(produto, estoque_map):
     return f'{produto} — {status} ({qtd})'
 
 
+CATEGORIA_RULES = {
+    "Áudio": [
+        "fone", "headset", "earbud", "earbuds", "airpod", "airpods", "caixa de som", "caixa som",
+        "speaker", "som", "microfone", "mic", "karaoke", "soundbar", "tws"
+    ],
+    "Periféricos": [
+        "mouse", "teclado", "keyboard", "keycaps", "mousepad", "mouse pad", "webcam", "hub usb",
+        "adaptador usb", "placa de captura", "pen tablet"
+    ],
+    "Cabos e carregamento": [
+        "cabo", "carregador", "charger", "fonte", "fonte de alimentacao", "power bank", "mag safe",
+        "magsafe", "usb c", "type c", "lightning", "v8"
+    ],
+    "Smartwatch e relógios": [
+        "relogio", "relógio", "smartwatch", "watch", "pulseira inteligente", "mi band", "smart band"
+    ],
+    "Games": [
+        "controle", "joystick", "gamepad", "gatilho", "console", "ps4", "ps5", "xbox", "nintendo"
+    ],
+    "Celular e suporte": [
+        "suporte", "pelicula", "película", "capinha", "case", "tripé", "tripe", "ring light", "selfie",
+        "magnetico", "magnético", "veicular"
+    ],
+    "Casa e utilidades": [
+        "mixer", "compressor", "lanterna", "lampada", "lâmpada", "cafeteira", "umidificador", "massageador",
+        "barbeador", "maquina", "máquina", "aparador"
+    ],
+}
+
+
+def classificar_categoria_titulo(produto: str) -> str:
+    nome = normalize_name(produto)
+    if not nome:
+        return "Outros"
+
+    scores = []
+    for categoria, termos in CATEGORIA_RULES.items():
+        pontos = 0
+        for termo in termos:
+            termo_norm = normalize_name(termo)
+            if termo_norm and termo_norm in nome:
+                pontos += max(1, len(termo_norm.split()))
+        if pontos > 0:
+            scores.append((categoria, pontos))
+
+    if scores:
+        scores.sort(key=lambda x: (-x[1], x[0]))
+        return scores[0][0]
+
+    tokens = set(tokenizar_produto(produto))
+    if {"audio", "musica", "musical"} & tokens:
+        return "Áudio"
+    if {"gamer", "pc", "notebook"} & tokens:
+        return "Periféricos"
+    if {"iphone", "android", "celular"} & tokens:
+        return "Celular e suporte"
+    return "Outros"
+
+
+def preparar_analise_categorias(df_fifo_base: pd.DataFrame) -> pd.DataFrame:
+    base = ensure_df(df_fifo_base).copy()
+    if base.empty:
+        return pd.DataFrame()
+
+    base = normalize_sales_like(base)
+    base = ensure_datetime_series(base, "DATA")
+    base["MES_ANO"] = base["DATA"].dt.strftime("%Y-%m")
+    base["QTD"] = base["QTD"].apply(parse_money).astype(float)
+    base["VALOR_TOTAL"] = base["VALOR_TOTAL"].apply(parse_money).astype(float)
+    base["LUCRO"] = base["LUCRO"].apply(parse_money).astype(float)
+    base["PRODUTO"] = base["PRODUTO"].astype(str)
+    base["CATEGORIA"] = base["PRODUTO"].apply(classificar_categoria_titulo)
+    return base
+
+
 def _media_intervalo_em_dias(df_vendas_prod):
     if df_vendas_prod is None or df_vendas_prod.empty or "DATA" not in df_vendas_prod.columns:
         return np.nan
@@ -1549,7 +1624,7 @@ if "_nav_pending" in st.session_state:
     st.session_state.nav_tab = st.session_state["_nav_pending"]
     del st.session_state["_nav_pending"]
 
-NAV_OPTS = ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧠 IA de reposição", "🧾 Compras"]
+NAV_OPTS = ["📊 Dashboard", "🏷️ Categorias", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧠 IA de reposição", "🧾 Compras"]
 if st.session_state.nav_tab not in NAV_OPTS:
     st.session_state.nav_tab = "📊 Dashboard"
 
@@ -2008,6 +2083,169 @@ if nav == "📊 Dashboard":
 
     else:
         st.info("Nenhuma venda no período selecionado.")
+
+
+elif nav == "🏷️ Categorias":
+    st.markdown(
+        """
+<div class="section-title">🏷️ Categorias inteligentes por título</div>
+<div class="section-sub">O app lê o nome do produto, encaixa em uma categoria e mostra quais venderam mais e lucraram mais no mês escolhido.</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    df_cat_base = preparar_analise_categorias(df_fifo)
+
+    if df_cat_base.empty:
+        st.info("Sem vendas para montar a análise por categoria.")
+    else:
+        meses_cat = sorted(df_cat_base["MES_ANO"].dropna().unique().tolist(), reverse=True)
+        mes_atual_cat = pd.Timestamp.now().strftime("%Y-%m")
+        idx_mes_cat = meses_cat.index(mes_atual_cat) if mes_atual_cat in meses_cat else 0
+
+        cmes1, cmes2 = st.columns([1.2, 1.8])
+        with cmes1:
+            mes_categoria = st.selectbox("Mês da análise", meses_cat, index=idx_mes_cat, key="mes_categoria_analise")
+        with cmes2:
+            ordenar_por = st.selectbox("Ranking principal", ["Qtd vendida", "Lucro"], index=0, key="ordem_categoria_analise")
+
+        df_cat_mes = df_cat_base[df_cat_base["MES_ANO"] == mes_categoria].copy()
+
+        resumo_cat = (
+            df_cat_mes.groupby("CATEGORIA", as_index=False)
+            .agg(
+                QTD_VENDIDA=("QTD", "sum"),
+                FATURAMENTO=("VALOR_TOTAL", "sum"),
+                LUCRO=("LUCRO", "sum"),
+                NUM_VENDAS=("PRODUTO", "size"),
+                PRODUTOS_UNICOS=("PRODUTO", "nunique"),
+            )
+        )
+
+        if resumo_cat.empty:
+            st.info("Não há vendas nesse mês para classificar por categoria.")
+        else:
+            resumo_cat["TICKET_MEDIO"] = resumo_cat["FATURAMENTO"] / resumo_cat["QTD_VENDIDA"].replace(0, pd.NA)
+            resumo_cat["MARGEM_PCT"] = resumo_cat["LUCRO"] / resumo_cat["FATURAMENTO"].replace(0, pd.NA)
+            resumo_cat = resumo_cat.fillna(0)
+
+            total_qtd_cat = float(resumo_cat["QTD_VENDIDA"].sum())
+            total_lucro_cat = float(resumo_cat["LUCRO"].sum())
+            total_fat_cat = float(resumo_cat["FATURAMENTO"].sum())
+
+            resumo_cat["PART_QTD"] = np.where(total_qtd_cat > 0, resumo_cat["QTD_VENDIDA"] / total_qtd_cat, 0)
+            resumo_cat["PART_LUCRO"] = np.where(total_lucro_cat != 0, resumo_cat["LUCRO"] / total_lucro_cat, 0)
+
+            if ordenar_por == "Lucro":
+                resumo_cat = resumo_cat.sort_values(["LUCRO", "QTD_VENDIDA", "FATURAMENTO"], ascending=[False, False, False]).reset_index(drop=True)
+            else:
+                resumo_cat = resumo_cat.sort_values(["QTD_VENDIDA", "LUCRO", "FATURAMENTO"], ascending=[False, False, False]).reset_index(drop=True)
+
+            top_vendas = resumo_cat.sort_values(["QTD_VENDIDA", "LUCRO"], ascending=[False, False]).iloc[0]
+            top_lucro = resumo_cat.sort_values(["LUCRO", "QTD_VENDIDA"], ascending=[False, False]).iloc[0]
+            margem_media = (total_lucro_cat / total_fat_cat) if total_fat_cat > 0 else 0.0
+
+            kc1, kc2, kc3, kc4 = st.columns(4)
+            with kc1:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Categoria que mais vendeu</div>
+  <div class="kpi-value">{_safe(top_vendas['CATEGORIA'])}</div>
+  <div class="kpi-pill">{int(round(float(top_vendas['QTD_VENDIDA'])))} unid. no mês</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with kc2:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Categoria com maior lucro</div>
+  <div class="kpi-value">{_safe(top_lucro['CATEGORIA'])}</div>
+  <div class="kpi-pill">{format_reais(float(top_lucro['LUCRO']))} no mês</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with kc3:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Categorias com venda</div>
+  <div class="kpi-value">{len(resumo_cat)}</div>
+  <div class="kpi-pill">{int(resumo_cat['PRODUTOS_UNICOS'].sum())} produtos vendidos</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with kc4:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Margem média do mês</div>
+  <div class="kpi-value">{margem_media:.1%}</div>
+  <div class="kpi-pill">Lucro total / faturamento</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+
+            graf1, graf2 = st.columns(2)
+            with graf1:
+                fig_qtd = px.bar(
+                    resumo_cat,
+                    x="CATEGORIA",
+                    y="QTD_VENDIDA",
+                    text="QTD_VENDIDA",
+                    title="📦 Categorias que mais venderam",
+                    labels={"CATEGORIA": "Categoria", "QTD_VENDIDA": "Qtd vendida"},
+                )
+                fig_qtd.update_traces(texttemplate="%{text:.0f}", textposition="outside")
+                fig_qtd.update_layout(height=420, xaxis_title="", yaxis_title="Qtd", showlegend=False)
+                st.plotly_chart(fig_qtd, use_container_width=True)
+
+            with graf2:
+                fig_lucro_cat = px.bar(
+                    resumo_cat,
+                    x="CATEGORIA",
+                    y="LUCRO",
+                    text="LUCRO",
+                    title="💰 Categorias com maior lucro",
+                    labels={"CATEGORIA": "Categoria", "LUCRO": "Lucro"},
+                )
+                fig_lucro_cat.update_traces(texttemplate="R$ %{text:,.2f}", textposition="outside")
+                fig_lucro_cat.update_layout(height=420, xaxis_title="", yaxis_title="R$", showlegend=False)
+                st.plotly_chart(fig_lucro_cat, use_container_width=True)
+
+            resumo_exib = resumo_cat.copy()
+            resumo_exib["QTD_VENDIDA"] = resumo_exib["QTD_VENDIDA"].round(0).astype(int)
+            resumo_exib["FATURAMENTO"] = resumo_exib["FATURAMENTO"].map(format_reais)
+            resumo_exib["LUCRO"] = resumo_exib["LUCRO"].map(format_reais)
+            resumo_exib["TICKET_MEDIO"] = resumo_exib["TICKET_MEDIO"].map(format_reais)
+            resumo_exib["MARGEM_PCT"] = resumo_exib["MARGEM_PCT"].map(lambda x: f"{float(x):.1%}")
+            resumo_exib["PART_QTD"] = resumo_exib["PART_QTD"].map(lambda x: f"{float(x):.1%}")
+            resumo_exib["PART_LUCRO"] = resumo_exib["PART_LUCRO"].map(lambda x: f"{float(x):.1%}")
+
+            st.markdown("<div class='section-title' style='margin-top:8px;'>Ranking por categoria</div>", unsafe_allow_html=True)
+            st.dataframe(
+                resumo_exib[[
+                    "CATEGORIA", "QTD_VENDIDA", "NUM_VENDAS", "PRODUTOS_UNICOS",
+                    "FATURAMENTO", "LUCRO", "TICKET_MEDIO", "MARGEM_PCT",
+                    "PART_QTD", "PART_LUCRO"
+                ]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            with st.expander("Ver produtos classificados no mês"):
+                produtos_mes = df_cat_mes[["DATA", "PRODUTO", "CATEGORIA", "QTD", "VALOR_TOTAL", "LUCRO"]].copy()
+                produtos_mes["DATA"] = pd.to_datetime(produtos_mes["DATA"], errors="coerce").dt.strftime("%d/%m/%Y")
+                produtos_mes["QTD"] = produtos_mes["QTD"].round(0).astype(int)
+                produtos_mes["VALOR_TOTAL"] = produtos_mes["VALOR_TOTAL"].map(format_reais)
+                produtos_mes["LUCRO"] = produtos_mes["LUCRO"].map(format_reais)
+                produtos_mes = produtos_mes.sort_values(["CATEGORIA", "PRODUTO", "DATA"], ascending=[True, True, False])
+                st.dataframe(produtos_mes, use_container_width=True, hide_index=True)
 
 
 elif nav == "🔎 Pesquisa de produto":
