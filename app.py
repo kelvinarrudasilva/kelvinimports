@@ -6,6 +6,7 @@ from urllib.parse import quote
 import re
 import unicodedata
 import html
+from difflib import SequenceMatcher
 
 # --------------------------------------------------
 # CONFIG BÁSICA
@@ -959,6 +960,85 @@ def top_similares(produto, universo, limite=3, min_score=0.34):
             sims.append((other, score))
     sims.sort(key=lambda x: (-x[1], x[0]))
     return sims[:limite]
+
+
+def _score_busca_produto(produto, consulta):
+    produto_norm = normalize_name(produto)
+    consulta_norm = normalize_name(consulta)
+    if not consulta_norm:
+        return 0.0
+
+    tokens_consulta = [t for t in consulta_norm.split() if t]
+    tokens_produto = [t for t in produto_norm.split() if t]
+    if not tokens_produto:
+        return 0.0
+
+    score = 0.0
+
+    if consulta_norm == produto_norm:
+        score += 200
+    if consulta_norm in produto_norm:
+        score += 90
+        if produto_norm.startswith(consulta_norm):
+            score += 20
+
+    if tokens_consulta:
+        matches = sum(1 for t in tokens_consulta if any(t in tp for tp in tokens_produto))
+        score += matches * 28
+        cobertura = matches / len(tokens_consulta)
+        score += cobertura * 30
+
+    for t in tokens_consulta:
+        if len(t) >= 3 and any(tp.startswith(t) for tp in tokens_produto):
+            score += 8
+
+    score += SequenceMatcher(None, consulta_norm, produto_norm).ratio() * 35
+    return score
+
+
+def buscar_produtos_relacionados(consulta, produtos, estoque_map, limite=80):
+    produtos = list(produtos or [])
+    consulta_norm = normalize_name(consulta)
+
+    resultados = []
+    for prod in produtos:
+        estoque = float(estoque_map.get(prod, 0) or 0)
+        score = _score_busca_produto(prod, consulta_norm) if consulta_norm else 0.0
+        if consulta_norm and score < 18:
+            continue
+        resultados.append({
+            'PRODUTO': prod,
+            'ESTOQUE': estoque,
+            'TEM_ESTOQUE': 1 if estoque > 0 else 0,
+            'SCORE': score,
+        })
+
+    if not resultados and consulta_norm:
+        for prod in produtos:
+            estoque = float(estoque_map.get(prod, 0) or 0)
+            resultados.append({
+                'PRODUTO': prod,
+                'ESTOQUE': estoque,
+                'TEM_ESTOQUE': 1 if estoque > 0 else 0,
+                'SCORE': SequenceMatcher(None, consulta_norm, normalize_name(prod)).ratio() * 35,
+            })
+
+    df_res = pd.DataFrame(resultados)
+    if df_res.empty:
+        return df_res
+
+    df_res = df_res.sort_values(
+        ['TEM_ESTOQUE', 'SCORE', 'ESTOQUE', 'PRODUTO'],
+        ascending=[False, False, False, True]
+    ).head(limite).reset_index(drop=True)
+    return df_res
+
+
+def label_produto_busca(produto, estoque_map):
+    estoque = float(estoque_map.get(produto, 0) or 0)
+    status = 'com estoque' if estoque > 0 else 'sem estoque'
+    qtd = int(round(estoque)) if float(estoque).is_integer() else round(estoque, 2)
+    return f'{produto} — {status} ({qtd})'
 
 
 def _media_intervalo_em_dias(df_vendas_prod):
@@ -1934,7 +2014,7 @@ elif nav == "🔎 Pesquisa de produto":
     st.markdown(
         """
 <div class="section-title">🔎 Pesquisa de produto – baseado no FIFO</div>
-<div class="section-sub">Veja custo médio, margem, histórico de vendas e histórico de compras.</div>
+<div class="section-sub">Digite parte do nome, apelido ou palavra-chave. Ex.: <b>fone</b>, <b>mouse</b>, <b>iphone</b>. Os itens com estoque aparecem primeiro.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -1944,19 +2024,60 @@ elif nav == "🔎 Pesquisa de produto":
     else:
         produtos_estoque = df_estoque["PRODUTO"].unique().tolist() if not df_estoque.empty else []
         produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
-        todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas))
+        produtos_compras = df_compras["PRODUTO"].dropna().astype(str).unique().tolist() if "PRODUTO" in df_compras.columns else []
+        todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas) | set(produtos_compras))
 
-        # Se veio de uma lupinha, já seleciona o produto automaticamente
-        default_idx = 0
-        if st.session_state.get("produto_pesquisa") in todos_produtos:
-            default_idx = todos_produtos.index(st.session_state.get("produto_pesquisa")) + 1
+        busca_inicial = ""
+        if st.session_state.get("produto_pesquisa"):
+            busca_inicial = str(st.session_state.get("produto_pesquisa"))
 
-        prod_sel = st.selectbox(
-            "Escolha o produto:",
-            options=["(selecione)"] + todos_produtos,
-            index=default_idx,
+        busca_produto = st.text_input(
+            "Buscar produto",
+            value=busca_inicial if not st.session_state.get("busca_produto_digitada") else st.session_state.get("busca_produto_digitada", ""),
+            placeholder="Ex.: fone, cabo iphone, mouse, caixa de som...",
+            help="Pode digitar só um pedaço. A lista entende termos parecidos e joga os itens com estoque para cima.",
+            key="busca_produto_digitada",
         )
-        if prod_sel != "(selecione)":
+
+        resultado_busca = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=120)
+
+        if resultado_busca.empty:
+            st.warning("Nada apareceu nessa busca. Tenta uma palavra mais curta ou mais genérica.")
+            prod_sel = "(selecione)"
+        else:
+            qtd_match = len(resultado_busca)
+            qtd_com_estoque = int((resultado_busca["ESTOQUE"] > 0).sum())
+            st.caption(f"{qtd_match} produto(s) encontrado(s) • {qtd_com_estoque} com estoque agora")
+
+            top_atalhos = resultado_busca.head(8)["PRODUTO"].tolist()
+            if top_atalhos:
+                st.markdown("**Achados mais prováveis**")
+                cols = st.columns(min(4, len(top_atalhos)))
+                escolhido_atalho = None
+                for i, prod in enumerate(top_atalhos):
+                    with cols[i % len(cols)]:
+                        estoque_txt = int(round(float(estoque_atual_map.get(prod, 0) or 0)))
+                        rotulo_btn = f"{prod[:34]}{'…' if len(prod) > 34 else ''} ({estoque_txt})"
+                        if st.button(rotulo_btn, key=f"atalho_busca_{i}", use_container_width=True):
+                            escolhido_atalho = prod
+                if escolhido_atalho:
+                    st.session_state.produto_pesquisa = escolhido_atalho
+
+            opcoes_filtradas = resultado_busca["PRODUTO"].tolist()
+            idx_default = 0
+            atual = st.session_state.get("produto_pesquisa")
+            if atual in opcoes_filtradas:
+                idx_default = opcoes_filtradas.index(atual)
+
+            prod_sel = st.selectbox(
+                "Produto encontrado",
+                options=opcoes_filtradas,
+                index=idx_default,
+                format_func=lambda p: label_produto_busca(p, estoque_atual_map),
+                help="A lista já vem ordenada com quem tem estoque primeiro e sem estoque por último.",
+            )
+
+        if prod_sel and prod_sel != "(selecione)":
             st.session_state.produto_pesquisa = prod_sel
             # --- Estoque + vendas agregadas ---
             linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
@@ -1991,6 +2112,13 @@ elif nav == "🔎 Pesquisa de produto":
                 custo_total_hist = 0.0
 
             st.markdown(f"### 📦 {prod_sel}")
+
+            relacionados = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=12) if busca_produto else pd.DataFrame()
+            if not relacionados.empty:
+                relacionados = relacionados[relacionados["PRODUTO"] != prod_sel].head(5)
+                if not relacionados.empty:
+                    sugestoes = " • ".join([label_produto_busca(p, estoque_atual_map) for p in relacionados["PRODUTO"].tolist()])
+                    st.caption(f"Talvez você também esteja procurando: {sugestoes}")
 
             cA, cB, cC = st.columns(3)
             with cA:
@@ -2088,6 +2216,7 @@ elif nav == "🔎 Pesquisa de produto":
                 vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
 
                 vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
+                vendas_prod_hist["DATA_ORD"] = vendas_prod_hist["DATA"]
                 vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
                 vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
                 vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
@@ -2109,7 +2238,7 @@ elif nav == "🔎 Pesquisa de produto":
                 cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
 
                 st.dataframe(
-                    vendas_prod_hist[cols_hist].sort_values("DATA", ascending=False).head(30),
+                    vendas_prod_hist.sort_values("DATA_ORD", ascending=False)[cols_hist].head(30),
                     use_container_width=True,
                 )
             else:
@@ -2189,6 +2318,7 @@ elif nav == "🔎 Pesquisa de produto":
                 f"""
 - Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
 - Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
+- Agora a busca aceita palavra solta e também ajuda a achar família de produto sem exigir nome exato.
 - Olhando o **histórico de compras**, você enxerga:
   - se está pagando mais caro ou mais barato ao longo do tempo,
   - se vale negociar de novo com o fornecedor,
@@ -2196,7 +2326,7 @@ elif nav == "🔎 Pesquisa de produto":
                 """
             )
         else:
-            st.info("Selecione um produto para ver os detalhes baseados no FIFO.")
+            st.info("Digite algo para filtrar e escolha um produto para ver os detalhes baseados no FIFO.")
 
 elif nav == "⚠️ Alertas":
     st.markdown(
