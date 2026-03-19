@@ -2014,7 +2014,7 @@ elif nav == "🔎 Pesquisa de produto":
     st.markdown(
         """
 <div class="section-title">🔎 Pesquisa de produto – baseado no FIFO</div>
-<div class="section-sub">Digite parte do nome, apelido ou palavra-chave. Ex.: <b>fone</b>, <b>mouse</b>, <b>iphone</b>. Os itens com estoque aparecem primeiro.</div>
+<div class="section-sub">Digite uma palavra do produto e escolha direto na lista filtrada. Mantive o histórico de compras, vendas e os indicadores do produto.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -2027,57 +2027,76 @@ elif nav == "🔎 Pesquisa de produto":
         produtos_compras = df_compras["PRODUTO"].dropna().astype(str).unique().tolist() if "PRODUTO" in df_compras.columns else []
         todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas) | set(produtos_compras))
 
-        busca_inicial = ""
-        if st.session_state.get("produto_pesquisa"):
+        busca_inicial = st.session_state.get("busca_produto_digitada", "")
+        if not busca_inicial and st.session_state.get("produto_pesquisa"):
             busca_inicial = str(st.session_state.get("produto_pesquisa"))
 
-        busca_produto = st.text_input(
-            "Buscar produto",
-            value=busca_inicial if not st.session_state.get("busca_produto_digitada") else st.session_state.get("busca_produto_digitada", ""),
-            placeholder="Ex.: fone, cabo iphone, mouse, caixa de som...",
-            help="Pode digitar só um pedaço. A lista entende termos parecidos e joga os itens com estoque para cima.",
-            key="busca_produto_digitada",
-        )
-
-        resultado_busca = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=120)
-
-        if resultado_busca.empty:
-            st.warning("Nada apareceu nessa busca. Tenta uma palavra mais curta ou mais genérica.")
-            prod_sel = "(selecione)"
-        else:
-            qtd_match = len(resultado_busca)
-            qtd_com_estoque = int((resultado_busca["ESTOQUE"] > 0).sum())
-            st.caption(f"{qtd_match} produto(s) encontrado(s) • {qtd_com_estoque} com estoque agora")
-
-            top_atalhos = resultado_busca.head(8)["PRODUTO"].tolist()
-            if top_atalhos:
-                st.markdown("**Achados mais prováveis**")
-                cols = st.columns(min(4, len(top_atalhos)))
-                escolhido_atalho = None
-                for i, prod in enumerate(top_atalhos):
-                    with cols[i % len(cols)]:
-                        estoque_txt = int(round(float(estoque_atual_map.get(prod, 0) or 0)))
-                        rotulo_btn = f"{prod[:34]}{'…' if len(prod) > 34 else ''} ({estoque_txt})"
-                        if st.button(rotulo_btn, key=f"atalho_busca_{i}", use_container_width=True):
-                            escolhido_atalho = prod
-                if escolhido_atalho:
-                    st.session_state.produto_pesquisa = escolhido_atalho
-
-            opcoes_filtradas = resultado_busca["PRODUTO"].tolist()
-            idx_default = 0
-            atual = st.session_state.get("produto_pesquisa")
-            if atual in opcoes_filtradas:
-                idx_default = opcoes_filtradas.index(atual)
-
-            prod_sel = st.selectbox(
-                "Produto encontrado",
-                options=opcoes_filtradas,
-                index=idx_default,
-                format_func=lambda p: label_produto_busca(p, estoque_atual_map),
-                help="A lista já vem ordenada com quem tem estoque primeiro e sem estoque por último.",
+        c_busca, c_filtro = st.columns([2.4, 1.0])
+        with c_busca:
+            busca_produto = st.text_input(
+                "Buscar produto",
+                value=busca_inicial,
+                placeholder="Ex.: fone, cabo, iphone, mouse, caixa...",
+                key="busca_produto_digitada",
+            )
+        with c_filtro:
+            filtro_estoque = st.selectbox(
+                "Filtro",
+                ["Todos", "Com estoque", "Sem estoque"],
+                index=0,
+                key="filtro_busca_produto",
             )
 
-        if prod_sel and prod_sel != "(selecione)":
+        resultado_busca = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=300)
+        if resultado_busca.empty and not busca_produto:
+            resultado_busca = buscar_produtos_relacionados("", todos_produtos, estoque_atual_map, limite=300)
+
+        if not resultado_busca.empty:
+            if filtro_estoque == "Com estoque":
+                resultado_busca = resultado_busca[resultado_busca["ESTOQUE"] > 0].copy()
+            elif filtro_estoque == "Sem estoque":
+                resultado_busca = resultado_busca[resultado_busca["ESTOQUE"] <= 0].copy()
+
+        if resultado_busca.empty:
+            st.warning("Nenhum produto encontrado com esse filtro.")
+            prod_sel = None
+        else:
+            resultado_busca["ESTOQUE_INT"] = resultado_busca["ESTOQUE"].fillna(0).round().astype(int)
+            qtd_total = len(resultado_busca)
+            qtd_com = int((resultado_busca["ESTOQUE"] > 0).sum())
+            qtd_sem = int((resultado_busca["ESTOQUE"] <= 0).sum())
+            st.caption(f"{qtd_total} resultado(s) • {qtd_com} com estoque • {qtd_sem} sem estoque")
+
+            st.dataframe(
+                resultado_busca[["PRODUTO", "ESTOQUE_INT"]]
+                .head(15)
+                .rename(columns={"PRODUTO": "Produto", "ESTOQUE_INT": "Estoque"}),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            opcoes = resultado_busca["PRODUTO"].tolist()
+            opcoes_exibidas = opcoes[:80]
+            atual = st.session_state.get("produto_pesquisa")
+            idx_default = 0
+            if atual in opcoes_exibidas:
+                idx_default = opcoes_exibidas.index(atual)
+            elif busca_produto:
+                busca_norm = normalize_name(busca_produto)
+                for i, prod in enumerate(opcoes_exibidas):
+                    if normalize_name(prod) == busca_norm:
+                        idx_default = i
+                        break
+
+            prod_sel = st.radio(
+                "Escolha na lista",
+                options=opcoes_exibidas,
+                index=idx_default,
+                format_func=lambda p: f"{p}  |  estoque: {int(round(float(estoque_atual_map.get(p, 0) or 0)))}",
+                key="produto_pesquisa_radio",
+            )
+
+        if prod_sel:
             st.session_state.produto_pesquisa = prod_sel
             # --- Estoque + vendas agregadas ---
             linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
@@ -2112,13 +2131,6 @@ elif nav == "🔎 Pesquisa de produto":
                 custo_total_hist = 0.0
 
             st.markdown(f"### 📦 {prod_sel}")
-
-            relacionados = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=12) if busca_produto else pd.DataFrame()
-            if not relacionados.empty:
-                relacionados = relacionados[relacionados["PRODUTO"] != prod_sel].head(5)
-                if not relacionados.empty:
-                    sugestoes = " • ".join([label_produto_busca(p, estoque_atual_map) for p in relacionados["PRODUTO"].tolist()])
-                    st.caption(f"Talvez você também esteja procurando: {sugestoes}")
 
             cA, cB, cC = st.columns(3)
             with cA:
@@ -2318,7 +2330,7 @@ elif nav == "🔎 Pesquisa de produto":
                 f"""
 - Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
 - Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
-- Agora a busca aceita palavra solta e também ajuda a achar família de produto sem exigir nome exato.
+- A lista agora mostra os resultados filtrados de forma direta, com quem tem estoque aparecendo primeiro.
 - Olhando o **histórico de compras**, você enxerga:
   - se está pagando mais caro ou mais barato ao longo do tempo,
   - se vale negociar de novo com o fornecedor,
