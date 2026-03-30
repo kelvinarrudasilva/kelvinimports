@@ -1926,6 +1926,65 @@ if nav == "📊 Dashboard":
 
         st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
 
+        st.markdown("<div style="height:10px"></div>", unsafe_allow_html=True)
+
+        # Top produtos com maior lucro total
+        st.markdown(
+            """
+<div class="section-title">💰 Top produtos com maior lucro</div>
+<div class="section-sub">Top 6 por lucro total real do produto no período. Aqui a quantidade já entra na conta: se vendeu mais unidades e somou mais lucro, ele sobe no ranking.</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        lucro_view = top_prod.sort_values(["LUCRO", "QTD_VENDIDA", "RECEITA"], ascending=[False, False, False]).head(6).copy()
+        lucro_view["LUCRO_POR_UNID"] = lucro_view["LUCRO"] / lucro_view["QTD_VENDIDA"].replace(0, pd.NA)
+
+        lucro_view["CUSTO_MEDIO_FIFO_FMT"] = lucro_view["CUSTO_MEDIO_FIFO"].map(format_reais)
+        lucro_view["PRECO_MEDIO_VENDA_FMT"] = lucro_view["PRECO_MEDIO_VENDA"].map(format_reais)
+        lucro_view["LUCRO_FMT"] = lucro_view["LUCRO"].map(format_reais)
+        lucro_view["RECEITA_FMT"] = lucro_view["RECEITA"].map(format_reais)
+        lucro_view["LUCRO_POR_UNID_FMT"] = lucro_view["LUCRO_POR_UNID"].fillna(0).map(format_reais)
+
+        tabela_lucro = lucro_view[
+            [
+                "PRODUTO",
+                "QTD_VENDIDA",
+                "SALDO_QTD",
+                "LUCRO_POR_UNID_FMT",
+                "RECEITA_FMT",
+                "LUCRO_FMT",
+            ]
+        ].rename(
+            columns={
+                "PRODUTO": "Produto",
+                "QTD_VENDIDA": "Qtd vendida",
+                "SALDO_QTD": "Estoque atual",
+                "LUCRO_POR_UNID_FMT": "Lucro por unid.",
+                "RECEITA_FMT": "Receita total",
+                "LUCRO_FMT": "Lucro total (FIFO)",
+            }
+        )
+
+        headers_lucro = ["Produto", "Qtd", "Estoque", "Lucro/unid.", "Receita", "Lucro total"]
+        rows_lucro = []
+        for _, r in tabela_lucro.iterrows():
+            prod = _safe(r.get("Produto", ""))
+            link = f"?produto={quote(prod)}"
+            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            rows_lucro.append(
+                "<tr>"
+                + _td(prod_html)
+                + _td(_safe(int(r.get("Qtd vendida", 0))))
+                + _td(_safe(int(r.get("Estoque atual", 0))))
+                + _td(_safe(r.get("Lucro por unid.", "")))
+                + _td(_safe(r.get("Receita total", "")))
+                + _td(_safe(r.get("Lucro total (FIFO)", "")))
+                + "</tr>"
+            )
+
+        st.markdown(_render_compact_table(rows_lucro, headers_lucro), unsafe_allow_html=True)
+
     st.markdown("---")
 
     st.markdown("---")
