@@ -1926,7 +1926,7 @@ if nav == "📊 Dashboard":
 
         st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
 
-        st.markdown("<div style="height:10px"></div>", unsafe_allow_html=True)
+        st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
         # Top produtos com maior lucro total
         st.markdown(
