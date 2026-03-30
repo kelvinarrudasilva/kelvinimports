@@ -121,6 +121,28 @@ button, .stButton > button {
 [data-testid="stToolbar"]{
   background: transparent !important;
 }
+
+/* respiro extra no topo pra não ser mastigado pelo header do Streamlit */
+[data-testid="stAppViewContainer"] .main .block-container,
+[data-testid="stMainBlockContainer"]{
+  padding-top: 1.15rem !important;
+}
+
+@media (max-width: 768px){
+  [data-testid="stAppViewContainer"] .main .block-container,
+  [data-testid="stMainBlockContainer"]{
+    padding-top: 1.6rem !important;
+  }
+  .topbar{
+    margin-top: .35rem !important;
+  }
+}
+
+/* garante que a barra do app fique visualmente inteira */
+.topbar{
+  position: relative;
+  z-index: 5;
+}
 .block-container{
   max-width: 1600px !important;
   padding-top: 0.8rem !important;
@@ -139,7 +161,7 @@ button, .stButton > button {
   align-items:center;
   justify-content:space-between;
   gap:18px;
-  padding:18px 20px;
+  padding:16px 20px;
   border-radius:24px;
   background:linear-gradient(135deg, rgba(15,20,27,.95), rgba(12,17,24,.86));
   border:1px solid rgba(148,163,184,.16);
@@ -3456,3 +3478,30 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                     .sort_values("Data", ascending=False),
                     use_container_width=True,
                 )
+
+
+
+@media (max-width: 768px){
+  .topbar{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+    padding:14px 14px;
+    border-radius:18px;
+  }
+  .top-right-badge{
+    width:100%;
+    align-items:flex-start;
+  }
+  .logo-pill{
+    width:46px;
+    height:46px;
+    border-radius:14px;
+    font-size:20px;
+  }
+  .top-title{
+    font-size:18px;
+    line-height:1.15;
+  }
+}
+
