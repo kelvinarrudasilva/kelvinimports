@@ -51,12 +51,20 @@ html, body, [class*="css"] {
   background-color: var(--bg-page) !important;
 }
 
-.block-container{
+/* LAYOUT GERAL MAIS ENXUTO */
+div.block-container{
   max-width: 100% !important;
-  padding-top: 1rem !important;
-  padding-right: 1rem !important;
-  padding-left: 1rem !important;
+  padding-top: 0.75rem !important;
+  padding-right: 0.7rem !important;
+  padding-left: 0.7rem !important;
   padding-bottom: 1rem !important;
+}
+
+@media (min-width: 1200px){
+  div.block-container{
+    padding-right: 1rem !important;
+    padding-left: 1rem !important;
+  }
 }
 
 /* TOP BAR */
@@ -69,7 +77,7 @@ html, body, [class*="css"] {
   border-radius:18px;
   background:#050505;
   border:1px solid var(--border-soft);
-  margin-bottom:14px;
+  margin-bottom:20px;
 }
 .logo-pill {
   width:52px;
@@ -241,7 +249,7 @@ html, body, [class*="css"] {
 }
 
 /* HR */
-hr { border-color:#1f2933 !important; }
+hr { border-color:#1f2933 !important; margin:10px 0 !important; }
 
 /* TABELA HTML COMPACTA (GRID) */
 .compact-wrap{ width:100%; overflow:auto; border:1px solid var(--border-soft); border-radius:14px; }
@@ -1943,7 +1951,6 @@ if nav == "📊 Dashboard":
             unsafe_allow_html=True,
         )
 
-        # Usa top_prod, que já foi montado a partir de df_fifo_filt (ou seja, respeita o mês selecionado)
         lucro_view = top_prod.sort_values(["LUCRO", "QTD_VENDIDA", "RECEITA"], ascending=[False, False, False]).head(6).copy()
         lucro_view["LUCRO_POR_UNID"] = lucro_view["LUCRO"] / lucro_view["QTD_VENDIDA"].replace(0, pd.NA)
 
@@ -1991,8 +1998,6 @@ if nav == "📊 Dashboard":
             )
 
         st.markdown(_render_compact_table(rows_lucro, headers_lucro), unsafe_allow_html=True)
-
-    st.markdown("---")
 
     st.markdown("---")
 
