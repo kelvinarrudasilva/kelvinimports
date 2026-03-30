@@ -54,10 +54,73 @@ html, body, [class*="css"] {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+html, body, .stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stHeader"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stSidebar"],
+section[data-testid="stSidebar"],
+.main,
+main {
+  background-color: #06070a !important;
+  color: var(--text) !important;
+}
+
+[data-testid="stAppViewContainer"]{
+  background:
+    radial-gradient(circle at top left, rgba(45,212,191,.08), transparent 26%),
+    radial-gradient(circle at top right, rgba(96,165,250,.08), transparent 24%),
+    linear-gradient(180deg, #050608 0%, #080b10 100%) !important;
+}
+
 .stApp {
   background: transparent !important;
 }
 
+[data-testid="stHeader"]{
+  background: rgba(6,7,10,.82) !important;
+  backdrop-filter: blur(10px);
+}
+
+section[data-testid="stSidebar"] > div{
+  background: linear-gradient(180deg, #06070a 0%, #0a0d12 100%) !important;
+}
+
+label, p, span, div, h1, h2, h3, h4, h5, h6, small {
+  color: inherit;
+}
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] span,
+.stCaption,
+label,
+.stSelectbox label,
+.stTextInput label,
+.stMultiSelect label {
+  color: var(--text) !important;
+}
+
+
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div,
+[data-testid="stTextInputRootElement"] > div,
+[data-testid="stNumberInputRootElement"] > div,
+[data-testid="stSelectbox"] > div,
+[data-testid="stMultiSelect"] > div {
+  background: #0c1117 !important;
+  color: var(--text) !important;
+  border-color: rgba(148,163,184,.18) !important;
+}
+
+button, .stButton > button {
+  color: var(--text) !important;
+}
+
+[data-testid="stToolbar"]{
+  background: transparent !important;
+}
 .block-container{
   max-width: 1600px !important;
   padding-top: 0.8rem !important;
