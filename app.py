@@ -467,6 +467,31 @@ hr {
   .top-title{font-size:20px;}
   .kpi-value{font-size:21px;}
 }
+
+@media (max-width: 768px){
+  .topbar{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+    padding:14px 14px;
+    border-radius:18px;
+  }
+  .top-right-badge{
+    width:100%;
+    align-items:flex-start;
+  }
+  .logo-pill{
+    width:46px;
+    height:46px;
+    border-radius:14px;
+    font-size:20px;
+  }
+  .top-title{
+    font-size:18px;
+    line-height:1.15;
+  }
+}
+
 </style>
 """
 
@@ -3478,30 +3503,3 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                     .sort_values("Data", ascending=False),
                     use_container_width=True,
                 )
-
-
-
-@media (max-width: 768px){
-  .topbar{
-    flex-direction:column;
-    align-items:flex-start;
-    gap:10px;
-    padding:14px 14px;
-    border-radius:18px;
-  }
-  .top-right-badge{
-    width:100%;
-    align-items:flex-start;
-  }
-  .logo-pill{
-    width:46px;
-    height:46px;
-    border-radius:14px;
-    font-size:20px;
-  }
-  .top-title{
-    font-size:18px;
-    line-height:1.15;
-  }
-}
-
