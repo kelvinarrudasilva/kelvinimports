@@ -492,6 +492,249 @@ hr {
   }
 }
 
+
+/* ===== FIX DEFINITIVO HEADER STREAMLIT ===== */
+header[data-testid="stHeader"]{
+  height: 0 !important;
+  min-height: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  visibility: hidden !important;
+}
+
+[data-testid="stToolbar"]{
+  right: 10px !important;
+  top: 10px !important;
+  background: transparent !important;
+}
+
+[data-testid="stDecoration"]{
+  display: none !important;
+}
+
+[data-testid="stAppViewContainer"]{
+  background:
+    radial-gradient(circle at top left, rgba(45,212,191,.08), transparent 26%),
+    radial-gradient(circle at top right, rgba(96,165,250,.08), transparent 24%),
+    linear-gradient(180deg, #050608 0%, #080b10 100%) !important;
+  padding-top: var(--safe-top-desktop) !important;
+}
+
+[data-testid="stAppViewContainer"] > .main{
+  padding-top: 0 !important;
+}
+
+.block-container{
+  max-width: 100% !important;
+  padding-top: 0.35rem !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  padding-bottom: 2rem !important;
+}
+
+/* ===== TOPO PREMIUM ===== */
+.topbar{
+  position: sticky;
+  top: 10px;
+  z-index: 30;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:16px 20px;
+  margin: 0 0 18px 0 !important;
+  border-radius:22px;
+  background: linear-gradient(90deg, rgba(8,13,20,.94) 0%, rgba(8,17,30,.92) 52%, rgba(8,13,20,.94) 100%);
+  border:1px solid rgba(96,165,250,.14);
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.32),
+    inset 0 1px 0 rgba(255,255,255,.03);
+  backdrop-filter: var(--header-blur);
+  -webkit-backdrop-filter: var(--header-blur);
+  overflow: hidden;
+  animation: topbarSlide .45s ease-out both;
+}
+.topbar::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    linear-gradient(120deg, rgba(34,211,238,.05), transparent 22%, transparent 78%, rgba(96,165,250,.05)),
+    radial-gradient(circle at top left, rgba(45,212,191,.10), transparent 24%);
+  pointer-events:none;
+}
+.topbar > *{
+  position: relative;
+  z-index: 1;
+}
+.logo-pill{
+  width:54px;
+  height:54px;
+  border-radius:18px;
+  background: linear-gradient(180deg, #12213e 0%, #0f172a 100%);
+  border:1px solid rgba(96,165,250,.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+.top-title{
+  font-size:19px;
+  font-weight:800;
+  line-height:1.08;
+}
+.top-subtitle{
+  font-size:12px;
+  color:#a7b1c2;
+  margin-top:4px;
+}
+.top-right-badge{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+}
+.top-chip{
+  padding:8px 14px;
+  border-radius:999px;
+  background: rgba(15,23,42,.66);
+  border:1px solid rgba(148,163,184,.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+  font-size:12px;
+  color:#dbe3f0;
+  white-space:nowrap;
+}
+
+/* ===== NAV PREMIUM ===== */
+div[role="radiogroup"]{
+  padding:10px !important;
+  border-radius:20px !important;
+  background: rgba(6,10,16,.72) !important;
+  border:1px solid rgba(148,163,184,.14) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  margin-bottom: 18px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.22);
+}
+
+div[role="radiogroup"] label{
+  border-radius:999px !important;
+  padding:10px 14px !important;
+  transition: all .18s ease !important;
+}
+div[role="radiogroup"] label:hover{
+  background: rgba(19,31,53,.58) !important;
+}
+div[role="radiogroup"] label[data-baseweb="radio"] input:checked + div,
+div[role="radiogroup"] label:has(input:checked){
+  background: linear-gradient(180deg, rgba(17,40,57,.96), rgba(9,31,43,.96)) !important;
+  border:1px solid rgba(45,212,191,.28) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 0 0 1px rgba(45,212,191,.08);
+}
+
+/* ===== BOTÕES / INPUTS ===== */
+.stButton > button{
+  border-radius:18px !important;
+  padding:13px 18px !important;
+  background: linear-gradient(180deg, #0d1726 0%, #0a1320 100%) !important;
+  border:1px solid rgba(96,165,250,.14) !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.03) !important;
+}
+.stButton > button:hover{
+  transform: translateY(-1px);
+  border-color: rgba(45,212,191,.28) !important;
+}
+
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div,
+[data-testid="stTextInputRootElement"] > div,
+[data-testid="stNumberInputRootElement"] > div,
+[data-testid="stSelectbox"] > div,
+[data-testid="stMultiSelect"] > div{
+  border-radius:18px !important;
+  min-height: 52px !important;
+}
+
+/* ===== ANIMAÇÕES ===== */
+.kpi-card,
+.compact-wrap,
+.topbar,
+div[role="radiogroup"]{
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+.kpi-card:hover,
+.compact-wrap:hover{
+  transform: translateY(-2px);
+}
+
+@keyframes topbarSlide{
+  from{opacity:0; transform:translateY(-10px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+/* ===== MOBILE COMPACTO ===== */
+@media (max-width: 768px){
+  [data-testid="stAppViewContainer"]{
+    padding-top: var(--safe-top-mobile) !important;
+  }
+  .block-container{
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    padding-top: 0.2rem !important;
+  }
+  .topbar{
+    top: 8px;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+    padding:14px 14px;
+    border-radius:18px;
+    margin-bottom: 14px !important;
+  }
+  .top-right-badge{
+    width:100%;
+    justify-content:flex-start;
+    gap:6px;
+  }
+  .top-chip{
+    padding:7px 12px;
+    font-size:11px;
+  }
+  .logo-pill{
+    width:46px;
+    height:46px;
+    border-radius:14px;
+    font-size:20px;
+  }
+  .top-title{
+    font-size:17px;
+    line-height:1.12;
+  }
+  .top-subtitle{
+    font-size:11px;
+    line-height:1.3;
+  }
+  div[role="radiogroup"]{
+    padding:8px !important;
+    border-radius:18px !important;
+  }
+  div[role="radiogroup"] label{
+    padding:8px 12px !important;
+  }
+  .kpi-card{
+    padding:13px 14px;
+    border-radius:16px;
+  }
+  .kpi-value{
+    font-size:18px;
+  }
+}
+
+/* ===== DESKTOP LARGO ===== */
+@media (min-width: 1280px){
+  .block-container{
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+}
+
 </style>
 """
 
