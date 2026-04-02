@@ -1274,7 +1274,7 @@ def inject_product_modal_js(product_payload):
       window.parent.openProductModal = function(name) {{
         const overlay = doc.getElementById('oai-product-modal-overlay');
         const body = doc.getElementById('oai-product-modal-body');
-        body.innerHTML = (window.parent.__productModalData && window.parent.__productModalData[name]) ? window.parent.__productModalData[name] : `<div class="pm-head"><div class="pm-title">${name}</div><div class="pm-sub">Sem dados suficientes para montar o raio-x.</div></div>`;
+        body.innerHTML = (window.parent.__productModalData && window.parent.__productModalData[name]) ? window.parent.__productModalData[name] : '<div class="pm-head"><div class="pm-title">' + name + '</div><div class="pm-sub">Sem dados suficientes para montar o raio-x.</div></div>';
         overlay.style.display = 'flex';
       }};
     }})();
