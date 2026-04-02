@@ -424,7 +424,9 @@ hr {
 .compact-grid tbody tr:nth-child(odd) td{ background:#0a0f15; }
 .compact-grid tbody tr:nth-child(even) td{ background:#0d131a; }
 .compact-grid tbody tr:hover td{ background:#131c26 !important; }
-.compact-grid .prodcell{ display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:180px; }
+.compact-grid .prodcell{ display:flex; align-items:center; justify-content:flex-start; gap:8px; min-width:180px; }
+.compact-grid .prodcell .prod-name{ text-align:left; }
+.compact-grid .prodcell .lens{ flex:0 0 auto; }
 .compact-grid a.lens{
   text-decoration:none;
   font-size:13px;
@@ -1201,19 +1203,17 @@ def _attr_safe(s):
 
 
 
-def criar_link_lupa(produto, title="Abrir na Pesquisa"):
+def criar_link_lupa(produto, title="Abrir detalhes do produto"):
     prod = "" if produto is None else str(produto)
-    link = f"?produto={quote(prod)}"
+    link = f"?produto={quote(prod)}&modal=1"
     return f'<a class="lens" href="{link}" target="_self" title="{_attr_safe(title)}">🔍</a>'
 
 
-def produto_cell_html(produto, before_lens=False, title="Abrir na Pesquisa"):
+def produto_cell_html(produto, before_lens=False, title="Abrir detalhes do produto"):
     prod = "" if produto is None else str(produto)
     nome = _safe(prod)
     lupa = criar_link_lupa(prod, title=title)
-    if before_lens:
-        return f'<div class="prodcell">{lupa}<span>{nome}</span></div>'
-    return f'<div class="prodcell"><span>{nome}</span>{lupa}</div>'
+    return f'<div class="prodcell">{lupa}<span class="prod-name">{nome}</span></div>'
 
 
 def _hint_icon(text, icon="⚠️"):
@@ -1810,8 +1810,8 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
             or estoque_meses >= 3.0
             or (lento and estoque >= max(2.0, venda_mensal_ref * 2.5))
         )
-    )
 
+    )
     janela_planejada = max(7, int(alvo_dias + lead_time))
     janela_enxuta = max(lead_time + 7, int(alvo_dias * 0.65) + lead_time)
     if muito_lento:
@@ -1988,6 +1988,241 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     })
 
 
+def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map):
+    linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
+    if not linha_est.empty:
+        saldo = float(linha_est["SALDO_QTD"].iloc[0])
+        valor_estoque = float(linha_est["VALOR_ESTOQUE"].iloc[0])
+        custo_medio_fifo = float(linha_est["CUSTO_MEDIO_FIFO"].iloc[0])
+    else:
+        saldo = 0.0
+        valor_estoque = 0.0
+        custo_medio_fifo = 0.0
+
+    vendas_prod = df_fifo[df_fifo["PRODUTO"] == prod_sel].copy()
+    if not vendas_prod.empty:
+        qtd_total_vendida = vendas_prod["QTD"].sum()
+        receita_total = vendas_prod["VALOR_TOTAL"].sum()
+        preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
+        custo_total_hist = vendas_prod["CUSTO_TOTAL"].sum()
+        margem_media = (receita_total - custo_total_hist) / receita_total if receita_total else 0.0
+
+        vendas_prod_ord = vendas_prod.sort_values("DATA")
+        ultima = vendas_prod_ord.iloc[-1]
+        preco_unit_ultima = ultima["VALOR_TOTAL"] / ultima["QTD"] if ultima["QTD"] else 0.0
+        data_ultima = ultima["DATA"]
+    else:
+        qtd_total_vendida = 0.0
+        receita_total = 0.0
+        preco_medio_venda = 0.0
+        preco_unit_ultima = 0.0
+        data_ultima = None
+        margem_media = 0.0
+        custo_total_hist = 0.0
+
+    st.markdown(f"### 📦 {prod_sel}")
+
+    relacionados = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=12) if busca_produto else pd.DataFrame()
+    if not relacionados.empty:
+        relacionados = relacionados[relacionados["PRODUTO"] != prod_sel].head(5)
+        if not relacionados.empty:
+            sugestoes = " • ".join([label_produto_busca(p, estoque_atual_map) for p in relacionados["PRODUTO"].tolist()])
+            st.caption(f"Talvez você também esteja procurando: {sugestoes}")
+
+    cA, cB, cC = st.columns(3)
+    with cA:
+        st.markdown(
+            f"""
+<div class="kpi-card">
+  <div class="kpi-label">Custo médio FIFO</div>
+  <div class="kpi-value">{format_reais(custo_medio_fifo)}</div>
+  <div class="kpi-pill">Baseado nas compras ENTREGUE restantes em estoque</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with cB:
+        st.markdown(
+            f"""
+<div class="kpi-card">
+  <div class="kpi-label">Preço médio de venda</div>
+  <div class="kpi-value">{format_reais(preco_medio_venda)}</div>
+  <div class="kpi-pill">Receita total / quantidade vendida</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with cC:
+        st.markdown(
+            f"""
+<div class="kpi-card">
+  <div class="kpi-label">Margem média histórica</div>
+  <div class="kpi-value">{margem_media*100:,.1f}%</div>
+  <div class="kpi-pill">({format_reais(receita_total)} − {format_reais(custo_total_hist)}) / receita</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    cD, cE, cF = st.columns(3)
+    with cD:
+        st.markdown(
+            f"""
+<div class="kpi-card">
+  <div class="kpi-label">Saldo em estoque</div>
+  <div class="kpi-value">{int(saldo)} unid.</div>
+  <div class="kpi-pill">Valor em estoque: {format_reais(valor_estoque)}</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with cE:
+        st.markdown(
+            f"""
+<div class="kpi-card">
+  <div class="kpi-label">Receita acumulada</div>
+  <div class="kpi-value">{format_reais(receita_total)}</div>
+  <div class="kpi-pill">Total vendido no histórico</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with cF:
+        st.markdown(
+            f"""
+<div class="kpi-card">
+  <div class="kpi-label">Qtd total vendida</div>
+  <div class="kpi-value">{int(qtd_total_vendida)} unid.</div>
+  <div class="kpi-pill">Somatório das vendas registradas</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+    st.markdown("#### 🕒 Última venda")
+    if data_ultima is not None and pd.notna(data_ultima):
+        st.write(
+            f"- Data: **{data_ultima.strftime('%d/%m/%Y')}**  \n"
+            f"- Preço unitário na venda: **{format_reais(preco_unit_ultima)}**  \n"
+            f"- Quantidade nessa venda: **{int(ultima['QTD'])} unid.**  \n"
+            f"- Valor total: **{format_reais(ultima['VALOR_TOTAL'])}**"
+        )
+    else:
+        st.write("Nenhuma venda registrada para esse produto ainda.")
+
+    st.markdown("---")
+    st.markdown("#### 📄 Histórico recente de vendas")
+
+    if not vendas_prod.empty:
+        vendas_prod_hist = vendas_prod.copy()
+        vendas_prod_hist["CUSTO_UNIT"] = (
+            vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
+        )
+        vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+
+        vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
+        vendas_prod_hist["DATA_ORD"] = vendas_prod_hist["DATA"]
+        vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
+        vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
+        vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
+        vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
+        vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_UNIT"].map(format_reais)
+
+        cols_hist = [
+            "DATA", "CLIENTE", "STATUS", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL",
+            "CUSTO_UNIT", "LUCRO", "ESTOQUE_ATUAL", "MES_ANO",
+        ]
+        cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
+
+        st.dataframe(
+            vendas_prod_hist.sort_values("DATA_ORD", ascending=False)[cols_hist].head(30),
+            use_container_width=True,
+        )
+    else:
+        st.info("Sem histórico de vendas para esse produto.")
+
+    st.markdown("---")
+    st.markdown("#### 🧾 Histórico de compras (ENTREGUE)")
+
+    compras_prod = df_compras.copy()
+    compras_prod.columns = [c.strip().upper() for c in compras_prod.columns]
+
+    if "PRODUTO" in compras_prod.columns:
+        compras_prod = compras_prod[compras_prod["PRODUTO"] == prod_sel].copy()
+    else:
+        compras_prod = pd.DataFrame()
+
+    if not compras_prod.empty and "STATUS" in compras_prod.columns:
+        compras_prod = compras_prod[
+            compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"
+        ].copy()
+
+    if compras_prod.empty:
+        st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
+    else:
+        if "DATA" in compras_prod.columns:
+            compras_prod["DATA"] = pd.to_datetime(
+                compras_prod["DATA"], errors="coerce", dayfirst=True
+            )
+            compras_prod = compras_prod.sort_values("DATA", ascending=False)
+            compras_prod["DATA_FMT"] = compras_prod["DATA"].dt.strftime("%d/%m/%Y")
+        else:
+            compras_prod["DATA_FMT"] = ""
+
+        if "QUANTIDADE" in compras_prod.columns:
+            compras_prod["QUANTIDADE"] = compras_prod["QUANTIDADE"].apply(parse_money).astype(float)
+        else:
+            compras_prod["QUANTIDADE"] = 0.0
+
+        if "CUSTO UNITÁRIO" in compras_prod.columns:
+            compras_prod["CUSTO UNITÁRIO"] = compras_prod["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
+        else:
+            compras_prod["CUSTO UNITÁRIO"] = 0.0
+
+        compras_prod["CUSTO_TOTAL"] = compras_prod.get("CUSTO_TOTAL", compras_prod["QUANTIDADE"] * compras_prod["CUSTO UNITÁRIO"])
+        compras_prod["CUSTO_UNIT_FMT"] = compras_prod["CUSTO UNITÁRIO"].map(format_reais)
+        compras_prod["CUSTO_TOTAL_FMT"] = compras_prod["CUSTO_TOTAL"].map(format_reais)
+
+        total_qtd_comp = compras_prod["QUANTIDADE"].sum()
+        total_valor_comp = compras_prod["CUSTO_TOTAL"].sum()
+
+        st.write(
+            f"- Total comprado (histórico ENTREGUE): **{int(total_qtd_comp)} unid.**  "
+            f"– **{format_reais(total_valor_comp)}**"
+        )
+
+        cols_comp = ["DATA_FMT", "STATUS", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"]
+        cols_comp = [c for c in cols_comp if c in compras_prod.columns]
+
+        st.dataframe(
+            compras_prod[cols_comp].rename(
+                columns={
+                    "DATA_FMT": "Data",
+                    "STATUS": "Status",
+                    "QUANTIDADE": "Qtd.",
+                    "CUSTO_UNIT_FMT": "Custo unitário",
+                    "CUSTO_TOTAL_FMT": "Custo total",
+                }
+            ).head(40),
+            use_container_width=True,
+        )
+
+    st.markdown("---")
+    st.markdown("#### 💡 Leitura rápida")
+    st.markdown(
+        """
+- Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
+- Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
+- Agora a busca aceita palavra solta e também ajuda a achar família de produto sem exigir nome exato.
+- Olhando o **histórico de compras**, você enxerga:
+  - se está pagando mais caro ou mais barato ao longo do tempo,
+  - se vale negociar de novo com o fornecedor,
+  - e se não está enchendo estoque de um item que não gira tanto assim.
+        """
+    )
+
+
 # --------------------------------------------------
 # NAVEGAÇÃO (no lugar de st.tabs, pra permitir ir pra Pesquisa via 🔍)
 # --------------------------------------------------
@@ -1996,16 +2231,24 @@ if "nav_tab" not in st.session_state:
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
 
-# Se veio de um link da 🔍 (query param), já abre a Pesquisa com o produto selecionado
+# Se veio de um link da 🔍, pode abrir o modal sem trocar de aba
+if "modal_produto" not in st.session_state:
+    st.session_state.modal_produto = None
+
 try:
     qp = st.query_params
     qp_prod = qp.get("produto", None)
+    qp_modal = qp.get("modal", None)
     if isinstance(qp_prod, list):
         qp_prod = qp_prod[0] if qp_prod else None
+    if isinstance(qp_modal, list):
+        qp_modal = qp_modal[0] if qp_modal else None
     if qp_prod:
         st.session_state.produto_pesquisa = str(qp_prod)
-        st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
-        # limpa a URL (pra não ficar preso)
+        if str(qp_modal) == "1":
+            st.session_state.modal_produto = str(qp_prod)
+        else:
+            st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
         try:
             st.query_params.clear()
         except Exception:
@@ -2607,252 +2850,7 @@ elif nav == "🔎 Pesquisa de produto":
 
         if prod_sel and prod_sel != "(selecione)":
             st.session_state.produto_pesquisa = prod_sel
-            # --- Estoque + vendas agregadas ---
-            linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
-            if not linha_est.empty:
-                saldo = float(linha_est["SALDO_QTD"].iloc[0])
-                valor_estoque = float(linha_est["VALOR_ESTOQUE"].iloc[0])
-                custo_medio_fifo = float(linha_est["CUSTO_MEDIO_FIFO"].iloc[0])
-            else:
-                saldo = 0.0
-                valor_estoque = 0.0
-                custo_medio_fifo = 0.0
-
-            vendas_prod = df_fifo[df_fifo["PRODUTO"] == prod_sel].copy()
-            if not vendas_prod.empty:
-                qtd_total_vendida = vendas_prod["QTD"].sum()
-                receita_total = vendas_prod["VALOR_TOTAL"].sum()
-                preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
-                custo_total_hist = vendas_prod["CUSTO_TOTAL"].sum()
-                margem_media = (receita_total - custo_total_hist) / receita_total if receita_total else 0.0
-
-                vendas_prod_ord = vendas_prod.sort_values("DATA")
-                ultima = vendas_prod_ord.iloc[-1]
-                preco_unit_ultima = ultima["VALOR_TOTAL"] / ultima["QTD"] if ultima["QTD"] else 0.0
-                data_ultima = ultima["DATA"]
-            else:
-                qtd_total_vendida = 0.0
-                receita_total = 0.0
-                preco_medio_venda = 0.0
-                preco_unit_ultima = 0.0
-                data_ultima = None
-                margem_media = 0.0
-                custo_total_hist = 0.0
-
-            st.markdown(f"### 📦 {prod_sel}")
-
-            relacionados = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=12) if busca_produto else pd.DataFrame()
-            if not relacionados.empty:
-                relacionados = relacionados[relacionados["PRODUTO"] != prod_sel].head(5)
-                if not relacionados.empty:
-                    sugestoes = " • ".join([label_produto_busca(p, estoque_atual_map) for p in relacionados["PRODUTO"].tolist()])
-                    st.caption(f"Talvez você também esteja procurando: {sugestoes}")
-
-            cA, cB, cC = st.columns(3)
-            with cA:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Custo médio FIFO</div>
-  <div class="kpi-value">{format_reais(custo_medio_fifo)}</div>
-  <div class="kpi-pill">Baseado nas compras ENTREGUE restantes em estoque</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-            with cB:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Preço médio de venda</div>
-  <div class="kpi-value">{format_reais(preco_medio_venda)}</div>
-  <div class="kpi-pill">Receita total / quantidade vendida</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-            with cC:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Margem média histórica</div>
-  <div class="kpi-value">{margem_media*100:,.1f}%</div>
-  <div class="kpi-pill">({format_reais(receita_total)} − {format_reais(custo_total_hist)}) / receita</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-
-            cD, cE, cF = st.columns(3)
-            with cD:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Saldo em estoque</div>
-  <div class="kpi-value">{int(saldo)} unid.</div>
-  <div class="kpi-pill">Valor em estoque: {format_reais(valor_estoque)}</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-            with cE:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Receita acumulada</div>
-  <div class="kpi-value">{format_reais(receita_total)}</div>
-  <div class="kpi-pill">Total vendido no histórico</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-            with cF:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Qtd total vendida</div>
-  <div class="kpi-value">{int(qtd_total_vendida)} unid.</div>
-  <div class="kpi-pill">Somatório das vendas registradas</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-
-            st.markdown("---")
-
-            # --- Última venda ---
-            st.markdown("#### 🕒 Última venda")
-            if data_ultima is not None and pd.notna(data_ultima):
-                st.write(
-                    f"- Data: **{data_ultima.strftime('%d/%m/%Y')}**  \n"
-                    f"- Preço unitário na venda: **{format_reais(preco_unit_ultima)}**  \n"
-                    f"- Quantidade nessa venda: **{int(ultima['QTD'])} unid.**  \n"
-                    f"- Valor total: **{format_reais(ultima['VALOR_TOTAL'])}**"
-                )
-            else:
-                st.write("Nenhuma venda registrada para esse produto ainda.")
-
-            st.markdown("---")
-            st.markdown("#### 📄 Histórico recente de vendas")
-
-            # --- Histórico de vendas do produto ---
-            if not vendas_prod.empty:
-                vendas_prod_hist = vendas_prod.copy()
-                vendas_prod_hist["CUSTO_UNIT"] = (
-                    vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
-                )
-                vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
-
-                vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
-                vendas_prod_hist["DATA_ORD"] = vendas_prod_hist["DATA"]
-                vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
-                vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
-                vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
-                vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
-                vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_UNIT"].map(format_reais)
-
-                cols_hist = [
-                    "DATA",
-                    "CLIENTE",
-                    "STATUS",
-                    "QTD",
-                    "VALOR_TOTAL",
-                    "CUSTO_TOTAL",
-                    "CUSTO_UNIT",
-                    "LUCRO",
-                    "ESTOQUE_ATUAL",
-                    "MES_ANO",
-                ]
-                cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
-
-                st.dataframe(
-                    vendas_prod_hist.sort_values("DATA_ORD", ascending=False)[cols_hist].head(30),
-                    use_container_width=True,
-                )
-            else:
-                st.info("Sem histórico de vendas para esse produto.")
-
-            # --- Histórico de compras do produto ---
-            st.markdown("---")
-            st.markdown("#### 🧾 Histórico de compras (ENTREGUE)")
-
-            compras_prod = df_compras.copy()
-            compras_prod.columns = [c.strip().upper() for c in compras_prod.columns]
-
-            if "PRODUTO" in compras_prod.columns:
-                compras_prod = compras_prod[compras_prod["PRODUTO"] == prod_sel].copy()
-            else:
-                compras_prod = pd.DataFrame()
-
-            if not compras_prod.empty and "STATUS" in compras_prod.columns:
-                compras_prod = compras_prod[
-                    compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"
-                ].copy()
-
-            if compras_prod.empty:
-                st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
-            else:
-                if "DATA" in compras_prod.columns:
-                    compras_prod["DATA"] = pd.to_datetime(
-                        compras_prod["DATA"], errors="coerce", dayfirst=True
-                    )
-                    compras_prod = compras_prod.sort_values("DATA", ascending=False)
-                    compras_prod["DATA_FMT"] = compras_prod["DATA"].dt.strftime("%d/%m/%Y")
-                else:
-                    compras_prod["DATA_FMT"] = ""
-
-                if "QUANTIDADE" in compras_prod.columns:
-                    compras_prod["QUANTIDADE"] = compras_prod["QUANTIDADE"].apply(parse_money).astype(float)
-                else:
-                    compras_prod["QUANTIDADE"] = 0.0
-
-                if "CUSTO UNITÁRIO" in compras_prod.columns:
-                    compras_prod["CUSTO UNITÁRIO"] = compras_prod["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
-                else:
-                    compras_prod["CUSTO UNITÁRIO"] = 0.0
-
-                compras_prod["CUSTO_TOTAL"] = compras_prod.get("CUSTO_TOTAL", compras_prod["QUANTIDADE"] * compras_prod["CUSTO UNITÁRIO"])
-
-                compras_prod["CUSTO_UNIT_FMT"] = compras_prod["CUSTO UNITÁRIO"].map(format_reais)
-                compras_prod["CUSTO_TOTAL_FMT"] = compras_prod["CUSTO_TOTAL"].map(format_reais)
-
-                total_qtd_comp = compras_prod["QUANTIDADE"].sum()
-                total_valor_comp = compras_prod["CUSTO_TOTAL"].sum()
-
-                st.write(
-                    f"- Total comprado (histórico ENTREGUE): **{int(total_qtd_comp)} unid.**  "
-                    f"– **{format_reais(total_valor_comp)}**"
-                )
-
-                cols_comp = ["DATA_FMT", "STATUS", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"]
-                cols_comp = [c for c in cols_comp if c in compras_prod.columns]
-
-                st.dataframe(
-                    compras_prod[cols_comp].rename(
-                        columns={
-                            "DATA_FMT": "Data",
-                            "STATUS": "Status",
-                            "QUANTIDADE": "Qtd.",
-                            "CUSTO_UNIT_FMT": "Custo unitário",
-                            "CUSTO_TOTAL_FMT": "Custo total",
-                        }
-                    ).head(40),
-                    use_container_width=True,
-                )
-
-            st.markdown("---")
-            st.markdown("#### 💡 Leitura rápida")
-            st.markdown(
-                f"""
-- Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
-- Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
-- Agora a busca aceita palavra solta e também ajuda a achar família de produto sem exigir nome exato.
-- Olhando o **histórico de compras**, você enxerga:
-  - se está pagando mais caro ou mais barato ao longo do tempo,
-  - se vale negociar de novo com o fornecedor,
-  - e se não está enchendo estoque de um item que não gira tanto assim.
-                """
-            )
+            render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map)
         else:
             st.info("Digite algo para filtrar e escolha um produto para ver os detalhes baseados no FIFO.")
 
@@ -3770,3 +3768,29 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                     )
                 st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
                 st.caption("Mostrando até 200 compras mais recentes nesta tabela compacta.")
+
+
+if st.session_state.get("modal_produto"):
+    prod_modal = st.session_state.get("modal_produto")
+
+    @st.dialog("🔎 Detalhes do produto", width="large")
+    def _abrir_modal_produto():
+        produtos_estoque = df_estoque["PRODUTO"].unique().tolist() if not df_estoque.empty else []
+        produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
+        produtos_compras = df_compras["PRODUTO"].dropna().astype(str).unique().tolist() if "PRODUTO" in df_compras.columns else []
+        todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas) | set(produtos_compras))
+
+        st.markdown(
+            "<div class='section-sub'>Janela flutuante do produto. Aqui você vê o raio-x sem sair da página.</div>",
+            unsafe_allow_html=True,
+        )
+        render_product_details(prod_modal, prod_modal, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map)
+        if st.button("Fechar", key="fechar_modal_produto_btn", use_container_width=True):
+            st.session_state.modal_produto = None
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            st.rerun()
+
+    _abrir_modal_produto()
