@@ -424,7 +424,7 @@ hr {
 .compact-grid tbody tr:nth-child(odd) td{ background:#0a0f15; }
 .compact-grid tbody tr:nth-child(even) td{ background:#0d131a; }
 .compact-grid tbody tr:hover td{ background:#131c26 !important; }
-.compact-grid .prodcell{ display:flex; align-items:center; gap:8px; }
+.compact-grid .prodcell{ display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:180px; }
 .compact-grid a.lens{
   text-decoration:none;
   font-size:13px;
@@ -437,7 +437,7 @@ hr {
   background:rgba(96,165,250,.10);
   border:1px solid rgba(96,165,250,.18);
 }
-.compact-grid a.lens:hover{ filter:brightness(1.08); }
+.compact-grid a.lens:hover{ filter:brightness(1.08); transform:translateY(-1px); }
 .compact-grid .muted{ color:var(--muted); }
 
 .hint-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 14px 0;}
@@ -2365,7 +2365,7 @@ if nav == "📊 Dashboard":
         for _, r in tabela_top.iterrows():
             prod = _safe(r.get("Produto", ""))
             link = f"?produto={quote(prod)}"
-            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            prod_html = produto_cell_html(prod, before_lens=True)
             rows.append(
                 "<tr>"
                 + _td(prod_html)
@@ -2425,7 +2425,7 @@ if nav == "📊 Dashboard":
         for _, r in tabela_lucro.iterrows():
             prod = _safe(r.get("Produto", ""))
             link = f"?produto={quote(prod)}"
-            prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+            prod_html = produto_cell_html(prod, before_lens=True)
             rows_lucro.append(
                 "<tr>"
                 + _td(prod_html)
@@ -2502,7 +2502,7 @@ if nav == "📊 Dashboard":
             prod = _safe(r.get('PRODUTO', ''))
             link = f"?produto={quote(prod)}"
             # target _self = mesma janela
-            prod_html = f"<div class='prodcell'><a class='lens' href='{link}' target='_self' title='Abrir na Pesquisa'>🔍</a><span>{prod}</span></div>"
+            prod_html = produto_cell_html(prod, before_lens=True)
             rows.append(
                 '<tr>'
                 + _td(_safe(r.get('DATA_FMT', '')), 'muted')
@@ -2912,19 +2912,20 @@ elif nav == "⚠️ Alertas":
             df_vb["VALOR_ESTOQUE_FMT"] = df_vb["VALOR_ESTOQUE"].map(format_reais)
             df_vb = df_vb.sort_values(["SALDO_QTD", "QTD_VENDIDA_TOTAL"], ascending=[True, False])
 
-            st.dataframe(
-                df_vb[
-                    ["PRODUTO", "SALDO_QTD", "QTD_VENDIDA_TOTAL", "VALOR_ESTOQUE_FMT"]
-                ].rename(
-                    columns={
-                        "PRODUTO": "Produto",
-                        "SALDO_QTD": "Estoque atual",
-                        "QTD_VENDIDA_TOTAL": "Qtd vendida (histórico)",
-                        "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)",
-                    }
-                ),
-                use_container_width=True,
-            )
+            headers = ["Produto", "Estoque atual", "Qtd vendida (histórico)", "Valor em estoque (FIFO)", "Abrir"]
+            rows = []
+            for _, r in df_vb.iterrows():
+                prod = r.get("PRODUTO", "")
+                rows.append(
+                    "<tr>"
+                    + _td(produto_cell_html(prod))
+                    + _td(_safe(r.get("SALDO_QTD", 0)))
+                    + _td(_safe(r.get("QTD_VENDIDA_TOTAL", 0)))
+                    + _td(_safe(r.get("VALOR_ESTOQUE_FMT", "")), "muted")
+                    + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
+                    + "</tr>"
+                )
+            st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
 
         valor_estoque_total_geral = float(df_estoque["VALOR_ESTOQUE"].sum()) if (not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns) else 0.0
         st.markdown("### 🐌 Estoque parado há muito tempo")
@@ -3040,39 +3041,27 @@ elif nav == "⚠️ Alertas":
 </div>
 """, unsafe_allow_html=True)
 
-                    st.dataframe(
-                        parado_filtrado[
-                            [
-                                "PRODUTO",
-                                "SALDO_QTD",
-                                "VALOR_ESTOQUE_FMT",
-                                "DIAS_PARADO",
-                                "DIAS_MEDIO_PONDERADO",
-                                "LOTES_ABERTOS",
-                                "FAIXA",
-                                "PCT_ESTOQUE_TOTAL",
-                                "DATA_LOTE_ANTIGO_FMT",
-                                "DATA_LOTE_RECENTE_FMT",
-                            ]
-                        ].rename(
-                            columns={
-                                "PRODUTO": "Produto",
-                                "SALDO_QTD": "Estoque atual",
-                                "VALOR_ESTOQUE_FMT": "Valor parado (FIFO)",
-                                "DIAS_PARADO": "Maior idade",
-                                "DIAS_MEDIO_PONDERADO": "Idade média",
-                                "LOTES_ABERTOS": "Lotes abertos",
-                                "FAIXA": "Faixa",
-                                "PCT_ESTOQUE_TOTAL": "% do estoque",
-                                "DATA_LOTE_ANTIGO_FMT": "Lote mais antigo",
-                                "DATA_LOTE_RECENTE_FMT": "Lote mais recente",
-                            }
-                        ),
-                        use_container_width=True,
-                        column_config={
-                            "% do estoque": st.column_config.NumberColumn(format="%.1f%%")
-                        },
-                    )
+                    headers = ["Produto", "Estoque atual", "Valor parado (FIFO)", "Maior idade", "Idade média", "Lotes", "Faixa", "% do estoque", "Lote mais antigo", "Lote mais recente", "Abrir"]
+                    rows = []
+                    for _, r in parado_filtrado.iterrows():
+                        prod = r.get("PRODUTO", "")
+                        pct = float(r.get("PCT_ESTOQUE_TOTAL", 0) or 0)
+                        rows.append(
+                            "<tr>"
+                            + _td(produto_cell_html(prod))
+                            + _td(_safe(r.get("SALDO_QTD", 0)))
+                            + _td(_safe(r.get("VALOR_ESTOQUE_FMT", "")), "muted")
+                            + _td(_safe(r.get("DIAS_PARADO", 0)))
+                            + _td(_safe(r.get("DIAS_MEDIO_PONDERADO", 0)), "muted")
+                            + _td(_safe(r.get("LOTES_ABERTOS", 0)))
+                            + _td(_safe(r.get("FAIXA", "")))
+                            + _td(f"{pct:.1f}%", "muted")
+                            + _td(_safe(r.get("DATA_LOTE_ANTIGO_FMT", "")), "muted")
+                            + _td(_safe(r.get("DATA_LOTE_RECENTE_FMT", "")), "muted")
+                            + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
+                            + "</tr>"
+                        )
+                    st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
 
         # ----------------------------------------
         # PAINEL SAÚDE DA LOJA
@@ -3405,7 +3394,7 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
             for _, r in tabela.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
                 link = f"?produto={quote(prod)}"
-                prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+                prod_html = produto_cell_html(prod, before_lens=True)
                 leitura_hover = f'<span class="hover-cell">{_mini_hover(_painel_resultado_text(r), icon="🧠")}<span class="muted">passar mouse</span></span>'
                 rows.append(
                     "<tr>"
@@ -3460,7 +3449,7 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
             for _, r in detalhe.iterrows():
                 prod = _safe(r.get("PRODUTO", ""))
                 link = f"?produto={quote(prod)}"
-                prod_html = f'<div class="prodcell"><a class="lens" href="{link}" target="_self" title="Abrir na Pesquisa">🔍</a><span>{prod}</span></div>'
+                prod_html = produto_cell_html(prod, before_lens=True)
                 motivo_hover = f'<span class="hover-cell">{_mini_hover(r.get("MOTIVO_IA", "Sem motivo disponível"), icon="⚠️")}<span class="muted">ver</span></span>'
                 resumo_hover = f'<span class="hover-cell">{_mini_hover(_painel_resultado_text(r), icon="🧠")}<span class="muted">ver</span></span>'
                 estoque_sug_html = (
@@ -3673,18 +3662,20 @@ Veja onde está indo o dinheiro das compras, em quantidade e valor.
 
                     top_comp["VALOR_COMP_FMT"] = top_comp["VALOR_COMP"].map(format_reais)
 
-                    st.dataframe(
-                        top_comp.rename(
-                            columns={
-                                "PRODUTO": "Produto",
-                                "QTD_COMP": "Qtd comprada",
-                                "VALOR_COMP_FMT": "Valor em compras",
-                                "ESTOQUE_ATUAL": "Estoque atual",
-                            }
-                        )[["Produto", "Qtd comprada", "Valor em compras", "Estoque atual"]]
-                        .head(20),
-                        use_container_width=True,
-                    )
+                    headers = ["Produto", "Qtd comprada", "Valor em compras", "Estoque atual", "Abrir"]
+                    rows = []
+                    for _, r in top_comp.head(20).iterrows():
+                        prod = r.get("PRODUTO", "")
+                        rows.append(
+                            "<tr>"
+                            + _td(produto_cell_html(prod))
+                            + _td(int(round(float(r.get("QTD_COMP", 0) or 0))))
+                            + _td(_safe(r.get("VALOR_COMP_FMT", "")), "muted")
+                            + _td(int(round(float(r.get("ESTOQUE_ATUAL", 0) or 0))))
+                            + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
+                            + "</tr>"
+                        )
+                    st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
                 else:
                     st.info("Não encontrei coluna 'PRODUTO' na aba de COMPRAS.")
 
@@ -3729,7 +3720,7 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                 cols_comp += ["QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT", "ESTOQUE_ATUAL", "MES_ANO"]
                 cols_comp = [c for c in cols_comp if c in dfc_view.columns]
 
-                st.dataframe(
+                dfc_compact = (
                     dfc_view[cols_comp]
                     .rename(
                         columns={
@@ -3743,6 +3734,24 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                             "MES_ANO": "Mês/ano",
                         }
                     )
-                    .sort_values("Data", ascending=False),
-                    use_container_width=True,
+                    .sort_values("Data", ascending=False)
                 )
+                headers = ["Data", "Produto", "Status", "Qtd", "Custo unitário", "Custo total", "Estoque atual", "Mês/ano", "Abrir"]
+                rows = []
+                for _, r in dfc_compact.head(200).iterrows():
+                    prod = r.get("Produto", "")
+                    rows.append(
+                        "<tr>"
+                        + _td(_safe(r.get("Data", "")), "muted")
+                        + _td(produto_cell_html(prod))
+                        + _td(_safe(r.get("Status", "")))
+                        + _td(_safe(r.get("Qtd", 0)))
+                        + _td(_safe(r.get("Custo unitário", "")), "muted")
+                        + _td(_safe(r.get("Custo total", "")), "muted")
+                        + _td(_safe(r.get("Estoque atual", 0)))
+                        + _td(_safe(r.get("Mês/ano", "")), "muted")
+                        + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
+                        + "</tr>"
+                    )
+                st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+                st.caption("Mostrando até 200 compras mais recentes nesta tabela compacta.")
