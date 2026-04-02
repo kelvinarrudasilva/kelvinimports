@@ -1205,7 +1205,8 @@ def _attr_safe(s):
 
 def criar_link_lupa(produto, title="Abrir detalhes do produto"):
     prod = "" if produto is None else str(produto)
-    link = f"?produto={quote(prod)}&modal=1"
+    origem = st.session_state.get("nav_tab", "📊 Dashboard")
+    link = f"?produto={quote(prod)}&origem={quote(str(origem))}"
     return f'<a class="lens" href="{link}" target="_self" title="{_attr_safe(title)}">🔍</a>'
 
 
@@ -1213,7 +1214,9 @@ def produto_cell_html(produto, before_lens=False, title="Abrir detalhes do produ
     prod = "" if produto is None else str(produto)
     nome = _safe(prod)
     lupa = criar_link_lupa(prod, title=title)
-    return f'<div class="prodcell">{lupa}<span class="prod-name">{nome}</span></div>'
+    if before_lens:
+        return f'<div class="prodcell"><span class="prod-name">{nome}</span>{lupa}</div>'
+    return f'<div class="prodcell"><span class="prod-name">{nome}</span>{lupa}</div>'
 
 
 def _hint_icon(text, icon="⚠️"):
@@ -2231,24 +2234,23 @@ if "nav_tab" not in st.session_state:
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
 
-# Se veio de um link da 🔍, pode abrir o modal sem trocar de aba
-if "modal_produto" not in st.session_state:
-    st.session_state.modal_produto = None
+# Se veio de um link da 🔍, abre a página normal de pesquisa e guarda de onde veio
+if "voltar_para_tab" not in st.session_state:
+    st.session_state.voltar_para_tab = "📊 Dashboard"
 
 try:
     qp = st.query_params
     qp_prod = qp.get("produto", None)
-    qp_modal = qp.get("modal", None)
+    qp_origem = qp.get("origem", None)
     if isinstance(qp_prod, list):
         qp_prod = qp_prod[0] if qp_prod else None
-    if isinstance(qp_modal, list):
-        qp_modal = qp_modal[0] if qp_modal else None
+    if isinstance(qp_origem, list):
+        qp_origem = qp_origem[0] if qp_origem else None
     if qp_prod:
         st.session_state.produto_pesquisa = str(qp_prod)
-        if str(qp_modal) == "1":
-            st.session_state.modal_produto = str(qp_prod)
-        else:
-            st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
+        st.session_state.busca_produto_digitada = str(qp_prod)
+        st.session_state.voltar_para_tab = str(qp_origem) if qp_origem else st.session_state.get("nav_tab", "📊 Dashboard")
+        st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
         try:
             st.query_params.clear()
         except Exception:
@@ -2789,6 +2791,12 @@ elif nav == "🔎 Pesquisa de produto":
 """,
         unsafe_allow_html=True,
     )
+
+    col_voltar, _ = st.columns([1, 5])
+    with col_voltar:
+        if st.button("← Voltar", key="btn_voltar_pesquisa"):
+            st.session_state.nav_tab = st.session_state.get("voltar_para_tab", "📊 Dashboard")
+            st.rerun()
 
     if df_fifo.empty and df_estoque.empty:
         st.info("Sem dados de estoque ou vendas para pesquisar.")
@@ -3770,27 +3778,3 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                 st.caption("Mostrando até 200 compras mais recentes nesta tabela compacta.")
 
 
-if st.session_state.get("modal_produto"):
-    prod_modal = st.session_state.get("modal_produto")
-
-    @st.dialog("🔎 Detalhes do produto", width="large")
-    def _abrir_modal_produto():
-        produtos_estoque = df_estoque["PRODUTO"].unique().tolist() if not df_estoque.empty else []
-        produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
-        produtos_compras = df_compras["PRODUTO"].dropna().astype(str).unique().tolist() if "PRODUTO" in df_compras.columns else []
-        todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas) | set(produtos_compras))
-
-        st.markdown(
-            "<div class='section-sub'>Janela flutuante do produto. Aqui você vê o raio-x sem sair da página.</div>",
-            unsafe_allow_html=True,
-        )
-        render_product_details(prod_modal, prod_modal, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map)
-        if st.button("Fechar", key="fechar_modal_produto_btn", use_container_width=True):
-            st.session_state.modal_produto = None
-            try:
-                st.query_params.clear()
-            except Exception:
-                pass
-            st.rerun()
-
-    _abrir_modal_produto()
