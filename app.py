@@ -1163,9 +1163,6 @@ if not df_estoque.empty and ("PRODUTO" in df_estoque.columns) and ("SALDO_QTD" i
 else:
     estoque_atual_map = {}
 
-product_modal_payload = build_modal_product_payload(df_fifo, df_estoque, df_compras, estoque_atual_map)
-inject_product_modal_js(product_modal_payload)
-
 def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
     out = df.copy()
     if col_produto in out.columns:
@@ -1284,6 +1281,9 @@ def inject_product_modal_js(product_payload):
     </script>
     """, height=0, width=0)
 
+
+product_modal_payload = build_modal_product_payload(df_fifo, df_estoque, df_compras, estoque_atual_map)
+inject_product_modal_js(product_modal_payload)
 
 def _render_compact_table(rows, headers):
     """Renderiza uma tabela HTML compacta com hover e links na coluna Produto."""
