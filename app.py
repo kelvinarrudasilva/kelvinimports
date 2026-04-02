@@ -1201,6 +1201,21 @@ def _attr_safe(s):
 
 
 
+def criar_link_lupa(produto, title="Abrir na Pesquisa"):
+    prod = "" if produto is None else str(produto)
+    link = f"?produto={quote(prod)}"
+    return f'<a class="lens" href="{link}" target="_self" title="{_attr_safe(title)}">🔍</a>'
+
+
+def produto_cell_html(produto, before_lens=False, title="Abrir na Pesquisa"):
+    prod = "" if produto is None else str(produto)
+    nome = _safe(prod)
+    lupa = criar_link_lupa(prod, title=title)
+    if before_lens:
+        return f'<div class="prodcell">{lupa}<span>{nome}</span></div>'
+    return f'<div class="prodcell"><span>{nome}</span>{lupa}</div>'
+
+
 def _hint_icon(text, icon="⚠️"):
     return f'<span class="hint-icon" title="{_attr_safe(text)}">{icon}</span>'
 
