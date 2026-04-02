@@ -6,8 +6,6 @@ from urllib.parse import quote
 import re
 import unicodedata
 import html
-import json
-import streamlit.components.v1 as components
 from difflib import SequenceMatcher
 
 # --------------------------------------------------
@@ -426,9 +424,7 @@ hr {
 .compact-grid tbody tr:nth-child(odd) td{ background:#0a0f15; }
 .compact-grid tbody tr:nth-child(even) td{ background:#0d131a; }
 .compact-grid tbody tr:hover td{ background:#131c26 !important; }
-.compact-grid .prodcell{ display:flex; align-items:center; justify-content:flex-start; gap:8px; min-width:180px; }
-.compact-grid .prodcell .prod-name{ text-align:left; }
-.compact-grid .prodcell .lens{ flex:0 0 auto; }
+.compact-grid .prodcell{ display:flex; align-items:center; gap:8px; }
 .compact-grid a.lens{
   text-decoration:none;
   font-size:13px;
@@ -441,7 +437,7 @@ hr {
   background:rgba(96,165,250,.10);
   border:1px solid rgba(96,165,250,.18);
 }
-.compact-grid a.lens:hover{ filter:brightness(1.08); transform:translateY(-1px); }
+.compact-grid a.lens:hover{ filter:brightness(1.08); }
 .compact-grid .muted{ color:var(--muted); }
 
 .hint-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 14px 0;}
@@ -1174,117 +1170,226 @@ def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
     return out
 
 
-def build_modal_product_payload(df_fifo, df_estoque, df_compras, estoque_atual_map):
-    payload = {}
-    produtos = set()
-    if isinstance(df_fifo, pd.DataFrame) and not df_fifo.empty and "PRODUTO" in df_fifo.columns:
-        produtos |= set(df_fifo["PRODUTO"].dropna().astype(str).tolist())
-    if isinstance(df_estoque, pd.DataFrame) and not df_estoque.empty and "PRODUTO" in df_estoque.columns:
-        produtos |= set(df_estoque["PRODUTO"].dropna().astype(str).tolist())
-    if isinstance(df_compras, pd.DataFrame) and not df_compras.empty and "PRODUTO" in df_compras.columns:
-        produtos |= set(df_compras["PRODUTO"].dropna().astype(str).tolist())
-
-    compras = df_compras.copy() if isinstance(df_compras, pd.DataFrame) else pd.DataFrame()
-    if not compras.empty:
-        compras.columns = [str(c).strip().upper() for c in compras.columns]
-        compras = ensure_datetime_series(compras, "DATA")
-        compras["QUANTIDADE"] = compras.get("QUANTIDADE", 0).apply(parse_money).astype(float)
-        compras["CUSTO UNITÁRIO"] = compras.get("CUSTO UNITÁRIO", 0).apply(parse_money).astype(float)
-        if "STATUS" in compras.columns:
-            compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
-    vendas = df_fifo.copy() if isinstance(df_fifo, pd.DataFrame) else pd.DataFrame()
-    if not vendas.empty:
-        vendas = ensure_datetime_series(vendas, "DATA")
-        for c in ["QTD", "VALOR_TOTAL", "LUCRO", "CUSTO_TOTAL"]:
-            vendas[c] = vendas.get(c, 0).apply(parse_money).astype(float)
-
-    for prod in sorted(produtos):
-        v = vendas[vendas["PRODUTO"].astype(str) == prod].copy() if not vendas.empty and "PRODUTO" in vendas.columns else pd.DataFrame()
-        c = compras[compras["PRODUTO"].astype(str) == prod].copy() if not compras.empty and "PRODUTO" in compras.columns else pd.DataFrame()
-        qtd_vendida = float(v["QTD"].sum()) if not v.empty else 0.0
-        faturamento = float(v["VALOR_TOTAL"].sum()) if not v.empty else 0.0
-        lucro = float(v["LUCRO"].sum()) if not v.empty else 0.0
-        custo_total = float(v["CUSTO_TOTAL"].sum()) if not v.empty else 0.0
-        estoque = float(estoque_atual_map.get(prod, 0) or 0)
-        qtd_comprada = float(c["QUANTIDADE"].sum()) if not c.empty else 0.0
-        custo_medio_compra = (float((c["QUANTIDADE"] * c["CUSTO UNITÁRIO"]).sum()) / qtd_comprada) if qtd_comprada > 0 else 0.0
-        preco_medio_venda = (faturamento / qtd_vendida) if qtd_vendida > 0 else 0.0
-        margem = (lucro / faturamento * 100.0) if faturamento > 0 else 0.0
-        ultima_venda = pd.to_datetime(v["DATA"].max(), errors="coerce") if not v.empty else pd.NaT
-        ultima_compra = pd.to_datetime(c["DATA"].max(), errors="coerce") if not c.empty else pd.NaT
-        payload[prod] = f"""
-        <div class='pm-head'>
-          <div class='pm-title'>{html.escape(prod)}</div>
-          <div class='pm-sub'>Raio-x rápido sem sair da página.</div>
-        </div>
-        <div class='pm-grid'>
-          <div class='pm-card'><span>Estoque atual</span><strong>{int(round(estoque)) if float(estoque).is_integer() else round(estoque,2)}</strong></div>
-          <div class='pm-card'><span>Qtd vendida</span><strong>{int(round(qtd_vendida)) if float(qtd_vendida).is_integer() else round(qtd_vendida,2)}</strong></div>
-          <div class='pm-card'><span>Faturamento</span><strong>{format_reais(faturamento)}</strong></div>
-          <div class='pm-card'><span>Lucro</span><strong>{format_reais(lucro)}</strong></div>
-          <div class='pm-card'><span>Custo total FIFO</span><strong>{format_reais(custo_total)}</strong></div>
-          <div class='pm-card'><span>Preço médio venda</span><strong>{format_reais(preco_medio_venda)}</strong></div>
-          <div class='pm-card'><span>Custo médio compra</span><strong>{format_reais(custo_medio_compra)}</strong></div>
-          <div class='pm-card'><span>Margem</span><strong>{margem:.1f}%</strong></div>
-        </div>
-        <div class='pm-list'>
-          <div><b>Última venda:</b> {ultima_venda.strftime('%d/%m/%Y') if pd.notna(ultima_venda) else 'Sem registro'}</div>
-          <div><b>Última compra:</b> {ultima_compra.strftime('%d/%m/%Y') if pd.notna(ultima_compra) else 'Sem registro'}</div>
-          <div><b>Qtd comprada:</b> {int(round(qtd_comprada)) if float(qtd_comprada).is_integer() else round(qtd_comprada,2)}</div>
-        </div>
-        """
-    return payload
+def _cell_value(v):
+    if v is None:
+        return "—"
+    try:
+        if pd.isna(v):
+            return "—"
+    except Exception:
+        pass
+    s = str(v)
+    return s if s != "" else "—"
 
 
-def inject_product_modal_js(product_payload):
-    js_payload = json.dumps(product_payload, ensure_ascii=False)
-    components.html(f"""
-    <script>
-    (function() {{
-      const data = {js_payload};
-      const doc = window.parent.document;
-      if (!doc.getElementById('oai-product-modal-style')) {{
-        const style = doc.createElement('style');
-        style.id = 'oai-product-modal-style';
-        style.textContent = `
-          #oai-product-modal-overlay{{position:fixed;inset:0;background:rgba(3,6,12,.66);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:999999;}}
-          #oai-product-modal{{width:min(900px,92vw);max-height:84vh;overflow:auto;border-radius:24px;background:linear-gradient(180deg,#0b1017,#0f1722);border:1px solid rgba(148,163,184,.18);box-shadow:0 25px 80px rgba(0,0,0,.45);padding:18px 18px 16px;}}
-          .pm-top{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}}
-          .pm-close{{border:1px solid rgba(148,163,184,.18);background:#101826;color:#eef2f7;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;}}
-          .pm-head{{margin-bottom:12px;}}
-          .pm-title{{font-size:22px;font-weight:800;line-height:1.1;color:#eef2f7;}}
-          .pm-sub{{font-size:12px;color:#94a3b8;margin-top:4px;}}
-          .pm-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0;}}
-          .pm-card{{padding:14px;border-radius:18px;background:#0d1520;border:1px solid rgba(148,163,184,.12);}}
-          .pm-card span{{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;}}
-          .pm-card strong{{font-size:18px;color:#eef2f7;}}
-          .pm-list{{display:grid;gap:8px;color:#dbe3ef;font-size:14px;padding:4px 2px 2px;}}
-        `;
-        doc.head.appendChild(style);
-      }}
-      if (!doc.getElementById('oai-product-modal-overlay')) {{
-        const overlay = doc.createElement('div');
-        overlay.id = 'oai-product-modal-overlay';
-        overlay.innerHTML = `<div id="oai-product-modal"><div class="pm-top"><div style="font-weight:800;color:#eef2f7;">🔎 Detalhes do produto</div><button class="pm-close" type="button">Fechar</button></div><div id="oai-product-modal-body"></div></div>`;
-        doc.body.appendChild(overlay);
-        overlay.addEventListener('click', function(e) {{ if (e.target === overlay) overlay.style.display = 'none'; }});
-        overlay.querySelector('.pm-close').addEventListener('click', function() {{ overlay.style.display = 'none'; }});
-      }}
-      window.parent.__productModalData = data;
-      window.__productModalData = data;
-      const openModalFn = function(name) {{
-        const overlay = doc.getElementById('oai-product-modal-overlay');
-        const body = doc.getElementById('oai-product-modal-body');
-        body.innerHTML = (window.parent.__productModalData && window.parent.__productModalData[name]) ? window.parent.__productModalData[name] : '<div class="pm-head"><div class="pm-title">' + name + '</div><div class="pm-sub">Sem dados suficientes para montar o raio-x.</div></div>';
-        overlay.style.display = 'flex';
-      }};
-    }})();
-    </script>
-    """, height=0, width=0)
+def abrir_modal_produto(produto):
+    st.session_state["produto_modal_nome"] = str(produto)
+    st.session_state["produto_modal_aberto"] = True
 
 
-product_modal_payload = build_modal_product_payload(df_fifo, df_estoque, df_compras, estoque_atual_map)
-inject_product_modal_js(product_modal_payload)
+def fechar_modal_produto():
+    st.session_state["produto_modal_aberto"] = False
+    st.session_state["produto_modal_nome"] = None
+
+
+def render_clickable_table(df, columns, headers=None, widths=None, key_prefix="tbl", product_col="Produto", muted_cols=None, max_rows=None):
+    df = ensure_df(df).copy()
+    if df.empty:
+        st.info("Nada para mostrar nessa tabela.")
+        return
+
+    muted_cols = set(muted_cols or [])
+    headers = headers or columns
+    if widths is None:
+        widths = [max(1.0, 3.8 if c == product_col else 1.4) for c in columns]
+
+    if max_rows is not None:
+        df = df.head(max_rows).copy()
+
+    head_cols = st.columns(widths, gap="small")
+    for i, head in enumerate(headers):
+        with head_cols[i]:
+            st.markdown(f"<div style='font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;padding:0 0 .35rem 0'>{_safe(head)}</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:1px;background:rgba(148,163,184,.12);margin:.1rem 0 .45rem 0'></div>", unsafe_allow_html=True)
+
+    for pos, (_, row) in enumerate(df.iterrows()):
+        row_cols = st.columns(widths, gap="small")
+        for i, col in enumerate(columns):
+            with row_cols[i]:
+                val = row[col] if col in row.index else ""
+                if col == product_col:
+                    p1, p2 = st.columns([1.1, 12], gap="small")
+                    with p1:
+                        if st.button("🔍", key=f"{key_prefix}_lupa_{pos}_{normalize_name(_cell_value(val))[:50]}", help="Abrir raio-x do produto", use_container_width=True):
+                            abrir_modal_produto(_cell_value(val))
+                            st.rerun()
+                    with p2:
+                        st.markdown(f"<div style='padding-top:.42rem;line-height:1.2;text-align:left'>{_safe(_cell_value(val))}</div>", unsafe_allow_html=True)
+                else:
+                    cor = "#94a3b8" if col in muted_cols else "#eef2f7"
+                    st.markdown(f"<div style='padding-top:.42rem;line-height:1.2;color:{cor};text-align:left'>{_safe(_cell_value(val))}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:1px;background:rgba(148,163,184,.06);margin:.35rem 0 .5rem 0'></div>", unsafe_allow_html=True)
+
+
+def coletar_dados_produto_modal(prod_sel):
+    linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel] if (isinstance(df_estoque, pd.DataFrame) and not df_estoque.empty and "PRODUTO" in df_estoque.columns) else pd.DataFrame()
+    if not linha_est.empty:
+        saldo = float(linha_est["SALDO_QTD"].iloc[0])
+        valor_estoque = float(linha_est["VALOR_ESTOQUE"].iloc[0])
+        custo_medio_fifo = float(linha_est["CUSTO_MEDIO_FIFO"].iloc[0])
+    else:
+        saldo = 0.0
+        valor_estoque = 0.0
+        custo_medio_fifo = 0.0
+
+    vendas_prod = df_fifo[df_fifo["PRODUTO"] == prod_sel].copy() if (isinstance(df_fifo, pd.DataFrame) and not df_fifo.empty and "PRODUTO" in df_fifo.columns) else pd.DataFrame()
+    if not vendas_prod.empty:
+        vendas_prod = ensure_datetime_series(vendas_prod, "DATA")
+        qtd_total_vendida = float(vendas_prod["QTD"].sum())
+        receita_total = float(vendas_prod["VALOR_TOTAL"].sum())
+        custo_total_hist = float(vendas_prod["CUSTO_TOTAL"].sum())
+        lucro_total = float(vendas_prod["LUCRO"].sum())
+        preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
+        margem_media = (lucro_total / receita_total) if receita_total else 0.0
+        ultima = vendas_prod.sort_values("DATA").iloc[-1]
+    else:
+        qtd_total_vendida = receita_total = custo_total_hist = lucro_total = preco_medio_venda = margem_media = 0.0
+        ultima = None
+
+    compras_prod = df_compras.copy() if isinstance(df_compras, pd.DataFrame) else pd.DataFrame()
+    if not compras_prod.empty:
+        compras_prod.columns = [str(c).strip().upper() for c in compras_prod.columns]
+        if "PRODUTO" in compras_prod.columns:
+            compras_prod = compras_prod[compras_prod["PRODUTO"] == prod_sel].copy()
+        else:
+            compras_prod = pd.DataFrame()
+        if not compras_prod.empty and "STATUS" in compras_prod.columns:
+            compras_prod = compras_prod[compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
+        if not compras_prod.empty:
+            compras_prod = ensure_datetime_series(compras_prod, "DATA")
+            compras_prod["QUANTIDADE"] = compras_prod.get("QUANTIDADE", 0).apply(parse_money).astype(float)
+            compras_prod["CUSTO UNITÁRIO"] = compras_prod.get("CUSTO UNITÁRIO", 0).apply(parse_money).astype(float)
+            compras_prod["CUSTO_TOTAL"] = compras_prod.get("CUSTO_TOTAL", compras_prod["QUANTIDADE"] * compras_prod["CUSTO UNITÁRIO"])
+    
+    similares = []
+    universo = sorted(set(df_fifo.get("PRODUTO", pd.Series(dtype=str)).dropna().astype(str).tolist()) | set(df_compras.get("PRODUTO", pd.Series(dtype=str)).dropna().astype(str).tolist()) | set(df_estoque.get("PRODUTO", pd.Series(dtype=str)).dropna().astype(str).tolist()))
+    if universo:
+        similares = top_similares(prod_sel, universo, limite=4, min_score=0.34)
+
+    return {
+        "saldo": saldo,
+        "valor_estoque": valor_estoque,
+        "custo_medio_fifo": custo_medio_fifo,
+        "qtd_total_vendida": qtd_total_vendida,
+        "receita_total": receita_total,
+        "custo_total_hist": custo_total_hist,
+        "lucro_total": lucro_total,
+        "preco_medio_venda": preco_medio_venda,
+        "margem_media": margem_media,
+        "ultima": ultima,
+        "vendas_prod": vendas_prod,
+        "compras_prod": compras_prod,
+        "similares": similares,
+    }
+
+
+@st.dialog("Raio-x do produto")
+def mostrar_modal_produto(prod_sel):
+    dados = coletar_dados_produto_modal(prod_sel)
+    st.markdown(f"### 📦 {_safe(prod_sel)}")
+
+    sim_txt = " • ".join([f"{nome} ({score:.0%})" for nome, score in dados["similares"]]) if dados["similares"] else "Sem família parecida forte no histórico."
+    st.caption(f"Parecidos mais próximos: {sim_txt}")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Estoque atual</div>
+  <div class="kpi-value">{int(round(dados['saldo']))} unid.</div>
+  <div class="kpi-pill">Valor no estoque: {format_reais(dados['valor_estoque'])}</div>
+</div>
+""", unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Custo médio FIFO</div>
+  <div class="kpi-value">{format_reais(dados['custo_medio_fifo'])}</div>
+  <div class="kpi-pill">Baseado no saldo remanescente</div>
+</div>
+""", unsafe_allow_html=True)
+    with c3:
+        st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Preço médio venda</div>
+  <div class="kpi-value">{format_reais(dados['preco_medio_venda'])}</div>
+  <div class="kpi-pill">Receita total / quantidade vendida</div>
+</div>
+""", unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Margem histórica</div>
+  <div class="kpi-value">{dados['margem_media']*100:,.1f}%</div>
+  <div class="kpi-pill">Lucro total: {format_reais(dados['lucro_total'])}</div>
+</div>
+""", unsafe_allow_html=True)
+
+    if dados["ultima"] is not None:
+        ultima = dados["ultima"]
+        data_ult = pd.to_datetime(ultima.get("DATA"), errors="coerce")
+        qtd_ult = float(ultima.get("QTD", 0) or 0)
+        valor_ult = float(ultima.get("VALOR_TOTAL", 0) or 0)
+        preco_unit = valor_ult / qtd_ult if qtd_ult else 0.0
+        st.markdown("#### 🕒 Última venda")
+        st.write(
+            f"- Data: **{data_ult.strftime('%d/%m/%Y') if pd.notna(data_ult) else '—'}**  \
+"
+            f"- Quantidade: **{int(round(qtd_ult))} unid.**  \
+"
+            f"- Valor total: **{format_reais(valor_ult)}**  \
+"
+            f"- Preço unitário: **{format_reais(preco_unit)}**"
+        )
+
+    st.markdown("#### 📄 Vendas recentes")
+    vendas_hist = dados["vendas_prod"].copy()
+    if vendas_hist.empty:
+        st.info("Sem vendas registradas para esse produto.")
+    else:
+        vendas_hist["CUSTO_UNIT"] = vendas_hist["CUSTO_TOTAL"] / vendas_hist["QTD"].replace(0, pd.NA)
+        vendas_hist = add_estoque_atual(vendas_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+        vendas_hist["DATA_FMT"] = vendas_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
+        vendas_hist["VALOR_FMT"] = vendas_hist["VALOR_TOTAL"].map(format_reais)
+        vendas_hist["CUSTO_FMT"] = vendas_hist["CUSTO_TOTAL"].map(format_reais)
+        vendas_hist["CUSTO_UNIT_FMT"] = vendas_hist["CUSTO_UNIT"].fillna(0).map(format_reais)
+        vendas_hist["LUCRO_FMT"] = vendas_hist["LUCRO"].map(format_reais)
+        st.dataframe(
+            vendas_hist.sort_values("DATA", ascending=False)[["DATA_FMT", "CLIENTE", "STATUS", "QTD", "VALOR_FMT", "CUSTO_FMT", "CUSTO_UNIT_FMT", "LUCRO_FMT", "ESTOQUE_ATUAL"]]
+            .rename(columns={"DATA_FMT": "Data", "QTD": "Qtd", "VALOR_FMT": "Valor", "CUSTO_FMT": "Custo total", "CUSTO_UNIT_FMT": "Custo un.", "LUCRO_FMT": "Lucro", "ESTOQUE_ATUAL": "Estoque"})
+            .head(20),
+            use_container_width=True,
+        )
+
+    st.markdown("#### 🧾 Compras ENTREGUE")
+    compras_hist = dados["compras_prod"].copy()
+    if compras_hist.empty:
+        st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
+    else:
+        compras_hist["DATA_FMT"] = compras_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
+        compras_hist["CUSTO_UNIT_FMT"] = compras_hist["CUSTO UNITÁRIO"].map(format_reais)
+        compras_hist["CUSTO_TOTAL_FMT"] = compras_hist["CUSTO_TOTAL"].map(format_reais)
+        st.dataframe(
+            compras_hist.sort_values("DATA", ascending=False)[["DATA_FMT", "STATUS", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"]]
+            .rename(columns={"DATA_FMT": "Data", "QUANTIDADE": "Qtd", "CUSTO_UNIT_FMT": "Custo unitário", "CUSTO_TOTAL_FMT": "Custo total", "STATUS": "Status"})
+            .head(20),
+            use_container_width=True,
+        )
+
+    if st.button("Fechar", key=f"fechar_modal_{normalize_name(prod_sel)}", use_container_width=True):
+        fechar_modal_produto()
+        st.rerun()
+
 
 def _render_compact_table(rows, headers):
     """Renderiza uma tabela HTML compacta com hover e links na coluna Produto."""
@@ -1316,30 +1421,6 @@ def _attr_safe(s):
     s = s.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "&#10;")
     return s
 
-
-
-def _js_safe(s):
-    if s is None:
-        return ""
-    return json.dumps(str(s), ensure_ascii=False)
-
-
-def criar_link_lupa(produto, title="Abrir detalhes do produto"):
-    prod = "" if produto is None else str(produto)
-    prod_js = _js_safe(prod)
-    title_attr = _attr_safe(title)
-    return (
-        f'<button type="button" class="lens lens-btn" '
-        f'onclick="(function(){{ var fn = window.openProductModal || (window.parent && window.parent.openProductModal) || (window.top && window.top.openProductModal); if (fn) fn({prod_js}); }})(); return false;" '
-        f'title="{title_attr}" aria-label="{title_attr}">🔍</button>'
-    )
-
-
-def produto_cell_html(produto, before_lens=False, title="Abrir detalhes do produto"):
-    prod = "" if produto is None else str(produto)
-    nome = _safe(prod)
-    lupa = criar_link_lupa(prod, title=title)
-    return f'<div class="prodcell"><span class="prod-name">{nome}</span>{lupa}</div>'
 
 
 def _hint_icon(text, icon="⚠️"):
@@ -1936,8 +2017,8 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
             or estoque_meses >= 3.0
             or (lento and estoque >= max(2.0, venda_mensal_ref * 2.5))
         )
-
     )
+
     janela_planejada = max(7, int(alvo_dias + lead_time))
     janela_enxuta = max(lead_time + 7, int(alvo_dias * 0.65) + lead_time)
     if muito_lento:
@@ -2114,241 +2195,6 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
     })
 
 
-def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map):
-    linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
-    if not linha_est.empty:
-        saldo = float(linha_est["SALDO_QTD"].iloc[0])
-        valor_estoque = float(linha_est["VALOR_ESTOQUE"].iloc[0])
-        custo_medio_fifo = float(linha_est["CUSTO_MEDIO_FIFO"].iloc[0])
-    else:
-        saldo = 0.0
-        valor_estoque = 0.0
-        custo_medio_fifo = 0.0
-
-    vendas_prod = df_fifo[df_fifo["PRODUTO"] == prod_sel].copy()
-    if not vendas_prod.empty:
-        qtd_total_vendida = vendas_prod["QTD"].sum()
-        receita_total = vendas_prod["VALOR_TOTAL"].sum()
-        preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
-        custo_total_hist = vendas_prod["CUSTO_TOTAL"].sum()
-        margem_media = (receita_total - custo_total_hist) / receita_total if receita_total else 0.0
-
-        vendas_prod_ord = vendas_prod.sort_values("DATA")
-        ultima = vendas_prod_ord.iloc[-1]
-        preco_unit_ultima = ultima["VALOR_TOTAL"] / ultima["QTD"] if ultima["QTD"] else 0.0
-        data_ultima = ultima["DATA"]
-    else:
-        qtd_total_vendida = 0.0
-        receita_total = 0.0
-        preco_medio_venda = 0.0
-        preco_unit_ultima = 0.0
-        data_ultima = None
-        margem_media = 0.0
-        custo_total_hist = 0.0
-
-    st.markdown(f"### 📦 {prod_sel}")
-
-    relacionados = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=12) if busca_produto else pd.DataFrame()
-    if not relacionados.empty:
-        relacionados = relacionados[relacionados["PRODUTO"] != prod_sel].head(5)
-        if not relacionados.empty:
-            sugestoes = " • ".join([label_produto_busca(p, estoque_atual_map) for p in relacionados["PRODUTO"].tolist()])
-            st.caption(f"Talvez você também esteja procurando: {sugestoes}")
-
-    cA, cB, cC = st.columns(3)
-    with cA:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Custo médio FIFO</div>
-  <div class="kpi-value">{format_reais(custo_medio_fifo)}</div>
-  <div class="kpi-pill">Baseado nas compras ENTREGUE restantes em estoque</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cB:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Preço médio de venda</div>
-  <div class="kpi-value">{format_reais(preco_medio_venda)}</div>
-  <div class="kpi-pill">Receita total / quantidade vendida</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cC:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Margem média histórica</div>
-  <div class="kpi-value">{margem_media*100:,.1f}%</div>
-  <div class="kpi-pill">({format_reais(receita_total)} − {format_reais(custo_total_hist)}) / receita</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-    cD, cE, cF = st.columns(3)
-    with cD:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Saldo em estoque</div>
-  <div class="kpi-value">{int(saldo)} unid.</div>
-  <div class="kpi-pill">Valor em estoque: {format_reais(valor_estoque)}</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cE:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Receita acumulada</div>
-  <div class="kpi-value">{format_reais(receita_total)}</div>
-  <div class="kpi-pill">Total vendido no histórico</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cF:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Qtd total vendida</div>
-  <div class="kpi-value">{int(qtd_total_vendida)} unid.</div>
-  <div class="kpi-pill">Somatório das vendas registradas</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("---")
-    st.markdown("#### 🕒 Última venda")
-    if data_ultima is not None and pd.notna(data_ultima):
-        st.write(
-            f"- Data: **{data_ultima.strftime('%d/%m/%Y')}**  \n"
-            f"- Preço unitário na venda: **{format_reais(preco_unit_ultima)}**  \n"
-            f"- Quantidade nessa venda: **{int(ultima['QTD'])} unid.**  \n"
-            f"- Valor total: **{format_reais(ultima['VALOR_TOTAL'])}**"
-        )
-    else:
-        st.write("Nenhuma venda registrada para esse produto ainda.")
-
-    st.markdown("---")
-    st.markdown("#### 📄 Histórico recente de vendas")
-
-    if not vendas_prod.empty:
-        vendas_prod_hist = vendas_prod.copy()
-        vendas_prod_hist["CUSTO_UNIT"] = (
-            vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
-        )
-        vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
-
-        vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
-        vendas_prod_hist["DATA_ORD"] = vendas_prod_hist["DATA"]
-        vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
-        vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
-        vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
-        vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
-        vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_UNIT"].map(format_reais)
-
-        cols_hist = [
-            "DATA", "CLIENTE", "STATUS", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL",
-            "CUSTO_UNIT", "LUCRO", "ESTOQUE_ATUAL", "MES_ANO",
-        ]
-        cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
-
-        st.dataframe(
-            vendas_prod_hist.sort_values("DATA_ORD", ascending=False)[cols_hist].head(30),
-            use_container_width=True,
-        )
-    else:
-        st.info("Sem histórico de vendas para esse produto.")
-
-    st.markdown("---")
-    st.markdown("#### 🧾 Histórico de compras (ENTREGUE)")
-
-    compras_prod = df_compras.copy()
-    compras_prod.columns = [c.strip().upper() for c in compras_prod.columns]
-
-    if "PRODUTO" in compras_prod.columns:
-        compras_prod = compras_prod[compras_prod["PRODUTO"] == prod_sel].copy()
-    else:
-        compras_prod = pd.DataFrame()
-
-    if not compras_prod.empty and "STATUS" in compras_prod.columns:
-        compras_prod = compras_prod[
-            compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"
-        ].copy()
-
-    if compras_prod.empty:
-        st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
-    else:
-        if "DATA" in compras_prod.columns:
-            compras_prod["DATA"] = pd.to_datetime(
-                compras_prod["DATA"], errors="coerce", dayfirst=True
-            )
-            compras_prod = compras_prod.sort_values("DATA", ascending=False)
-            compras_prod["DATA_FMT"] = compras_prod["DATA"].dt.strftime("%d/%m/%Y")
-        else:
-            compras_prod["DATA_FMT"] = ""
-
-        if "QUANTIDADE" in compras_prod.columns:
-            compras_prod["QUANTIDADE"] = compras_prod["QUANTIDADE"].apply(parse_money).astype(float)
-        else:
-            compras_prod["QUANTIDADE"] = 0.0
-
-        if "CUSTO UNITÁRIO" in compras_prod.columns:
-            compras_prod["CUSTO UNITÁRIO"] = compras_prod["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
-        else:
-            compras_prod["CUSTO UNITÁRIO"] = 0.0
-
-        compras_prod["CUSTO_TOTAL"] = compras_prod.get("CUSTO_TOTAL", compras_prod["QUANTIDADE"] * compras_prod["CUSTO UNITÁRIO"])
-        compras_prod["CUSTO_UNIT_FMT"] = compras_prod["CUSTO UNITÁRIO"].map(format_reais)
-        compras_prod["CUSTO_TOTAL_FMT"] = compras_prod["CUSTO_TOTAL"].map(format_reais)
-
-        total_qtd_comp = compras_prod["QUANTIDADE"].sum()
-        total_valor_comp = compras_prod["CUSTO_TOTAL"].sum()
-
-        st.write(
-            f"- Total comprado (histórico ENTREGUE): **{int(total_qtd_comp)} unid.**  "
-            f"– **{format_reais(total_valor_comp)}**"
-        )
-
-        cols_comp = ["DATA_FMT", "STATUS", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"]
-        cols_comp = [c for c in cols_comp if c in compras_prod.columns]
-
-        st.dataframe(
-            compras_prod[cols_comp].rename(
-                columns={
-                    "DATA_FMT": "Data",
-                    "STATUS": "Status",
-                    "QUANTIDADE": "Qtd.",
-                    "CUSTO_UNIT_FMT": "Custo unitário",
-                    "CUSTO_TOTAL_FMT": "Custo total",
-                }
-            ).head(40),
-            use_container_width=True,
-        )
-
-    st.markdown("---")
-    st.markdown("#### 💡 Leitura rápida")
-    st.markdown(
-        """
-- Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
-- Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
-- Agora a busca aceita palavra solta e também ajuda a achar família de produto sem exigir nome exato.
-- Olhando o **histórico de compras**, você enxerga:
-  - se está pagando mais caro ou mais barato ao longo do tempo,
-  - se vale negociar de novo com o fornecedor,
-  - e se não está enchendo estoque de um item que não gira tanto assim.
-        """
-    )
-
-
 # --------------------------------------------------
 # NAVEGAÇÃO (no lugar de st.tabs, pra permitir ir pra Pesquisa via 🔍)
 # --------------------------------------------------
@@ -2356,22 +2202,21 @@ if "nav_tab" not in st.session_state:
     st.session_state.nav_tab = "📊 Dashboard"
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
+if "produto_modal_nome" not in st.session_state:
+    st.session_state.produto_modal_nome = None
+if "produto_modal_aberto" not in st.session_state:
+    st.session_state.produto_modal_aberto = False
 
-# Se veio de um link da 🔍, pode abrir o modal sem trocar de aba
-if "modal_produto" not in st.session_state:
-    st.session_state.modal_produto = None
-
+# Se veio de um link da 🔍 (query param), já abre a Pesquisa com o produto selecionado
 try:
     qp = st.query_params
     qp_prod = qp.get("produto", None)
-    qp_modal = qp.get("modal", None)
     if isinstance(qp_prod, list):
         qp_prod = qp_prod[0] if qp_prod else None
-    if isinstance(qp_modal, list):
-        qp_modal = qp_modal[0] if qp_modal else None
-    if qp_prod and str(qp_modal) != "1":
+    if qp_prod:
         st.session_state.produto_pesquisa = str(qp_prod)
         st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
+        # limpa a URL (pra não ficar preso)
         try:
             st.query_params.clear()
         except Exception:
@@ -2401,6 +2246,9 @@ st.radio(
 )
 
 nav = st.session_state.nav_tab
+
+if st.session_state.get("produto_modal_aberto") and st.session_state.get("produto_modal_nome"):
+    mostrar_modal_produto(st.session_state.get("produto_modal_nome"))
 
 # --------------------------------------------------
 # TELAS
@@ -2740,26 +2588,14 @@ if nav == "📊 Dashboard":
                 "LUCRO_FMT": "Lucro total (FIFO)",
             }
         )
-        # --- Tabela compacta (🔍 abre na Pesquisa) ---
-        headers = ["Produto", "Qtd", "Estoque", "Custo FIFO", "Preço médio", "Receita", "Lucro"]
-        rows = []
-        for _, r in tabela_top.iterrows():
-            prod = _safe(r.get("Produto", ""))
-            link = f"?produto={quote(prod)}"
-            prod_html = produto_cell_html(prod, before_lens=True)
-            rows.append(
-                "<tr>"
-                + _td(prod_html)
-                + _td(_safe(int(r.get("Qtd vendida", 0))))
-                + _td(_safe(int(r.get("Estoque atual", 0))))
-                + _td(_safe(r.get("Custo médio FIFO (unid.)", "")))
-                + _td(_safe(r.get("Preço médio venda (unid.)", "")))
-                + _td(_safe(r.get("Receita total", "")))
-                + _td(_safe(r.get("Lucro total (FIFO)", "")))
-                + "</tr>"
-            )
-
-        st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+        render_clickable_table(
+            tabela_top,
+            columns=["Produto", "Qtd vendida", "Estoque atual", "Custo médio FIFO (unid.)", "Preço médio venda (unid.)", "Receita total", "Lucro total (FIFO)"],
+            headers=["Produto", "Qtd", "Estoque", "Custo FIFO", "Preço médio", "Receita", "Lucro"],
+            widths=[4.2, 1.1, 1.1, 1.6, 1.6, 1.6, 1.6],
+            key_prefix="dash_top_vendidos",
+            product_col="Produto",
+        )
 
 
         # Top produtos com maior lucro total
@@ -2801,24 +2637,14 @@ if nav == "📊 Dashboard":
             }
         )
 
-        headers_lucro = ["Produto", "Qtd", "Estoque", "Lucro/unid.", "Receita", "Lucro total"]
-        rows_lucro = []
-        for _, r in tabela_lucro.iterrows():
-            prod = _safe(r.get("Produto", ""))
-            link = f"?produto={quote(prod)}"
-            prod_html = produto_cell_html(prod, before_lens=True)
-            rows_lucro.append(
-                "<tr>"
-                + _td(prod_html)
-                + _td(_safe(int(r.get("Qtd vendida", 0))))
-                + _td(_safe(int(r.get("Estoque atual", 0))))
-                + _td(_safe(r.get("Lucro por unid.", "")))
-                + _td(_safe(r.get("Receita total", "")))
-                + _td(_safe(r.get("Lucro total (FIFO)", "")))
-                + "</tr>"
-            )
-
-        st.markdown(_render_compact_table(rows_lucro, headers_lucro), unsafe_allow_html=True)
+        render_clickable_table(
+            tabela_lucro,
+            columns=["Produto", "Qtd vendida", "Estoque atual", "Lucro por unid.", "Receita total", "Lucro total (FIFO)"],
+            headers=["Produto", "Qtd", "Estoque", "Lucro/unid.", "Receita", "Lucro total"],
+            widths=[4.2, 1.1, 1.1, 1.6, 1.6, 1.6],
+            key_prefix="dash_top_lucro",
+            product_col="Produto",
+        )
 
     st.markdown("---")
 
@@ -2877,28 +2703,26 @@ if nav == "📊 Dashboard":
 
         df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
 
-        headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Custo un. (FIFO)', 'Valor', 'Lucro']
-        rows = []
-        for i, r in df_sales.iterrows():
-            prod = _safe(r.get('PRODUTO', ''))
-            link = f"?produto={quote(prod)}"
-            # target _self = mesma janela
-            prod_html = produto_cell_html(prod, before_lens=True)
-            rows.append(
-                '<tr>'
-                + _td(_safe(r.get('DATA_FMT', '')), 'muted')
-                + _td(prod_html)
-                + _td(_safe(r.get('CLIENTE', '')))
-                + _td(_safe(r.get('STATUS', '')), 'muted')
-                + _td(_safe(r.get('QTD_INT', 0)))
-                + _td(_safe(r.get('ESTOQUE_ATUAL', 0)), 'muted')
-                + _td(_safe(r.get('CUSTO_UNIT_FIFO_FMT', '')), 'muted')
-                + _td(_safe(r.get('VALOR_FMT', '')))
-                + _td(_safe(r.get('LUCRO_FMT', '')))
-                + '</tr>'
-            )
-
-        st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+        vendas_lista = df_sales.rename(columns={
+            'DATA_FMT': 'Data',
+            'PRODUTO': 'Produto',
+            'CLIENTE': 'Cliente',
+            'STATUS': 'Status',
+            'QTD_INT': 'Qtd',
+            'ESTOQUE_ATUAL': 'Estoque',
+            'CUSTO_UNIT_FIFO_FMT': 'Custo un. (FIFO)',
+            'VALOR_FMT': 'Valor',
+            'LUCRO_FMT': 'Lucro',
+        })[['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Custo un. (FIFO)', 'Valor', 'Lucro']]
+        render_clickable_table(
+            vendas_lista,
+            columns=['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Custo un. (FIFO)', 'Valor', 'Lucro'],
+            widths=[1.2, 4.3, 2.0, 1.3, 0.9, 1.0, 1.6, 1.4, 1.4],
+            key_prefix='dash_vendas',
+            product_col='Produto',
+            muted_cols={'Data', 'Status', 'Estoque', 'Custo un. (FIFO)'},
+            max_rows=220,
+        )
 
     else:
         st.info("Nenhuma venda no período selecionado.")
@@ -2973,7 +2797,252 @@ elif nav == "🔎 Pesquisa de produto":
 
         if prod_sel and prod_sel != "(selecione)":
             st.session_state.produto_pesquisa = prod_sel
-            render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map)
+            # --- Estoque + vendas agregadas ---
+            linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
+            if not linha_est.empty:
+                saldo = float(linha_est["SALDO_QTD"].iloc[0])
+                valor_estoque = float(linha_est["VALOR_ESTOQUE"].iloc[0])
+                custo_medio_fifo = float(linha_est["CUSTO_MEDIO_FIFO"].iloc[0])
+            else:
+                saldo = 0.0
+                valor_estoque = 0.0
+                custo_medio_fifo = 0.0
+
+            vendas_prod = df_fifo[df_fifo["PRODUTO"] == prod_sel].copy()
+            if not vendas_prod.empty:
+                qtd_total_vendida = vendas_prod["QTD"].sum()
+                receita_total = vendas_prod["VALOR_TOTAL"].sum()
+                preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
+                custo_total_hist = vendas_prod["CUSTO_TOTAL"].sum()
+                margem_media = (receita_total - custo_total_hist) / receita_total if receita_total else 0.0
+
+                vendas_prod_ord = vendas_prod.sort_values("DATA")
+                ultima = vendas_prod_ord.iloc[-1]
+                preco_unit_ultima = ultima["VALOR_TOTAL"] / ultima["QTD"] if ultima["QTD"] else 0.0
+                data_ultima = ultima["DATA"]
+            else:
+                qtd_total_vendida = 0.0
+                receita_total = 0.0
+                preco_medio_venda = 0.0
+                preco_unit_ultima = 0.0
+                data_ultima = None
+                margem_media = 0.0
+                custo_total_hist = 0.0
+
+            st.markdown(f"### 📦 {prod_sel}")
+
+            relacionados = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=12) if busca_produto else pd.DataFrame()
+            if not relacionados.empty:
+                relacionados = relacionados[relacionados["PRODUTO"] != prod_sel].head(5)
+                if not relacionados.empty:
+                    sugestoes = " • ".join([label_produto_busca(p, estoque_atual_map) for p in relacionados["PRODUTO"].tolist()])
+                    st.caption(f"Talvez você também esteja procurando: {sugestoes}")
+
+            cA, cB, cC = st.columns(3)
+            with cA:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Custo médio FIFO</div>
+  <div class="kpi-value">{format_reais(custo_medio_fifo)}</div>
+  <div class="kpi-pill">Baseado nas compras ENTREGUE restantes em estoque</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with cB:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Preço médio de venda</div>
+  <div class="kpi-value">{format_reais(preco_medio_venda)}</div>
+  <div class="kpi-pill">Receita total / quantidade vendida</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with cC:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Margem média histórica</div>
+  <div class="kpi-value">{margem_media*100:,.1f}%</div>
+  <div class="kpi-pill">({format_reais(receita_total)} − {format_reais(custo_total_hist)}) / receita</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+
+            cD, cE, cF = st.columns(3)
+            with cD:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Saldo em estoque</div>
+  <div class="kpi-value">{int(saldo)} unid.</div>
+  <div class="kpi-pill">Valor em estoque: {format_reais(valor_estoque)}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with cE:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Receita acumulada</div>
+  <div class="kpi-value">{format_reais(receita_total)}</div>
+  <div class="kpi-pill">Total vendido no histórico</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with cF:
+                st.markdown(
+                    f"""
+<div class="kpi-card">
+  <div class="kpi-label">Qtd total vendida</div>
+  <div class="kpi-value">{int(qtd_total_vendida)} unid.</div>
+  <div class="kpi-pill">Somatório das vendas registradas</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown("---")
+
+            # --- Última venda ---
+            st.markdown("#### 🕒 Última venda")
+            if data_ultima is not None and pd.notna(data_ultima):
+                st.write(
+                    f"- Data: **{data_ultima.strftime('%d/%m/%Y')}**  \n"
+                    f"- Preço unitário na venda: **{format_reais(preco_unit_ultima)}**  \n"
+                    f"- Quantidade nessa venda: **{int(ultima['QTD'])} unid.**  \n"
+                    f"- Valor total: **{format_reais(ultima['VALOR_TOTAL'])}**"
+                )
+            else:
+                st.write("Nenhuma venda registrada para esse produto ainda.")
+
+            st.markdown("---")
+            st.markdown("#### 📄 Histórico recente de vendas")
+
+            # --- Histórico de vendas do produto ---
+            if not vendas_prod.empty:
+                vendas_prod_hist = vendas_prod.copy()
+                vendas_prod_hist["CUSTO_UNIT"] = (
+                    vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
+                )
+                vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+
+                vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
+                vendas_prod_hist["DATA_ORD"] = vendas_prod_hist["DATA"]
+                vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
+                vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
+                vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
+                vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
+                vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_UNIT"].map(format_reais)
+
+                cols_hist = [
+                    "DATA",
+                    "CLIENTE",
+                    "STATUS",
+                    "QTD",
+                    "VALOR_TOTAL",
+                    "CUSTO_TOTAL",
+                    "CUSTO_UNIT",
+                    "LUCRO",
+                    "ESTOQUE_ATUAL",
+                    "MES_ANO",
+                ]
+                cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
+
+                st.dataframe(
+                    vendas_prod_hist.sort_values("DATA_ORD", ascending=False)[cols_hist].head(30),
+                    use_container_width=True,
+                )
+            else:
+                st.info("Sem histórico de vendas para esse produto.")
+
+            # --- Histórico de compras do produto ---
+            st.markdown("---")
+            st.markdown("#### 🧾 Histórico de compras (ENTREGUE)")
+
+            compras_prod = df_compras.copy()
+            compras_prod.columns = [c.strip().upper() for c in compras_prod.columns]
+
+            if "PRODUTO" in compras_prod.columns:
+                compras_prod = compras_prod[compras_prod["PRODUTO"] == prod_sel].copy()
+            else:
+                compras_prod = pd.DataFrame()
+
+            if not compras_prod.empty and "STATUS" in compras_prod.columns:
+                compras_prod = compras_prod[
+                    compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"
+                ].copy()
+
+            if compras_prod.empty:
+                st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
+            else:
+                if "DATA" in compras_prod.columns:
+                    compras_prod["DATA"] = pd.to_datetime(
+                        compras_prod["DATA"], errors="coerce", dayfirst=True
+                    )
+                    compras_prod = compras_prod.sort_values("DATA", ascending=False)
+                    compras_prod["DATA_FMT"] = compras_prod["DATA"].dt.strftime("%d/%m/%Y")
+                else:
+                    compras_prod["DATA_FMT"] = ""
+
+                if "QUANTIDADE" in compras_prod.columns:
+                    compras_prod["QUANTIDADE"] = compras_prod["QUANTIDADE"].apply(parse_money).astype(float)
+                else:
+                    compras_prod["QUANTIDADE"] = 0.0
+
+                if "CUSTO UNITÁRIO" in compras_prod.columns:
+                    compras_prod["CUSTO UNITÁRIO"] = compras_prod["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
+                else:
+                    compras_prod["CUSTO UNITÁRIO"] = 0.0
+
+                compras_prod["CUSTO_TOTAL"] = compras_prod.get("CUSTO_TOTAL", compras_prod["QUANTIDADE"] * compras_prod["CUSTO UNITÁRIO"])
+
+                compras_prod["CUSTO_UNIT_FMT"] = compras_prod["CUSTO UNITÁRIO"].map(format_reais)
+                compras_prod["CUSTO_TOTAL_FMT"] = compras_prod["CUSTO_TOTAL"].map(format_reais)
+
+                total_qtd_comp = compras_prod["QUANTIDADE"].sum()
+                total_valor_comp = compras_prod["CUSTO_TOTAL"].sum()
+
+                st.write(
+                    f"- Total comprado (histórico ENTREGUE): **{int(total_qtd_comp)} unid.**  "
+                    f"– **{format_reais(total_valor_comp)}**"
+                )
+
+                cols_comp = ["DATA_FMT", "STATUS", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"]
+                cols_comp = [c for c in cols_comp if c in compras_prod.columns]
+
+                st.dataframe(
+                    compras_prod[cols_comp].rename(
+                        columns={
+                            "DATA_FMT": "Data",
+                            "STATUS": "Status",
+                            "QUANTIDADE": "Qtd.",
+                            "CUSTO_UNIT_FMT": "Custo unitário",
+                            "CUSTO_TOTAL_FMT": "Custo total",
+                        }
+                    ).head(40),
+                    use_container_width=True,
+                )
+
+            st.markdown("---")
+            st.markdown("#### 💡 Leitura rápida")
+            st.markdown(
+                f"""
+- Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
+- Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
+- Agora a busca aceita palavra solta e também ajuda a achar família de produto sem exigir nome exato.
+- Olhando o **histórico de compras**, você enxerga:
+  - se está pagando mais caro ou mais barato ao longo do tempo,
+  - se vale negociar de novo com o fornecedor,
+  - e se não está enchendo estoque de um item que não gira tanto assim.
+                """
+            )
         else:
             st.info("Digite algo para filtrar e escolha um produto para ver os detalhes baseados no FIFO.")
 
@@ -3048,20 +3117,21 @@ elif nav == "⚠️ Alertas":
             df_vb["VALOR_ESTOQUE_FMT"] = df_vb["VALOR_ESTOQUE"].map(format_reais)
             df_vb = df_vb.sort_values(["SALDO_QTD", "QTD_VENDIDA_TOTAL"], ascending=[True, False])
 
-            headers = ["Produto", "Estoque atual", "Qtd vendida (histórico)", "Valor em estoque (FIFO)", "Abrir"]
-            rows = []
-            for _, r in df_vb.iterrows():
-                prod = r.get("PRODUTO", "")
-                rows.append(
-                    "<tr>"
-                    + _td(produto_cell_html(prod))
-                    + _td(_safe(r.get("SALDO_QTD", 0)))
-                    + _td(_safe(r.get("QTD_VENDIDA_TOTAL", 0)))
-                    + _td(_safe(r.get("VALOR_ESTOQUE_FMT", "")), "muted")
-                    + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
-                    + "</tr>"
-                )
-            st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+            alerta_vb = df_vb[["PRODUTO", "SALDO_QTD", "QTD_VENDIDA_TOTAL", "VALOR_ESTOQUE_FMT"]].rename(
+                columns={
+                    "PRODUTO": "Produto",
+                    "SALDO_QTD": "Estoque atual",
+                    "QTD_VENDIDA_TOTAL": "Qtd vendida (histórico)",
+                    "VALOR_ESTOQUE_FMT": "Valor em estoque (FIFO)",
+                }
+            )
+            render_clickable_table(
+                alerta_vb,
+                columns=["Produto", "Estoque atual", "Qtd vendida (histórico)", "Valor em estoque (FIFO)"],
+                widths=[4.5, 1.2, 1.6, 1.8],
+                key_prefix="alerta_vendendo_bem",
+                product_col="Produto",
+            )
 
         valor_estoque_total_geral = float(df_estoque["VALOR_ESTOQUE"].sum()) if (not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns) else 0.0
         st.markdown("### 🐌 Estoque parado há muito tempo")
@@ -3177,27 +3247,41 @@ elif nav == "⚠️ Alertas":
 </div>
 """, unsafe_allow_html=True)
 
-                    headers = ["Produto", "Estoque atual", "Valor parado (FIFO)", "Maior idade", "Idade média", "Lotes", "Faixa", "% do estoque", "Lote mais antigo", "Lote mais recente", "Abrir"]
-                    rows = []
-                    for _, r in parado_filtrado.iterrows():
-                        prod = r.get("PRODUTO", "")
-                        pct = float(r.get("PCT_ESTOQUE_TOTAL", 0) or 0)
-                        rows.append(
-                            "<tr>"
-                            + _td(produto_cell_html(prod))
-                            + _td(_safe(r.get("SALDO_QTD", 0)))
-                            + _td(_safe(r.get("VALOR_ESTOQUE_FMT", "")), "muted")
-                            + _td(_safe(r.get("DIAS_PARADO", 0)))
-                            + _td(_safe(r.get("DIAS_MEDIO_PONDERADO", 0)), "muted")
-                            + _td(_safe(r.get("LOTES_ABERTOS", 0)))
-                            + _td(_safe(r.get("FAIXA", "")))
-                            + _td(f"{pct:.1f}%", "muted")
-                            + _td(_safe(r.get("DATA_LOTE_ANTIGO_FMT", "")), "muted")
-                            + _td(_safe(r.get("DATA_LOTE_RECENTE_FMT", "")), "muted")
-                            + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
-                            + "</tr>"
-                        )
-                    st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+                    tabela_parado = parado_filtrado[
+                        [
+                            "PRODUTO",
+                            "SALDO_QTD",
+                            "VALOR_ESTOQUE_FMT",
+                            "DIAS_PARADO",
+                            "DIAS_MEDIO_PONDERADO",
+                            "LOTES_ABERTOS",
+                            "FAIXA",
+                            "PCT_ESTOQUE_TOTAL",
+                            "DATA_LOTE_ANTIGO_FMT",
+                            "DATA_LOTE_RECENTE_FMT",
+                        ]
+                    ].copy().rename(
+                        columns={
+                            "PRODUTO": "Produto",
+                            "SALDO_QTD": "Estoque atual",
+                            "VALOR_ESTOQUE_FMT": "Valor parado (FIFO)",
+                            "DIAS_PARADO": "Maior idade",
+                            "DIAS_MEDIO_PONDERADO": "Idade média",
+                            "LOTES_ABERTOS": "Lotes abertos",
+                            "FAIXA": "Faixa",
+                            "PCT_ESTOQUE_TOTAL": "% do estoque",
+                            "DATA_LOTE_ANTIGO_FMT": "Lote mais antigo",
+                            "DATA_LOTE_RECENTE_FMT": "Lote mais recente",
+                        }
+                    )
+                    tabela_parado["% do estoque"] = tabela_parado["% do estoque"].apply(lambda x: f"{float(x):.1f}%")
+                    render_clickable_table(
+                        tabela_parado,
+                        columns=["Produto", "Estoque atual", "Valor parado (FIFO)", "Maior idade", "Idade média", "Lotes abertos", "Faixa", "% do estoque", "Lote mais antigo", "Lote mais recente"],
+                        widths=[4.7, 1.2, 1.9, 1.2, 1.2, 1.2, 1.2, 1.3, 1.5, 1.5],
+                        key_prefix="alerta_parado",
+                        product_col="Produto",
+                    )
 
         # ----------------------------------------
         # PAINEL SAÚDE DA LOJA
@@ -3525,25 +3609,25 @@ A ordem olha quatro coisas ao mesmo tempo: o que vendeu, há quantos dias vendeu
             tabela["LEITURA_FMT"] = tabela["RESUMO_IA"].fillna("")
             tabela["PRIORIDADE_FMT"] = tabela["URGENCIA"].apply(lambda x: f"{float(x):.0f}/100")
 
-            headers = ["Ação sugerida", "Produto", "Prioridade", "Sugestão", "Estoque", "Cobertura", "Leitura da IA"]
-            rows = []
-            for _, r in tabela.iterrows():
-                prod = _safe(r.get("PRODUTO", ""))
-                link = f"?produto={quote(prod)}"
-                prod_html = produto_cell_html(prod, before_lens=True)
-                leitura_hover = f'<span class="hover-cell">{_mini_hover(_painel_resultado_text(r), icon="🧠")}<span class="muted">passar mouse</span></span>'
-                rows.append(
-                    "<tr>"
-                    + _td(_acao_badge(r.get("ACAO", "")))
-                    + _td(prod_html)
-                    + _td(_safe(r.get("PRIORIDADE_FMT", "")), "muted")
-                    + _td(_safe(r.get("QTD_RECOMENDADA", 0)))
-                    + _td(_safe(r.get("ESTOQUE_ATUAL", 0)))
-                    + _td(_safe(r.get("COBERTURA_DIAS_FMT", "")), "muted")
-                    + _td(leitura_hover, "muted")
-                    + "</tr>"
-                )
-            st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+            tabela_prioridade = tabela[["ACAO", "PRODUTO", "PRIORIDADE_FMT", "QTD_RECOMENDADA", "ESTOQUE_ATUAL", "COBERTURA_DIAS_FMT", "LEITURA_FMT"]].rename(
+                columns={
+                    "ACAO": "Ação sugerida",
+                    "PRODUTO": "Produto",
+                    "PRIORIDADE_FMT": "Prioridade",
+                    "QTD_RECOMENDADA": "Sugestão",
+                    "ESTOQUE_ATUAL": "Estoque",
+                    "COBERTURA_DIAS_FMT": "Cobertura",
+                    "LEITURA_FMT": "Leitura da IA",
+                }
+            )
+            render_clickable_table(
+                tabela_prioridade,
+                columns=["Ação sugerida", "Produto", "Prioridade", "Sugestão", "Estoque", "Cobertura", "Leitura da IA"],
+                widths=[1.8, 4.5, 1.1, 1.0, 1.0, 1.3, 4.0],
+                key_prefix="ia_prioridade",
+                product_col="Produto",
+                muted_cols={"Prioridade", "Cobertura"},
+            )
 
         st.markdown("---")
         st.markdown(
@@ -3580,52 +3664,20 @@ Aqui o sistema abre o raciocínio em português claro, para você bater o olho e
             detalhe["INTERVALO_FMT"] = detalhe["INTERVALO_ESPERADO"].apply(lambda x: "—" if pd.isna(x) else round(float(x), 1))
             detalhe["COBERTURA_FMT"] = detalhe["COBERTURA_DIAS"].apply(lambda x: "sem giro" if pd.isna(x) or float(x) >= 999 else f"{float(x):.1f} dias")
 
-            headers = ["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Motivo", "IA"]
-            rows = []
-            for _, r in detalhe.iterrows():
-                prod = _safe(r.get("PRODUTO", ""))
-                link = f"?produto={quote(prod)}"
-                prod_html = produto_cell_html(prod, before_lens=True)
-                motivo_hover = f'<span class="hover-cell">{_mini_hover(r.get("MOTIVO_IA", "Sem motivo disponível"), icon="⚠️")}<span class="muted">ver</span></span>'
-                resumo_hover = f'<span class="hover-cell">{_mini_hover(_painel_resultado_text(r), icon="🧠")}<span class="muted">ver</span></span>'
-                estoque_sug_html = (
-                    f'<div style="line-height:1.25">'
-                    f'<div><strong>{_safe(r.get("ESTOQUE_FMT", 0))}</strong> em estoque</div>'
-                    f'<div class="muted">sugestão: {_safe(r.get("QTD_FMT", 0))}</div>'
-                    f'</div>'
-                )
-                movimento_html = (
-                    f'<div style="line-height:1.25">'
-                    f'<div>30d: <strong>{_safe(r.get("V30_FMT", 0))}</strong></div>'
-                    f'<div class="muted">60d: {_safe(r.get("V60_FMT", 0))}</div>'
-                    f'</div>'
-                )
-                datas_html = (
-                    f'<div style="line-height:1.25">'
-                    f'<div>venda: <strong>{_safe(r.get("DIAS_VENDA_FMT", "—"))}</strong>d</div>'
-                    f'<div class="muted">compra: {_safe(r.get("DIAS_COMPRA_FMT", "—"))}d • parecido: {_safe(r.get("DIAS_SIMILAR_FMT", "—"))}d</div>'
-                    f'</div>'
-                )
-                ritmo_html = (
-                    f'<div style="line-height:1.25">'
-                    f'<div>médio: <strong>{_safe(r.get("INTERVALO_FMT", "—"))}</strong>d</div>'
-                    f'<div class="muted">cobertura: {_safe(r.get("COBERTURA_FMT", ""))}</div>'
-                    f'</div>'
-                )
-                rows.append(
-                    "<tr>"
-                    + _td(_acao_badge(r.get("ACAO", "")))
-                    + _td(prod_html)
-                    + _td(_safe(r.get("PRIORIDADE_FMT", "")), "muted")
-                    + _td(estoque_sug_html)
-                    + _td(movimento_html)
-                    + _td(datas_html, "muted")
-                    + _td(ritmo_html, "muted")
-                    + _td(motivo_hover, "muted")
-                    + _td(resumo_hover, "muted")
-                    + "</tr>"
-                )
-            st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+            detalhe_view = detalhe.copy()
+            detalhe_view["Est./Sug."] = detalhe_view.apply(lambda r: f"{int(r.get('ESTOQUE_FMT', 0))} em estoque • sugestão: {int(r.get('QTD_FMT', 0))}", axis=1)
+            detalhe_view["Movimento"] = detalhe_view.apply(lambda r: f"30d: {int(r.get('V30_FMT', 0))} • 60d: {int(r.get('V60_FMT', 0))}", axis=1)
+            detalhe_view["Datas"] = detalhe_view.apply(lambda r: f"venda: {r.get('DIAS_VENDA_FMT', '—')}d • compra: {r.get('DIAS_COMPRA_FMT', '—')}d • parecido: {r.get('DIAS_SIMILAR_FMT', '—')}d", axis=1)
+            detalhe_view["Ritmo"] = detalhe_view.apply(lambda r: f"médio: {r.get('INTERVALO_FMT', '—')}d • cobertura: {r.get('COBERTURA_FMT', '')}", axis=1)
+            detalhe_view = detalhe_view.rename(columns={"ACAO": "Ação", "PRODUTO": "Produto", "PRIORIDADE_FMT": "Prioridade", "MOTIVO_IA": "Motivo", "RESUMO_IA": "IA"})
+            render_clickable_table(
+                detalhe_view[["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Motivo", "IA"]],
+                columns=["Ação", "Produto", "Prioridade", "Est./Sug.", "Movimento", "Datas", "Ritmo", "Motivo", "IA"],
+                widths=[1.6, 4.5, 1.1, 2.2, 1.7, 2.4, 1.8, 3.0, 3.2],
+                key_prefix="ia_detalhe",
+                product_col="Produto",
+                muted_cols={"Prioridade", "Datas", "Ritmo"},
+            )
         else:
             st.info("Nada para detalhar com o filtro atual.")
 
@@ -3798,20 +3850,21 @@ Veja onde está indo o dinheiro das compras, em quantidade e valor.
 
                     top_comp["VALOR_COMP_FMT"] = top_comp["VALOR_COMP"].map(format_reais)
 
-                    headers = ["Produto", "Qtd comprada", "Valor em compras", "Estoque atual", "Abrir"]
-                    rows = []
-                    for _, r in top_comp.head(20).iterrows():
-                        prod = r.get("PRODUTO", "")
-                        rows.append(
-                            "<tr>"
-                            + _td(produto_cell_html(prod))
-                            + _td(int(round(float(r.get("QTD_COMP", 0) or 0))))
-                            + _td(_safe(r.get("VALOR_COMP_FMT", "")), "muted")
-                            + _td(int(round(float(r.get("ESTOQUE_ATUAL", 0) or 0))))
-                            + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
-                            + "</tr>"
-                        )
-                    st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
+                    top_comp_view = top_comp.rename(
+                        columns={
+                            "PRODUTO": "Produto",
+                            "QTD_COMP": "Qtd comprada",
+                            "VALOR_COMP_FMT": "Valor em compras",
+                            "ESTOQUE_ATUAL": "Estoque atual",
+                        }
+                    )[["Produto", "Qtd comprada", "Valor em compras", "Estoque atual"]].head(20)
+                    render_clickable_table(
+                        top_comp_view,
+                        columns=["Produto", "Qtd comprada", "Valor em compras", "Estoque atual"],
+                        widths=[4.8, 1.4, 1.9, 1.4],
+                        key_prefix="compras_top",
+                        product_col="Produto",
+                    )
                 else:
                     st.info("Não encontrei coluna 'PRODUTO' na aba de COMPRAS.")
 
@@ -3856,64 +3909,23 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                 cols_comp += ["QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT", "ESTOQUE_ATUAL", "MES_ANO"]
                 cols_comp = [c for c in cols_comp if c in dfc_view.columns]
 
-                dfc_compact = (
-                    dfc_view[cols_comp]
-                    .rename(
-                        columns={
-                            "DATA_FMT": "Data",
-                            "PRODUTO": "Produto",
-                            "STATUS": "Status",
-                            "QUANTIDADE": "Qtd",
-                            "CUSTO_UNIT_FMT": "Custo unitário",
-                            "CUSTO_TOTAL_FMT": "Custo total",
-                            "ESTOQUE_ATUAL": "Estoque atual",
-                            "MES_ANO": "Mês/ano",
-                        }
-                    )
-                    .sort_values("Data", ascending=False)
+                compras_detalhadas = dfc_view[cols_comp].rename(
+                    columns={
+                        "DATA_FMT": "Data",
+                        "PRODUTO": "Produto",
+                        "STATUS": "Status",
+                        "QUANTIDADE": "Qtd",
+                        "CUSTO_UNIT_FMT": "Custo unitário",
+                        "CUSTO_TOTAL_FMT": "Custo total",
+                        "ESTOQUE_ATUAL": "Estoque atual",
+                        "MES_ANO": "Mês/ano",
+                    }
+                ).sort_values("Data", ascending=False)
+                render_clickable_table(
+                    compras_detalhadas,
+                    columns=[c for c in ["Data", "Produto", "Status", "Qtd", "Custo unitário", "Custo total", "Estoque atual", "Mês/ano"] if c in compras_detalhadas.columns],
+                    widths=[1.2, 4.5, 1.2, 0.9, 1.6, 1.6, 1.2, 1.1],
+                    key_prefix="compras_detalhadas",
+                    product_col="Produto",
+                    muted_cols={"Data", "Status", "Estoque atual", "Mês/ano"},
                 )
-                headers = ["Data", "Produto", "Status", "Qtd", "Custo unitário", "Custo total", "Estoque atual", "Mês/ano", "Abrir"]
-                rows = []
-                for _, r in dfc_compact.head(200).iterrows():
-                    prod = r.get("Produto", "")
-                    rows.append(
-                        "<tr>"
-                        + _td(_safe(r.get("Data", "")), "muted")
-                        + _td(produto_cell_html(prod))
-                        + _td(_safe(r.get("Status", "")))
-                        + _td(_safe(r.get("Qtd", 0)))
-                        + _td(_safe(r.get("Custo unitário", "")), "muted")
-                        + _td(_safe(r.get("Custo total", "")), "muted")
-                        + _td(_safe(r.get("Estoque atual", 0)))
-                        + _td(_safe(r.get("Mês/ano", "")), "muted")
-                        + _td(criar_link_lupa(prod, title="Abrir detalhes do produto"))
-                        + "</tr>"
-                    )
-                st.markdown(_render_compact_table(rows, headers), unsafe_allow_html=True)
-                st.caption("Mostrando até 200 compras mais recentes nesta tabela compacta.")
-
-
-if False and st.session_state.get("modal_produto"):
-    prod_modal = st.session_state.get("modal_produto")
-
-    @st.dialog("🔎 Detalhes do produto", width="large")
-    def _abrir_modal_produto():
-        produtos_estoque = df_estoque["PRODUTO"].unique().tolist() if not df_estoque.empty else []
-        produtos_vendas = df_fifo["PRODUTO"].unique().tolist() if not df_fifo.empty else []
-        produtos_compras = df_compras["PRODUTO"].dropna().astype(str).unique().tolist() if "PRODUTO" in df_compras.columns else []
-        todos_produtos = sorted(set(produtos_estoque) | set(produtos_vendas) | set(produtos_compras))
-
-        st.markdown(
-            "<div class='section-sub'>Janela flutuante do produto. Aqui você vê o raio-x sem sair da página.</div>",
-            unsafe_allow_html=True,
-        )
-        render_product_details(prod_modal, prod_modal, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map)
-        if st.button("Fechar", key="fechar_modal_produto_btn", use_container_width=True):
-            st.session_state.modal_produto = None
-            try:
-                st.query_params.clear()
-            except Exception:
-                pass
-            st.rerun()
-
-    _abrir_modal_produto()
