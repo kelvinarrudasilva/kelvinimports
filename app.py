@@ -1271,7 +1271,8 @@ def inject_product_modal_js(product_payload):
         overlay.querySelector('.pm-close').addEventListener('click', function() {{ overlay.style.display = 'none'; }});
       }}
       window.parent.__productModalData = data;
-      window.parent.openProductModal = function(name) {{
+      window.__productModalData = data;
+      const openModalFn = function(name) {{
         const overlay = doc.getElementById('oai-product-modal-overlay');
         const body = doc.getElementById('oai-product-modal-body');
         body.innerHTML = (window.parent.__productModalData && window.parent.__productModalData[name]) ? window.parent.__productModalData[name] : '<div class="pm-head"><div class="pm-title">' + name + '</div><div class="pm-sub">Sem dados suficientes para montar o raio-x.</div></div>';
@@ -1326,7 +1327,12 @@ def _js_safe(s):
 def criar_link_lupa(produto, title="Abrir detalhes do produto"):
     prod = "" if produto is None else str(produto)
     prod_js = _js_safe(prod)
-    return f"<a class=\"lens\" href=\"javascript:void(0)\" onclick=\"if(window.openProductModal){{window.openProductModal({prod_js});}} return false;\" title=\"{_attr_safe(title)}\">🔍</a>"
+    title_attr = _attr_safe(title)
+    return (
+        f'<button type="button" class="lens lens-btn" '
+        f'onclick="(function(){{ var fn = window.openProductModal || (window.parent && window.parent.openProductModal) || (window.top && window.top.openProductModal); if (fn) fn({prod_js}); }})(); return false;" '
+        f'title="{title_attr}" aria-label="{title_attr}">🔍</button>'
+    )
 
 
 def produto_cell_html(produto, before_lens=False, title="Abrir detalhes do produto"):
