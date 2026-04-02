@@ -6,6 +6,8 @@ from urllib.parse import quote
 import re
 import unicodedata
 import html
+import json
+import streamlit.components.v1 as components
 from difflib import SequenceMatcher
 
 # --------------------------------------------------
@@ -1161,6 +1163,9 @@ if not df_estoque.empty and ("PRODUTO" in df_estoque.columns) and ("SALDO_QTD" i
 else:
     estoque_atual_map = {}
 
+product_modal_payload = build_modal_product_payload(df_fifo, df_estoque, df_compras, estoque_atual_map)
+inject_product_modal_js(product_modal_payload)
+
 def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
     out = df.copy()
     if col_produto in out.columns:
@@ -1170,6 +1175,115 @@ def add_estoque_atual(df, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL"):
     else:
         out[nome_col] = 0
     return out
+
+
+def build_modal_product_payload(df_fifo, df_estoque, df_compras, estoque_atual_map):
+    payload = {}
+    produtos = set()
+    if isinstance(df_fifo, pd.DataFrame) and not df_fifo.empty and "PRODUTO" in df_fifo.columns:
+        produtos |= set(df_fifo["PRODUTO"].dropna().astype(str).tolist())
+    if isinstance(df_estoque, pd.DataFrame) and not df_estoque.empty and "PRODUTO" in df_estoque.columns:
+        produtos |= set(df_estoque["PRODUTO"].dropna().astype(str).tolist())
+    if isinstance(df_compras, pd.DataFrame) and not df_compras.empty and "PRODUTO" in df_compras.columns:
+        produtos |= set(df_compras["PRODUTO"].dropna().astype(str).tolist())
+
+    compras = df_compras.copy() if isinstance(df_compras, pd.DataFrame) else pd.DataFrame()
+    if not compras.empty:
+        compras.columns = [str(c).strip().upper() for c in compras.columns]
+        compras = ensure_datetime_series(compras, "DATA")
+        compras["QUANTIDADE"] = compras.get("QUANTIDADE", 0).apply(parse_money).astype(float)
+        compras["CUSTO UNITÁRIO"] = compras.get("CUSTO UNITÁRIO", 0).apply(parse_money).astype(float)
+        if "STATUS" in compras.columns:
+            compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
+    vendas = df_fifo.copy() if isinstance(df_fifo, pd.DataFrame) else pd.DataFrame()
+    if not vendas.empty:
+        vendas = ensure_datetime_series(vendas, "DATA")
+        for c in ["QTD", "VALOR_TOTAL", "LUCRO", "CUSTO_TOTAL"]:
+            vendas[c] = vendas.get(c, 0).apply(parse_money).astype(float)
+
+    for prod in sorted(produtos):
+        v = vendas[vendas["PRODUTO"].astype(str) == prod].copy() if not vendas.empty and "PRODUTO" in vendas.columns else pd.DataFrame()
+        c = compras[compras["PRODUTO"].astype(str) == prod].copy() if not compras.empty and "PRODUTO" in compras.columns else pd.DataFrame()
+        qtd_vendida = float(v["QTD"].sum()) if not v.empty else 0.0
+        faturamento = float(v["VALOR_TOTAL"].sum()) if not v.empty else 0.0
+        lucro = float(v["LUCRO"].sum()) if not v.empty else 0.0
+        custo_total = float(v["CUSTO_TOTAL"].sum()) if not v.empty else 0.0
+        estoque = float(estoque_atual_map.get(prod, 0) or 0)
+        qtd_comprada = float(c["QUANTIDADE"].sum()) if not c.empty else 0.0
+        custo_medio_compra = (float((c["QUANTIDADE"] * c["CUSTO UNITÁRIO"]).sum()) / qtd_comprada) if qtd_comprada > 0 else 0.0
+        preco_medio_venda = (faturamento / qtd_vendida) if qtd_vendida > 0 else 0.0
+        margem = (lucro / faturamento * 100.0) if faturamento > 0 else 0.0
+        ultima_venda = pd.to_datetime(v["DATA"].max(), errors="coerce") if not v.empty else pd.NaT
+        ultima_compra = pd.to_datetime(c["DATA"].max(), errors="coerce") if not c.empty else pd.NaT
+        payload[prod] = f"""
+        <div class='pm-head'>
+          <div class='pm-title'>{html.escape(prod)}</div>
+          <div class='pm-sub'>Raio-x rápido sem sair da página.</div>
+        </div>
+        <div class='pm-grid'>
+          <div class='pm-card'><span>Estoque atual</span><strong>{int(round(estoque)) if float(estoque).is_integer() else round(estoque,2)}</strong></div>
+          <div class='pm-card'><span>Qtd vendida</span><strong>{int(round(qtd_vendida)) if float(qtd_vendida).is_integer() else round(qtd_vendida,2)}</strong></div>
+          <div class='pm-card'><span>Faturamento</span><strong>{format_reais(faturamento)}</strong></div>
+          <div class='pm-card'><span>Lucro</span><strong>{format_reais(lucro)}</strong></div>
+          <div class='pm-card'><span>Custo total FIFO</span><strong>{format_reais(custo_total)}</strong></div>
+          <div class='pm-card'><span>Preço médio venda</span><strong>{format_reais(preco_medio_venda)}</strong></div>
+          <div class='pm-card'><span>Custo médio compra</span><strong>{format_reais(custo_medio_compra)}</strong></div>
+          <div class='pm-card'><span>Margem</span><strong>{margem:.1f}%</strong></div>
+        </div>
+        <div class='pm-list'>
+          <div><b>Última venda:</b> {ultima_venda.strftime('%d/%m/%Y') if pd.notna(ultima_venda) else 'Sem registro'}</div>
+          <div><b>Última compra:</b> {ultima_compra.strftime('%d/%m/%Y') if pd.notna(ultima_compra) else 'Sem registro'}</div>
+          <div><b>Qtd comprada:</b> {int(round(qtd_comprada)) if float(qtd_comprada).is_integer() else round(qtd_comprada,2)}</div>
+        </div>
+        """
+    return payload
+
+
+def inject_product_modal_js(product_payload):
+    js_payload = json.dumps(product_payload, ensure_ascii=False)
+    components.html(f"""
+    <script>
+    (function() {{
+      const data = {js_payload};
+      const doc = window.parent.document;
+      if (!doc.getElementById('oai-product-modal-style')) {{
+        const style = doc.createElement('style');
+        style.id = 'oai-product-modal-style';
+        style.textContent = `
+          #oai-product-modal-overlay{{position:fixed;inset:0;background:rgba(3,6,12,.66);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:999999;}}
+          #oai-product-modal{{width:min(900px,92vw);max-height:84vh;overflow:auto;border-radius:24px;background:linear-gradient(180deg,#0b1017,#0f1722);border:1px solid rgba(148,163,184,.18);box-shadow:0 25px 80px rgba(0,0,0,.45);padding:18px 18px 16px;}}
+          .pm-top{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}}
+          .pm-close{{border:1px solid rgba(148,163,184,.18);background:#101826;color:#eef2f7;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;}}
+          .pm-head{{margin-bottom:12px;}}
+          .pm-title{{font-size:22px;font-weight:800;line-height:1.1;color:#eef2f7;}}
+          .pm-sub{{font-size:12px;color:#94a3b8;margin-top:4px;}}
+          .pm-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0;}}
+          .pm-card{{padding:14px;border-radius:18px;background:#0d1520;border:1px solid rgba(148,163,184,.12);}}
+          .pm-card span{{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;}}
+          .pm-card strong{{font-size:18px;color:#eef2f7;}}
+          .pm-list{{display:grid;gap:8px;color:#dbe3ef;font-size:14px;padding:4px 2px 2px;}}
+        `;
+        doc.head.appendChild(style);
+      }}
+      if (!doc.getElementById('oai-product-modal-overlay')) {{
+        const overlay = doc.createElement('div');
+        overlay.id = 'oai-product-modal-overlay';
+        overlay.innerHTML = `<div id="oai-product-modal"><div class="pm-top"><div style="font-weight:800;color:#eef2f7;">🔎 Detalhes do produto</div><button class="pm-close" type="button">Fechar</button></div><div id="oai-product-modal-body"></div></div>`;
+        doc.body.appendChild(overlay);
+        overlay.addEventListener('click', function(e) {{ if (e.target === overlay) overlay.style.display = 'none'; }});
+        overlay.querySelector('.pm-close').addEventListener('click', function() {{ overlay.style.display = 'none'; }});
+      }}
+      window.parent.__productModalData = data;
+      window.parent.openProductModal = function(name) {{
+        const overlay = doc.getElementById('oai-product-modal-overlay');
+        const body = doc.getElementById('oai-product-modal-body');
+        body.innerHTML = (window.parent.__productModalData && window.parent.__productModalData[name]) ? window.parent.__productModalData[name] : `<div class="pm-head"><div class="pm-title">${name}</div><div class="pm-sub">Sem dados suficientes para montar o raio-x.</div></div>`;
+        overlay.style.display = 'flex';
+      }};
+    }})();
+    </script>
+    """, height=0, width=0)
+
 
 def _render_compact_table(rows, headers):
     """Renderiza uma tabela HTML compacta com hover e links na coluna Produto."""
@@ -1203,17 +1317,23 @@ def _attr_safe(s):
 
 
 
+def _js_safe(s):
+    if s is None:
+        return ""
+    return json.dumps(str(s), ensure_ascii=False)
+
+
 def criar_link_lupa(produto, title="Abrir detalhes do produto"):
     prod = "" if produto is None else str(produto)
-    link = f"?produto={quote(prod)}&modal=1"
-    return f'<a class="lens" href="{link}" target="_self" title="{_attr_safe(title)}">🔍</a>'
+    prod_js = _js_safe(prod)
+    return f"<a class=\"lens\" href=\"javascript:void(0)\" onclick=\"if(window.openProductModal){{window.openProductModal({prod_js});}} return false;\" title=\"{_attr_safe(title)}\">🔍</a>"
 
 
 def produto_cell_html(produto, before_lens=False, title="Abrir detalhes do produto"):
     prod = "" if produto is None else str(produto)
     nome = _safe(prod)
     lupa = criar_link_lupa(prod, title=title)
-    return f'<div class="prodcell">{lupa}<span class="prod-name">{nome}</span></div>'
+    return f'<div class="prodcell"><span class="prod-name">{nome}</span>{lupa}</div>'
 
 
 def _hint_icon(text, icon="⚠️"):
@@ -2243,12 +2363,9 @@ try:
         qp_prod = qp_prod[0] if qp_prod else None
     if isinstance(qp_modal, list):
         qp_modal = qp_modal[0] if qp_modal else None
-    if qp_prod:
+    if qp_prod and str(qp_modal) != "1":
         st.session_state.produto_pesquisa = str(qp_prod)
-        if str(qp_modal) == "1":
-            st.session_state.modal_produto = str(qp_prod)
-        else:
-            st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
+        st.session_state["_nav_pending"] = "🔎 Pesquisa de produto"
         try:
             st.query_params.clear()
         except Exception:
@@ -3770,7 +3887,7 @@ Cada lançamento com data, produto, quantidade e custo — e o estoque atual do 
                 st.caption("Mostrando até 200 compras mais recentes nesta tabela compacta.")
 
 
-if st.session_state.get("modal_produto"):
+if False and st.session_state.get("modal_produto"):
     prod_modal = st.session_state.get("modal_produto")
 
     @st.dialog("🔎 Detalhes do produto", width="large")
