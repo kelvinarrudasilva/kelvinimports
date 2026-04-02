@@ -2795,7 +2795,7 @@ elif nav == "🔎 Pesquisa de produto":
     col_voltar, _ = st.columns([1, 5])
     with col_voltar:
         if st.button("← Voltar", key="btn_voltar_pesquisa"):
-            st.session_state.nav_tab = st.session_state.get("voltar_para_tab", "📊 Dashboard")
+            st.session_state["_nav_pending"] = st.session_state.get("voltar_para_tab", "📊 Dashboard")
             st.rerun()
 
     if df_fifo.empty and df_estoque.empty:
