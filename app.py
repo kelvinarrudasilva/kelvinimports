@@ -1992,6 +1992,7 @@ def classificar_reposicao(row, alvo_dias=30, lead_time=10, seguranca=0.20):
 
 
 def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_estoque, df_compras, estoque_atual_map):
+    modo_enxuto = st.session_state.get("modo_enxuto", True)
     linha_est = df_estoque[df_estoque["PRODUTO"] == prod_sel]
     if not linha_est.empty:
         saldo = float(linha_est["SALDO_QTD"].iloc[0])
@@ -2009,7 +2010,6 @@ def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_
         preco_medio_venda = receita_total / qtd_total_vendida if qtd_total_vendida else 0.0
         custo_total_hist = vendas_prod["CUSTO_TOTAL"].sum()
         margem_media = (receita_total - custo_total_hist) / receita_total if receita_total else 0.0
-
         vendas_prod_ord = vendas_prod.sort_values("DATA")
         ultima = vendas_prod_ord.iloc[-1]
         preco_unit_ultima = ultima["VALOR_TOTAL"] / ultima["QTD"] if ultima["QTD"] else 0.0
@@ -2032,198 +2032,119 @@ def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_
             sugestoes = " • ".join([label_produto_busca(p, estoque_atual_map) for p in relacionados["PRODUTO"].tolist()])
             st.caption(f"Talvez você também esteja procurando: {sugestoes}")
 
-    cA, cB, cC = st.columns(3)
-    with cA:
-        st.markdown(
-            f"""
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Estoque</div>
+  <div class="kpi-value">{int(saldo)} unid.</div>
+  <div class="kpi-pill">Valor: {format_reais(valor_estoque)}</div>
+</div>
+""", unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"""
+<div class="kpi-card">
+  <div class="kpi-label">Preço médio</div>
+  <div class="kpi-value">{format_reais(preco_medio_venda)}</div>
+  <div class="kpi-pill">Preço médio de venda</div>
+</div>
+""", unsafe_allow_html=True)
+    with c3:
+        st.markdown(f"""
 <div class="kpi-card">
   <div class="kpi-label">Custo médio FIFO</div>
   <div class="kpi-value">{format_reais(custo_medio_fifo)}</div>
-  <div class="kpi-pill">Baseado nas compras ENTREGUE restantes em estoque</div>
+  <div class="kpi-pill">Custo médio em estoque</div>
 </div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cB:
-        st.markdown(
-            f"""
+""", unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"""
 <div class="kpi-card">
-  <div class="kpi-label">Preço médio de venda</div>
-  <div class="kpi-value">{format_reais(preco_medio_venda)}</div>
-  <div class="kpi-pill">Receita total / quantidade vendida</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cC:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Margem média histórica</div>
+  <div class="kpi-label">Margem média</div>
   <div class="kpi-value">{margem_media*100:,.1f}%</div>
-  <div class="kpi-pill">({format_reais(receita_total)} − {format_reais(custo_total_hist)}) / receita</div>
+  <div class="kpi-pill">{int(qtd_total_vendida)} unid. vendidas</div>
 </div>
-""",
-            unsafe_allow_html=True,
-        )
+""", unsafe_allow_html=True)
 
-    cD, cE, cF = st.columns(3)
-    with cD:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Saldo em estoque</div>
-  <div class="kpi-value">{int(saldo)} unid.</div>
-  <div class="kpi-pill">Valor em estoque: {format_reais(valor_estoque)}</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cE:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Receita acumulada</div>
-  <div class="kpi-value">{format_reais(receita_total)}</div>
-  <div class="kpi-pill">Total vendido no histórico</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with cF:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Qtd total vendida</div>
-  <div class="kpi-value">{int(qtd_total_vendida)} unid.</div>
-  <div class="kpi-pill">Somatório das vendas registradas</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("---")
-    st.markdown("#### 🕒 Última venda")
     if data_ultima is not None and pd.notna(data_ultima):
-        st.write(
-            f"- Data: **{data_ultima.strftime('%d/%m/%Y')}**  \n"
-            f"- Preço unitário na venda: **{format_reais(preco_unit_ultima)}**  \n"
-            f"- Quantidade nessa venda: **{int(ultima['QTD'])} unid.**  \n"
-            f"- Valor total: **{format_reais(ultima['VALOR_TOTAL'])}**"
-        )
+        st.caption(f"Última venda em {data_ultima.strftime('%d/%m/%Y')} • preço unitário {format_reais(preco_unit_ultima)} • receita acumulada {format_reais(receita_total)}")
     else:
-        st.write("Nenhuma venda registrada para esse produto ainda.")
+        st.caption("Nenhuma venda registrada para esse produto ainda.")
 
-    st.markdown("---")
-    st.markdown("#### 📄 Histórico recente de vendas")
-
+    hist_vendas_view = pd.DataFrame()
     if not vendas_prod.empty:
         vendas_prod_hist = vendas_prod.copy()
-        vendas_prod_hist["CUSTO_UNIT"] = (
-            vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
-        )
+        vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
         vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
-
         vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
         vendas_prod_hist["DATA_ORD"] = vendas_prod_hist["DATA"]
         vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
         vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
-        vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
         vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
-        vendas_prod_hist["CUSTO_UNIT"] = vendas_prod_hist["CUSTO_UNIT"].map(format_reais)
-
-        cols_hist = [
-            "DATA", "CLIENTE", "STATUS", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL",
-            "CUSTO_UNIT", "LUCRO", "ESTOQUE_ATUAL", "MES_ANO",
-        ]
+        cols_hist = ["DATA", "CLIENTE", "STATUS", "QTD", "VALOR_TOTAL", "LUCRO", "ESTOQUE_ATUAL"]
         cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
-
-        st.dataframe(
-            vendas_prod_hist.sort_values("DATA_ORD", ascending=False)[cols_hist].head(30),
-            use_container_width=True,
-        )
-    else:
-        st.info("Sem histórico de vendas para esse produto.")
-
-    st.markdown("---")
-    st.markdown("#### 🧾 Histórico de compras (ENTREGUE)")
+        hist_vendas_view = vendas_prod_hist.sort_values("DATA_ORD", ascending=False)[cols_hist].head(15)
 
     compras_prod = df_compras.copy()
     compras_prod.columns = [c.strip().upper() for c in compras_prod.columns]
-
     if "PRODUTO" in compras_prod.columns:
         compras_prod = compras_prod[compras_prod["PRODUTO"] == prod_sel].copy()
     else:
         compras_prod = pd.DataFrame()
-
     if not compras_prod.empty and "STATUS" in compras_prod.columns:
-        compras_prod = compras_prod[
-            compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"
-        ].copy()
+        compras_prod = compras_prod[compras_prod["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
 
-    if compras_prod.empty:
-        st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
-    else:
+    hist_compra_view = pd.DataFrame()
+    total_qtd_comp = 0.0
+    total_valor_comp = 0.0
+    if not compras_prod.empty:
         if "DATA" in compras_prod.columns:
-            compras_prod["DATA"] = pd.to_datetime(
-                compras_prod["DATA"], errors="coerce", dayfirst=True
-            )
+            compras_prod["DATA"] = pd.to_datetime(compras_prod["DATA"], errors="coerce", dayfirst=True)
             compras_prod = compras_prod.sort_values("DATA", ascending=False)
             compras_prod["DATA_FMT"] = compras_prod["DATA"].dt.strftime("%d/%m/%Y")
         else:
             compras_prod["DATA_FMT"] = ""
-
         if "QUANTIDADE" in compras_prod.columns:
             compras_prod["QUANTIDADE"] = compras_prod["QUANTIDADE"].apply(parse_money).astype(float)
         else:
             compras_prod["QUANTIDADE"] = 0.0
-
         if "CUSTO UNITÁRIO" in compras_prod.columns:
             compras_prod["CUSTO UNITÁRIO"] = compras_prod["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
         else:
             compras_prod["CUSTO UNITÁRIO"] = 0.0
-
         compras_prod["CUSTO_TOTAL"] = compras_prod.get("CUSTO_TOTAL", compras_prod["QUANTIDADE"] * compras_prod["CUSTO UNITÁRIO"])
         compras_prod["CUSTO_UNIT_FMT"] = compras_prod["CUSTO UNITÁRIO"].map(format_reais)
         compras_prod["CUSTO_TOTAL_FMT"] = compras_prod["CUSTO_TOTAL"].map(format_reais)
-
         total_qtd_comp = compras_prod["QUANTIDADE"].sum()
         total_valor_comp = compras_prod["CUSTO_TOTAL"].sum()
+        hist_compra_view = compras_prod[[c for c in ["DATA_FMT", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"] if c in compras_prod.columns]].rename(columns={"DATA_FMT": "Data", "QUANTIDADE": "Qtd.", "CUSTO_UNIT_FMT": "Custo unitário", "CUSTO_TOTAL_FMT": "Custo total"}).head(15)
 
-        st.write(
-            f"- Total comprado (histórico ENTREGUE): **{int(total_qtd_comp)} unid.**  "
-            f"– **{format_reais(total_valor_comp)}**"
-        )
-
-        cols_comp = ["DATA_FMT", "STATUS", "QUANTIDADE", "CUSTO_UNIT_FMT", "CUSTO_TOTAL_FMT"]
-        cols_comp = [c for c in cols_comp if c in compras_prod.columns]
-
-        st.dataframe(
-            compras_prod[cols_comp].rename(
-                columns={
-                    "DATA_FMT": "Data",
-                    "STATUS": "Status",
-                    "QUANTIDADE": "Qtd.",
-                    "CUSTO_UNIT_FMT": "Custo unitário",
-                    "CUSTO_TOTAL_FMT": "Custo total",
-                }
-            ).head(40),
-            use_container_width=True,
-        )
-
-    st.markdown("---")
-    st.markdown("#### 💡 Leitura rápida")
-    st.markdown(
-        """
-- Se o **custo médio FIFO** está muito próximo do **preço médio de venda**, esse item merece atenção no preço ou na compra.
-- Se a **margem média** é boa, mas o estoque está baixo, é candidato forte para reposição.
-- Agora a busca aceita palavra solta e também ajuda a achar família de produto sem exigir nome exato.
-- Olhando o **histórico de compras**, você enxerga:
-  - se está pagando mais caro ou mais barato ao longo do tempo,
-  - se vale negociar de novo com o fornecedor,
-  - e se não está enchendo estoque de um item que não gira tanto assim.
-        """
-    )
+    if modo_enxuto:
+        with st.expander("Ver histórico de vendas", expanded=False):
+            if hist_vendas_view.empty:
+                st.info("Sem histórico de vendas para esse produto.")
+            else:
+                st.dataframe(hist_vendas_view, use_container_width=True)
+        with st.expander("Ver histórico de compras", expanded=False):
+            if hist_compra_view.empty:
+                st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
+            else:
+                st.caption(f"Total comprado: {int(total_qtd_comp)} unid. • {format_reais(total_valor_comp)}")
+                st.dataframe(hist_compra_view, use_container_width=True)
+    else:
+        st.markdown("---")
+        st.markdown("#### 📄 Histórico recente de vendas")
+        if hist_vendas_view.empty:
+            st.info("Sem histórico de vendas para esse produto.")
+        else:
+            st.dataframe(hist_vendas_view, use_container_width=True)
+        st.markdown("---")
+        st.markdown("#### 🧾 Histórico de compras (ENTREGUE)")
+        if hist_compra_view.empty:
+            st.info("Nenhuma compra ENTREGUE registrada para esse produto.")
+        else:
+            st.write(f"- Total comprado (histórico ENTREGUE): **{int(total_qtd_comp)} unid.**  – **{format_reais(total_valor_comp)}**")
+            st.dataframe(hist_compra_view, use_container_width=True)
 
 
 # --------------------------------------------------
@@ -2233,6 +2154,8 @@ if "nav_tab" not in st.session_state:
     st.session_state.nav_tab = "📊 Dashboard"
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
+if "modo_enxuto" not in st.session_state:
+    st.session_state.modo_enxuto = True
 
 # Se veio de um link da 🔍, abre a página normal de pesquisa e guarda de onde veio
 if "voltar_para_tab" not in st.session_state:
@@ -2278,6 +2201,13 @@ st.radio(
     horizontal=True,
     label_visibility="collapsed",
 )
+
+ctrl1, ctrl2 = st.columns([1, 5])
+with ctrl1:
+    st.toggle("Modo enxuto", key="modo_enxuto", help="Esconde detalhes menos importantes e deixa a tela mais limpa.")
+with ctrl2:
+    if st.session_state.get("modo_enxuto"):
+        st.caption("Modo enxuto ligado: detalhes longos ficam escondidos.")
 
 nav = st.session_state.nav_tab
 
@@ -2828,19 +2758,20 @@ elif nav == "🔎 Pesquisa de produto":
             qtd_com_estoque = int((resultado_busca["ESTOQUE"] > 0).sum())
             st.caption(f"{qtd_match} produto(s) encontrado(s) • {qtd_com_estoque} com estoque agora")
 
-            top_atalhos = resultado_busca.head(8)["PRODUTO"].tolist()
-            if top_atalhos:
-                st.markdown("**Achados mais prováveis**")
-                cols = st.columns(min(4, len(top_atalhos)))
-                escolhido_atalho = None
-                for i, prod in enumerate(top_atalhos):
-                    with cols[i % len(cols)]:
-                        estoque_txt = int(round(float(estoque_atual_map.get(prod, 0) or 0)))
-                        rotulo_btn = f"{prod[:34]}{'…' if len(prod) > 34 else ''} ({estoque_txt})"
-                        if st.button(rotulo_btn, key=f"atalho_busca_{i}", use_container_width=True):
-                            escolhido_atalho = prod
-                if escolhido_atalho:
-                    st.session_state.produto_pesquisa = escolhido_atalho
+            if not st.session_state.get("modo_enxuto", True):
+                top_atalhos = resultado_busca.head(8)["PRODUTO"].tolist()
+                if top_atalhos:
+                    st.markdown("**Achados mais prováveis**")
+                    cols = st.columns(min(4, len(top_atalhos)))
+                    escolhido_atalho = None
+                    for i, prod in enumerate(top_atalhos):
+                        with cols[i % len(cols)]:
+                            estoque_txt = int(round(float(estoque_atual_map.get(prod, 0) or 0)))
+                            rotulo_btn = f"{prod[:34]}{'…' if len(prod) > 34 else ''} ({estoque_txt})"
+                            if st.button(rotulo_btn, key=f"atalho_busca_{i}", use_container_width=True):
+                                escolhido_atalho = prod
+                    if escolhido_atalho:
+                        st.session_state.produto_pesquisa = escolhido_atalho
 
             opcoes_filtradas = resultado_busca["PRODUTO"].tolist()
             idx_default = 0
