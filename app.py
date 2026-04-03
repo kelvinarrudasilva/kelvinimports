@@ -1471,14 +1471,31 @@ def _score_busca_produto(produto, consulta):
 
 def buscar_produtos_relacionados(consulta, produtos, estoque_map, limite=80):
     produtos = list(produtos or [])
-    consulta_norm = normalize_name(consulta)
+    consulta_raw = "" if consulta is None else str(consulta).strip()
+    busca_exata = len(consulta_raw) >= 2 and consulta_raw.startswith('"') and consulta_raw.endswith('"')
+    consulta_base = consulta_raw[1:-1].strip() if busca_exata else consulta_raw
+    consulta_norm = normalize_name(consulta_base)
 
     resultados = []
     for prod in produtos:
         estoque = float(estoque_map.get(prod, 0) or 0)
-        score = _score_busca_produto(prod, consulta_norm) if consulta_norm else 0.0
-        if consulta_norm and score < 18:
-            continue
+        prod_norm = normalize_name(prod)
+
+        if busca_exata:
+            if not consulta_norm:
+                score = 0.0
+            elif consulta_norm in prod_norm:
+                score = 1000.0
+                if prod_norm.startswith(consulta_norm):
+                    score += 50.0
+                score += max(0.0, 25.0 - prod_norm.find(consulta_norm))
+            else:
+                continue
+        else:
+            score = _score_busca_produto(prod, consulta_norm) if consulta_norm else 0.0
+            if consulta_norm and score < 18:
+                continue
+
         resultados.append({
             'PRODUTO': prod,
             'ESTOQUE': estoque,
@@ -1486,7 +1503,7 @@ def buscar_produtos_relacionados(consulta, produtos, estoque_map, limite=80):
             'SCORE': score,
         })
 
-    if not resultados and consulta_norm:
+    if not resultados and consulta_norm and not busca_exata:
         for prod in produtos:
             estoque = float(estoque_map.get(prod, 0) or 0)
             resultados.append({
@@ -2810,22 +2827,19 @@ elif nav == "🔎 Pesquisa de produto":
         if st.session_state.get("produto_pesquisa"):
             busca_inicial = str(st.session_state.get("produto_pesquisa"))
 
-        busca_produto = st.text_input(
-            "Buscar produto",
-            value=busca_inicial if not st.session_state.get("busca_produto_digitada") else st.session_state.get("busca_produto_digitada", ""),
-            placeholder="Ex.: fone, cabo iphone, mouse, caixa de som...",
-            help="Pode digitar só um pedaço. A lista entende termos parecidos e joga os itens com estoque para cima.",
-            key="busca_produto_digitada",
-        )
+        c_busca, c_dica = st.columns([4.8, 2.2])
+        with c_busca:
+            busca_produto = st.text_input(
+                "Buscar produto",
+                value=busca_inicial if not st.session_state.get("busca_produto_digitada") else st.session_state.get("busca_produto_digitada", ""),
+                placeholder='Ex.: fone, cabo iphone, "fone kz"...',
+                help='Digite parte do nome para busca flexível. Use aspas para buscar a frase na mesma ordem, ex.: "fone kz".',
+                key="busca_produto_digitada",
+            )
+        with c_dica:
+            st.caption('Busca normal: fone kz • Exata com aspas: "fone kz"')
 
-        busca_limpa = (busca_produto or "").strip()
-        limite_busca = max(1000, len(todos_produtos)) if not busca_limpa else 120
-        resultado_busca = buscar_produtos_relacionados(
-            busca_produto,
-            todos_produtos,
-            estoque_atual_map,
-            limite=limite_busca,
-        )
+        resultado_busca = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=120)
 
         if resultado_busca.empty:
             st.warning("Nada apareceu nessa busca. Tenta uma palavra mais curta ou mais genérica.")
@@ -2833,19 +2847,7 @@ elif nav == "🔎 Pesquisa de produto":
         else:
             qtd_match = len(resultado_busca)
             qtd_com_estoque = int((resultado_busca["ESTOQUE"] > 0).sum())
-
-            if not busca_limpa:
-                soma_custo_encontrados = float(df_estoque["VALOR_ESTOQUE"].sum()) if not df_estoque.empty else 0.0
-            else:
-                produtos_com_estoque = resultado_busca.loc[resultado_busca["ESTOQUE"] > 0, "PRODUTO"].astype(str).tolist()
-                df_custos = df_estoque[df_estoque["PRODUTO"].astype(str).isin(produtos_com_estoque)].copy() if not df_estoque.empty else pd.DataFrame()
-                soma_custo_encontrados = float(df_custos["VALOR_ESTOQUE"].sum()) if not df_custos.empty else 0.0
-
-            st.caption(
-                f"{qtd_match} produto(s) encontrado(s) • "
-                f"{qtd_com_estoque} com estoque agora • "
-                f"Custo dos encontrados: {format_reais(soma_custo_encontrados)}"
-            )
+            st.caption(f"{qtd_match} produto(s) encontrado(s) • {qtd_com_estoque} com estoque agora")
 
             top_atalhos = resultado_busca.head(8)["PRODUTO"].tolist()
             if top_atalhos:
