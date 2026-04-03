@@ -2818,84 +2818,34 @@ elif nav == "🔎 Pesquisa de produto":
             key="busca_produto_digitada",
         )
 
-        resultado_busca = buscar_produtos_relacionados(busca_produto, todos_produtos, estoque_atual_map, limite=120)
+        busca_limpa = (busca_produto or "").strip()
+        limite_busca = max(1000, len(todos_produtos)) if not busca_limpa else 120
+        resultado_busca = buscar_produtos_relacionados(
+            busca_produto,
+            todos_produtos,
+            estoque_atual_map,
+            limite=limite_busca,
+        )
 
         if resultado_busca.empty:
             st.warning("Nada apareceu nessa busca. Tenta uma palavra mais curta ou mais genérica.")
             prod_sel = "(selecione)"
         else:
             qtd_match = len(resultado_busca)
-            resultado_com_estoque = resultado_busca[resultado_busca["ESTOQUE"] > 0].copy()
-            qtd_com_estoque = int(len(resultado_com_estoque))
+            qtd_com_estoque = int((resultado_busca["ESTOQUE"] > 0).sum())
 
-            produtos_encontrados = resultado_busca["PRODUTO"].astype(str).tolist()
-            produtos_com_estoque = resultado_com_estoque["PRODUTO"].astype(str).tolist()
-
-            estoque_match = df_estoque[df_estoque["PRODUTO"].astype(str).isin(produtos_com_estoque)].copy() if not df_estoque.empty else pd.DataFrame()
-            vendas_match = df_fifo[df_fifo["PRODUTO"].astype(str).isin(produtos_com_estoque)].copy() if not df_fifo.empty else pd.DataFrame()
-
-            custo_total_encontrado = float(estoque_match["VALOR_ESTOQUE"].sum()) if not estoque_match.empty and "VALOR_ESTOQUE" in estoque_match.columns else 0.0
-            qtd_unidades_encontradas = float(estoque_match["SALDO_QTD"].sum()) if not estoque_match.empty and "SALDO_QTD" in estoque_match.columns else 0.0
-
-            receita_total_hist_match = float(vendas_match["VALOR_TOTAL"].sum()) if not vendas_match.empty and "VALOR_TOTAL" in vendas_match.columns else 0.0
-            lucro_total_hist_match = float(vendas_match["LUCRO"].sum()) if not vendas_match.empty and "LUCRO" in vendas_match.columns else 0.0
-            qtd_total_hist_match = float(vendas_match["QTD"].sum()) if not vendas_match.empty and "QTD" in vendas_match.columns else 0.0
-            preco_medio_hist_match = receita_total_hist_match / qtd_total_hist_match if qtd_total_hist_match > 0 else 0.0
-            margem_hist_match = (lucro_total_hist_match / receita_total_hist_match) if receita_total_hist_match > 0 else 0.0
-
-            valor_potencial_venda = qtd_unidades_encontradas * preco_medio_hist_match
-            lucro_potencial = valor_potencial_venda - custo_total_encontrado
+            if not busca_limpa:
+                soma_custo_encontrados = float(df_estoque["VALOR_ESTOQUE"].sum()) if not df_estoque.empty else 0.0
+            else:
+                produtos_com_estoque = resultado_busca.loc[resultado_busca["ESTOQUE"] > 0, "PRODUTO"].astype(str).tolist()
+                df_custos = df_estoque[df_estoque["PRODUTO"].astype(str).isin(produtos_com_estoque)].copy() if not df_estoque.empty else pd.DataFrame()
+                soma_custo_encontrados = float(df_custos["VALOR_ESTOQUE"].sum()) if not df_custos.empty else 0.0
 
             st.caption(
-                f"{qtd_match} produto(s) encontrado(s) • {qtd_com_estoque} com estoque agora • "
-                f"Custo em estoque: {format_reais(custo_total_encontrado)}"
+                f"{qtd_match} produto(s) encontrado(s) • "
+                f"{qtd_com_estoque} com estoque agora • "
+                f"Custo dos encontrados: {format_reais(soma_custo_encontrados)}"
             )
-
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Custo dos encontrados</div>
-  <div class="kpi-value">{format_reais(custo_total_encontrado)}</div>
-  <div class="kpi-pill">Dinheiro travado nos itens encontrados que ainda têm estoque</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-            with c2:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Unidades encontradas</div>
-  <div class="kpi-value">{int(round(qtd_unidades_encontradas))}</div>
-  <div class="kpi-pill">Soma das unidades disponíveis entre os itens com estoque</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-            with c3:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Venda potencial</div>
-  <div class="kpi-value">{format_reais(valor_potencial_venda)}</div>
-  <div class="kpi-pill">Usa o preço médio histórico dos produtos encontrados</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-            with c4:
-                st.markdown(
-                    f"""
-<div class="kpi-card">
-  <div class="kpi-label">Lucro potencial</div>
-  <div class="kpi-value">{format_reais(lucro_potencial)}</div>
-  <div class="kpi-pill">Margem média histórica: {margem_hist_match*100:,.1f}%</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
 
             top_atalhos = resultado_busca.head(8)["PRODUTO"].tolist()
             if top_atalhos:
