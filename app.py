@@ -1529,6 +1529,88 @@ def label_produto_busca(produto, estoque_map):
     return f'{produto} — {status} ({qtd})'
 
 
+def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd.DataFrame) -> pd.DataFrame:
+    """Marca vendas que destravaram produto parado por muito tempo.
+
+    Regra principal: calcula quantos dias o produto ficou sem vender antes de cada venda
+    olhando a venda anterior do mesmo item. Para a primeira venda do item, usa a primeira
+    compra ENTREGUE como referência.
+    """
+    df_sales = ensure_df(df_sales).copy()
+    if df_sales.empty:
+        return df_sales
+
+    df_sales = ensure_datetime_series(df_sales, "DATA")
+    df_sales["PRODUTO"] = df_sales.get("PRODUTO", "").astype(str)
+    df_sales["DIAS_PARADO_ANTES_VENDA"] = pd.NA
+
+    compras = ensure_df(df_compras_raw).copy()
+    if not compras.empty:
+        compras.columns = [str(c).strip().upper() for c in compras.columns]
+        compras = ensure_datetime_series(compras, "DATA")
+        if "STATUS" in compras.columns:
+            compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
+        if "PRODUTO" in compras.columns:
+            primeira_compra_map = (
+                compras.dropna(subset=["DATA"])
+                .sort_values("DATA")
+                .groupby("PRODUTO")["DATA"]
+                .min()
+                .to_dict()
+            )
+        else:
+            primeira_compra_map = {}
+    else:
+        primeira_compra_map = {}
+
+    partes = []
+    for produto, grupo in df_sales.groupby("PRODUTO", sort=False, dropna=False):
+        g = grupo.sort_values("DATA").copy()
+        g["_prev_venda"] = g["DATA"].shift(1)
+        dias_prev = (g["DATA"] - g["_prev_venda"]).dt.days
+
+        primeira_compra = primeira_compra_map.get(str(produto))
+        if pd.notna(primeira_compra):
+            mask_sem_prev = g["_prev_venda"].isna() & g["DATA"].notna()
+            dias_prev.loc[mask_sem_prev] = (g.loc[mask_sem_prev, "DATA"] - primeira_compra).dt.days
+
+        g["DIAS_PARADO_ANTES_VENDA"] = dias_prev.round().astype("Int64")
+        partes.append(g.drop(columns=["_prev_venda"], errors="ignore"))
+
+    if not partes:
+        return df_sales
+
+    out = pd.concat(partes, axis=0).sort_index()
+
+    def _faixa(dias):
+        if pd.isna(dias):
+            return ""
+        dias = int(dias)
+        if dias >= 270:
+            return "🎉🎂🎊"
+        if dias >= 180:
+            return "🎉🎊"
+        if dias >= 90:
+            return "🎉"
+        return ""
+
+    def _legenda(dias):
+        if pd.isna(dias):
+            return ""
+        dias = int(dias)
+        if dias >= 270:
+            return f"destravou após {dias} dias parado — relíquia ressuscitada"
+        if dias >= 180:
+            return f"destravou após {dias} dias parado"
+        if dias >= 90:
+            return f"voltou a girar após {dias} dias parado"
+        return ""
+
+    out["EMOJI_GIRO_PARADO"] = out["DIAS_PARADO_ANTES_VENDA"].apply(_faixa)
+    out["GIRO_PARADO_LABEL"] = out["DIAS_PARADO_ANTES_VENDA"].apply(_legenda)
+    return out
+
+
 def _media_intervalo_em_dias(df_vendas_prod):
     if df_vendas_prod is None or df_vendas_prod.empty or "DATA" not in df_vendas_prod.columns:
         return np.nan
@@ -2740,6 +2822,7 @@ if nav == "📊 Dashboard":
 
         # DATA -> datetime antes de qualquer .dt
         df_sales = ensure_datetime_series(df_sales, 'DATA')
+        df_sales = enriquecer_vendas_com_giro_parado(df_sales, df_compras)
         df_sales['DATA_FMT'] = df_sales['DATA'].dt.strftime('%d/%m/%Y').fillna('')
 
         # numéricos
@@ -2771,16 +2854,41 @@ if nav == "📊 Dashboard":
 
         df_sales = df_sales.sort_values('DATA', ascending=False).head(220)
 
+        st.markdown(
+            f"""
+<div class="hint-row">
+  <span class="hint-chip">🎉 Venda que destravou item parado por 90+ dias {_hint_icon('Quando um produto volta a vender depois de pelo menos 90 dias sem giro, ele ganha emoji de festa na lista.')}</span>
+  <span class="hint-chip">🎉🎊 180+ dias {_hint_icon('Se estava parado há mais de 6 meses, o destaque sobe um nível.')}</span>
+  <span class="hint-chip">🎉🎂🎊 270+ dias {_hint_icon('Se passou de 9 meses sem vender, eu marquei ainda mais forte para gritar: saiu do túmulo.')}</span>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
         headers = ['Data', 'Produto', 'Cliente', 'Status', 'Qtd', 'Estoque', 'Custo un. (FIFO)', 'Valor', 'Lucro']
         rows = []
         for i, r in df_sales.iterrows():
             prod = _safe(r.get('PRODUTO', ''))
-            link = f"?produto={quote(prod)}"
-            # target _self = mesma janela
-            prod_html = produto_cell_html(prod, before_lens=True)
+            emoji_giro = _safe(r.get('EMOJI_GIRO_PARADO', ''))
+            giro_label = _safe(r.get('GIRO_PARADO_LABEL', ''))
+            dias_parado = r.get('DIAS_PARADO_ANTES_VENDA', pd.NA)
+            data_html = _safe(r.get('DATA_FMT', ''))
+            if emoji_giro:
+                title_data = giro_label or 'venda de item que ficou muito tempo parado'
+                if pd.notna(dias_parado):
+                    data_html = f"<span title='{_attr_safe(title_data)}'>{data_html} {emoji_giro}</span>"
+                else:
+                    data_html = f"<span title='{_attr_safe(title_data)}'>{data_html} {emoji_giro}</span>"
+
+            prod_base_html = produto_cell_html(prod, before_lens=True)
+            if emoji_giro:
+                prod_html = f"<div title='{_attr_safe(giro_label)}'>{prod_base_html}<div class='muted' style='font-size:11px;margin-top:4px;'>{emoji_giro} {_safe(giro_label)}</div></div>"
+            else:
+                prod_html = prod_base_html
+
             rows.append(
                 '<tr>'
-                + _td(_safe(r.get('DATA_FMT', '')), 'muted')
+                + _td(data_html, 'muted')
                 + _td(prod_html)
                 + _td(_safe(r.get('CLIENTE', '')))
                 + _td(_safe(r.get('STATUS', '')), 'muted')
