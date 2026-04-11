@@ -1532,10 +1532,10 @@ def label_produto_busca(produto, estoque_map):
 def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd.DataFrame) -> pd.DataFrame:
     """Marca vendas que destravaram produto parado por muito tempo.
 
-    Regra corrigida:
-    - compara cada venda com a venda anterior do mesmo produto dentro do histórico de vendas;
-    - usa normalização do nome do produto para não quebrar por maiúsculas, espaços ou acentos;
-    - só usa a primeira compra ENTREGUE como fallback quando for realmente a primeira venda.
+    Regra dura e sem inventar moda:
+    - calcula SOMENTE pela venda anterior real do mesmo produto;
+    - normaliza nome do produto para reduzir erro por acento, espaço ou caixa;
+    - NÃO usa compra como fallback, porque isso confunde "dias sem vender" com "dias desde a compra".
     """
     df_sales = ensure_df(df_sales).copy()
     if df_sales.empty:
@@ -1549,39 +1549,12 @@ def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd
     df_sales["PRODUTO_KEY"] = df_sales["PRODUTO"].apply(_produto_key)
     df_sales["DIAS_PARADO_ANTES_VENDA"] = pd.NA
 
-    compras = ensure_df(df_compras_raw).copy()
-    if not compras.empty:
-        compras.columns = [str(c).strip().upper() for c in compras.columns]
-        compras = ensure_datetime_series(compras, "DATA")
-        if "STATUS" in compras.columns:
-            compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
-        if "PRODUTO" in compras.columns:
-            compras["PRODUTO"] = compras["PRODUTO"].astype(str).str.strip()
-            compras["PRODUTO_KEY"] = compras["PRODUTO"].apply(_produto_key)
-            primeira_compra_map = (
-                compras.dropna(subset=["DATA"])
-                .sort_values("DATA")
-                .groupby("PRODUTO_KEY")["DATA"]
-                .min()
-                .to_dict()
-            )
-        else:
-            primeira_compra_map = {}
-    else:
-        primeira_compra_map = {}
-
     partes = []
     for _, grupo in df_sales.groupby("PRODUTO_KEY", sort=False, dropna=False):
         g = grupo.sort_values(["DATA", "PRODUTO"], kind="stable").copy()
         g["_prev_venda"] = g["DATA"].shift(1)
         dias_prev = (g["DATA"] - g["_prev_venda"]).dt.days
-
-        produto_key = g["PRODUTO_KEY"].iloc[0] if not g.empty else ""
-        primeira_compra = primeira_compra_map.get(produto_key)
-        if pd.notna(primeira_compra):
-            mask_sem_prev = g["_prev_venda"].isna() & g["DATA"].notna()
-            dias_prev.loc[mask_sem_prev] = (g.loc[mask_sem_prev, "DATA"] - primeira_compra).dt.days
-
+        dias_prev = dias_prev.where(g["_prev_venda"].notna(), pd.NA)
         g["DIAS_PARADO_ANTES_VENDA"] = dias_prev.round().astype("Int64")
         partes.append(g.drop(columns=["_prev_venda"], errors="ignore"))
 
@@ -1607,9 +1580,9 @@ def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd
             return ""
         dias = int(dias)
         if dias >= 270:
-            return f"destravou após {dias} dias sem vender — relíquia ressuscitada"
+            return f"sem vender por {dias} dias — relíquia ressuscitada"
         if dias >= 180:
-            return f"destravou após {dias} dias sem vender"
+            return f"sem vender por {dias} dias"
         if dias >= 90:
             return f"voltou a girar após {dias} dias sem vender"
         return ""
