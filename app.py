@@ -1532,16 +1532,21 @@ def label_produto_busca(produto, estoque_map):
 def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd.DataFrame) -> pd.DataFrame:
     """Marca vendas que destravaram produto parado por muito tempo.
 
-    Regra principal: calcula quantos dias o produto ficou sem vender antes de cada venda
-    olhando a venda anterior do mesmo item. Para a primeira venda do item, usa a primeira
-    compra ENTREGUE como referência.
+    Regra corrigida:
+    - compara cada venda com a venda anterior do mesmo produto dentro do histórico de vendas;
+    - usa normalização do nome do produto para não quebrar por maiúsculas, espaços ou acentos;
+    - só usa a primeira compra ENTREGUE como fallback quando for realmente a primeira venda.
     """
     df_sales = ensure_df(df_sales).copy()
     if df_sales.empty:
         return df_sales
 
+    def _produto_key(s):
+        return normalize_name(s)
+
     df_sales = ensure_datetime_series(df_sales, "DATA")
-    df_sales["PRODUTO"] = df_sales.get("PRODUTO", "").astype(str)
+    df_sales["PRODUTO"] = df_sales.get("PRODUTO", "").astype(str).str.strip()
+    df_sales["PRODUTO_KEY"] = df_sales["PRODUTO"].apply(_produto_key)
     df_sales["DIAS_PARADO_ANTES_VENDA"] = pd.NA
 
     compras = ensure_df(df_compras_raw).copy()
@@ -1551,10 +1556,12 @@ def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd
         if "STATUS" in compras.columns:
             compras = compras[compras["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
         if "PRODUTO" in compras.columns:
+            compras["PRODUTO"] = compras["PRODUTO"].astype(str).str.strip()
+            compras["PRODUTO_KEY"] = compras["PRODUTO"].apply(_produto_key)
             primeira_compra_map = (
                 compras.dropna(subset=["DATA"])
                 .sort_values("DATA")
-                .groupby("PRODUTO")["DATA"]
+                .groupby("PRODUTO_KEY")["DATA"]
                 .min()
                 .to_dict()
             )
@@ -1564,12 +1571,13 @@ def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd
         primeira_compra_map = {}
 
     partes = []
-    for produto, grupo in df_sales.groupby("PRODUTO", sort=False, dropna=False):
-        g = grupo.sort_values("DATA").copy()
+    for _, grupo in df_sales.groupby("PRODUTO_KEY", sort=False, dropna=False):
+        g = grupo.sort_values(["DATA", "PRODUTO"], kind="stable").copy()
         g["_prev_venda"] = g["DATA"].shift(1)
         dias_prev = (g["DATA"] - g["_prev_venda"]).dt.days
 
-        primeira_compra = primeira_compra_map.get(str(produto))
+        produto_key = g["PRODUTO_KEY"].iloc[0] if not g.empty else ""
+        primeira_compra = primeira_compra_map.get(produto_key)
         if pd.notna(primeira_compra):
             mask_sem_prev = g["_prev_venda"].isna() & g["DATA"].notna()
             dias_prev.loc[mask_sem_prev] = (g.loc[mask_sem_prev, "DATA"] - primeira_compra).dt.days
@@ -1578,7 +1586,7 @@ def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd
         partes.append(g.drop(columns=["_prev_venda"], errors="ignore"))
 
     if not partes:
-        return df_sales
+        return df_sales.drop(columns=["PRODUTO_KEY"], errors="ignore")
 
     out = pd.concat(partes, axis=0).sort_index()
 
@@ -1599,16 +1607,16 @@ def enriquecer_vendas_com_giro_parado(df_sales: pd.DataFrame, df_compras_raw: pd
             return ""
         dias = int(dias)
         if dias >= 270:
-            return f"destravou após {dias} dias parado — relíquia ressuscitada"
+            return f"destravou após {dias} dias sem vender — relíquia ressuscitada"
         if dias >= 180:
-            return f"destravou após {dias} dias parado"
+            return f"destravou após {dias} dias sem vender"
         if dias >= 90:
-            return f"voltou a girar após {dias} dias parado"
+            return f"voltou a girar após {dias} dias sem vender"
         return ""
 
     out["EMOJI_GIRO_PARADO"] = out["DIAS_PARADO_ANTES_VENDA"].apply(_faixa)
     out["GIRO_PARADO_LABEL"] = out["DIAS_PARADO_ANTES_VENDA"].apply(_legenda)
-    return out
+    return out.drop(columns=["PRODUTO_KEY"], errors="ignore")
 
 
 def _media_intervalo_em_dias(df_vendas_prod):
