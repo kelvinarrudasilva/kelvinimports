@@ -2201,10 +2201,15 @@ def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_
             vendas_prod_hist["CUSTO_TOTAL"] / vendas_prod_hist["QTD"].replace(0, pd.NA)
         )
         vendas_prod_hist = add_estoque_atual(vendas_prod_hist, col_produto="PRODUTO", nome_col="ESTOQUE_ATUAL")
+        vendas_prod_hist = enriquecer_vendas_com_giro_parado(vendas_prod_hist, df_compras)
 
         vendas_prod_hist = ensure_datetime_series(vendas_prod_hist, "DATA")
         vendas_prod_hist["DATA_ORD"] = vendas_prod_hist["DATA"]
-        vendas_prod_hist["DATA"] = vendas_prod_hist["DATA"].dt.strftime("%d/%m/%Y").fillna("")
+        vendas_prod_hist["DATA"] = vendas_prod_hist.apply(
+            lambda r: f"{r['DATA'].strftime('%d/%m/%Y')} {r.get('EMOJI_GIRO_PARADO', '')}".strip()
+            if pd.notna(r.get("DATA_ORD")) else "",
+            axis=1,
+        )
         vendas_prod_hist["VALOR_TOTAL"] = vendas_prod_hist["VALOR_TOTAL"].map(format_reais)
         vendas_prod_hist["CUSTO_TOTAL"] = vendas_prod_hist["CUSTO_TOTAL"].map(format_reais)
         vendas_prod_hist["LUCRO"] = vendas_prod_hist["LUCRO"].map(format_reais)
@@ -2212,7 +2217,7 @@ def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_
 
         cols_hist = [
             "DATA", "CLIENTE", "STATUS", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL",
-            "CUSTO_UNIT", "LUCRO", "ESTOQUE_ATUAL", "MES_ANO",
+            "CUSTO_UNIT", "LUCRO", "ESTOQUE_ATUAL", "MES_ANO", "GIRO_PARADO_LABEL",
         ]
         cols_hist = [c for c in cols_hist if c in vendas_prod_hist.columns]
 
@@ -2792,6 +2797,12 @@ if nav == "📊 Dashboard":
 
     df_fifo_view = df_fifo_filt.copy()
     if not df_fifo_view.empty:
+        # Calcula o giro parado no histórico completo e só depois aplica o filtro visual.
+        # Assim, uma venda de abril ainda consegue olhar a venda anterior de novembro.
+        df_sales_full = normalize_sales_like(df_fifo).copy()
+        df_sales_full = ensure_datetime_series(df_sales_full, 'DATA')
+        df_sales_full = enriquecer_vendas_com_giro_parado(df_sales_full, df_compras)
+
         # Lista compacta de vendas (🔍 abre o produto na Pesquisa)
         df_sales = normalize_sales_like(df_fifo_view).copy()
 
@@ -2803,7 +2814,23 @@ if nav == "📊 Dashboard":
 
         # DATA -> datetime antes de qualquer .dt
         df_sales = ensure_datetime_series(df_sales, 'DATA')
-        df_sales = enriquecer_vendas_com_giro_parado(df_sales, df_compras)
+
+        # puxa o emoji/legenda do histórico completo usando chaves estáveis da linha
+        _cols_merge = [c for c in ['DATA', 'PRODUTO', 'QTD', 'VALOR_TOTAL', 'STATUS', 'CLIENTE'] if c in df_sales.columns and c in df_sales_full.columns]
+        _cols_giro = _cols_merge + [c for c in ['DIAS_PARADO_ANTES_VENDA', 'EMOJI_GIRO_PARADO', 'GIRO_PARADO_LABEL'] if c in df_sales_full.columns]
+        if _cols_merge:
+            df_sales = df_sales.merge(
+                df_sales_full[_cols_giro],
+                on=_cols_merge,
+                how='left'
+            )
+        else:
+            df_sales = enriquecer_vendas_com_giro_parado(df_sales, df_compras)
+
+        for _col in ['DIAS_PARADO_ANTES_VENDA', 'EMOJI_GIRO_PARADO', 'GIRO_PARADO_LABEL']:
+            if _col not in df_sales.columns:
+                df_sales[_col] = pd.NA if _col == 'DIAS_PARADO_ANTES_VENDA' else ''
+
         df_sales['DATA_FMT'] = df_sales['DATA'].dt.strftime('%d/%m/%Y').fillna('')
 
         # numéricos
