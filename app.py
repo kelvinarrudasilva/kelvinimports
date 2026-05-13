@@ -19,8 +19,6 @@ st.set_page_config(
 
 # URL da sua planilha (gravado)
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b/export?format=xlsx"
-PLANILHA_ID = "1TsRjsfw1TVfeEWBBvhKvsGQ5YUCktn2b"
-ABA_VENDAS_NOME = "VENDAS"
 
 # custo unitário máximo plausível (acima disso é dado zoado)
 CUSTO_MAX_PLAUSIVEL = 500.0
@@ -739,24 +737,6 @@ div[role="radiogroup"]{
   }
 }
 
-
-
-/* ===== MELHORIAS LOJA: cards de ação e mobile ===== */
-.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px;margin:12px 0 18px 0;}
-.action-card{padding:15px 16px;border-radius:20px;background:linear-gradient(180deg,rgba(17,24,39,.96),rgba(10,15,22,.96));border:1px solid rgba(148,163,184,.14);box-shadow:0 12px 30px rgba(0,0,0,.22);}
-.action-card .title{font-size:13px;font-weight:800;color:#eef2ff;margin-bottom:5px;}
-.action-card .value{font-size:22px;font-weight:900;letter-spacing:-.03em;}
-.action-card .sub{font-size:12px;color:#94a3b8;line-height:1.35;margin-top:5px;}
-.todo-card{padding:13px 14px;border-radius:18px;border:1px solid rgba(148,163,184,.14);background:#0b1118;margin:8px 0;}
-.todo-card b{color:#f8fafc;}
-.todo-card .meta{font-size:12px;color:#94a3b8;margin-top:4px;}
-.todo-buy{border-left:4px solid #22c55e;}
-.todo-promo{border-left:4px solid #f59e0b;}
-.todo-risk{border-left:4px solid #ef4444;}
-.todo-price{border-left:4px solid #60a5fa;}
-.clean-box{padding:14px 16px;border-radius:18px;background:rgba(15,23,42,.58);border:1px solid rgba(148,163,184,.13);margin:10px 0;}
-@media(max-width:768px){.action-grid{grid-template-columns:1fr}.action-card .value{font-size:19px}.compact-grid td,.compact-grid th{padding:8px 9px!important;font-size:11px!important}}
-
 </style>
 """
 
@@ -990,18 +970,6 @@ def carregar_dados():
     return df_compras, df_vendas
 
 
-@st.cache_data
-def carregar_estoque_planilha():
-    """Lê a aba ESTOQUE original, onde ficam preço sugerido e estoque calculado no Excel/Sheets."""
-    try:
-        xls = pd.ExcelFile(URL_PLANILHA)
-        if "ESTOQUE" not in [str(x).upper() for x in xls.sheet_names]:
-            return pd.DataFrame()
-        return limpar_aba(xls, "ESTOQUE")
-    except Exception:
-        return pd.DataFrame()
-
-
 # --------------------------------------------------
 # FIFO
 # --------------------------------------------------
@@ -1227,7 +1195,6 @@ with col_btn:
         st.rerun()
 
 df_compras, df_vendas = carregar_dados()
-df_estoque_planilha = carregar_estoque_planilha()
 df_fifo, df_estoque = calcular_fifo(df_compras, df_vendas)
 df_lotes_fifo = calcular_lotes_remanescentes_fifo(df_compras, df_vendas)
 
@@ -2391,387 +2358,11 @@ def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_
     )
 
 
-
-
-# --------------------------------------------------
-# MELHORIAS LOJA: PAINEL DE AÇÃO, QUALIDADE E VENDAS
-# --------------------------------------------------
-def safe_num(v, default=0.0):
-    try:
-        if pd.isna(v):
-            return default
-        return float(v)
-    except Exception:
-        return default
-
-
-def preparar_base_vendas(df_fifo_base: pd.DataFrame) -> pd.DataFrame:
-    df = ensure_df(df_fifo_base).copy()
-    df = normalize_sales_like(df)
-    df = ensure_datetime_series(df, "DATA")
-    for col in ["QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "LUCRO"]:
-        if col not in df.columns:
-            df[col] = 0.0
-        df[col] = df[col].apply(parse_money).astype(float)
-    df["MARGEM_%"] = np.where(df["VALOR_TOTAL"] > 0, (df["LUCRO"] / df["VALOR_TOTAL"]) * 100, 0)
-    df["DATA_DIA"] = df["DATA"].dt.normalize()
-    df["SEMANA"] = df["DATA"].dt.to_period("W").astype(str)
-    df["MES_ANO"] = df["DATA"].dt.strftime("%Y-%m")
-    return df
-
-
-def diagnosticar_planilha(df_compras_base: pd.DataFrame, df_vendas_base: pd.DataFrame) -> pd.DataFrame:
-    linhas = []
-    for nome, df, obrig in [
-        ("COMPRAS", ensure_df(df_compras_base), ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO"]),
-        ("VENDAS", ensure_df(df_vendas_base), ["DATA", "PRODUTO", "QTD", "VALOR TOTAL", "STATUS", "CLIENTE"]),
-    ]:
-        cols = [str(c).strip().upper() for c in df.columns]
-        faltando = [c for c in obrig if c not in cols]
-        datas_invalidas = 0
-        if "DATA" in cols:
-            try:
-                col_real = df.columns[cols.index("DATA")]
-                datas_invalidas = int(pd.to_datetime(df[col_real], errors="coerce", dayfirst=True).isna().sum())
-            except Exception:
-                datas_invalidas = 0
-        linhas.append({
-            "ABA": nome,
-            "LINHAS": len(df),
-            "COLUNAS": len(df.columns),
-            "FALTANDO": ", ".join(faltando) if faltando else "OK",
-            "DATAS_INVÁLIDAS": datas_invalidas,
-        })
-    return pd.DataFrame(linhas)
-
-
-def montar_acao_do_dia(df_fifo_base, df_estoque_base, df_lotes_base, df_reposicao_base=None):
-    vendas = preparar_base_vendas(df_fifo_base)
-    estoque = ensure_df(df_estoque_base).copy()
-    lotes = ensure_df(df_lotes_base).copy()
-    hoje = pd.Timestamp.now().normalize()
-
-    cards = {}
-    cards["Faturamento 30d"] = format_reais(vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)]["VALOR_TOTAL"].sum())
-    cards["Lucro 30d"] = format_reais(vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)]["LUCRO"].sum())
-    cards["Itens vendidos 30d"] = int(vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)]["QTD"].sum())
-    if not estoque.empty and "VALOR_ESTOQUE" in estoque.columns:
-        cards["Dinheiro em estoque"] = format_reais(estoque["VALOR_ESTOQUE"].apply(parse_money).sum())
-    else:
-        cards["Dinheiro em estoque"] = format_reais(0)
-
-    tarefas = []
-
-    # Reposição: usa IA existente se disponível, senão calcula por vendas recentes sem estoque.
-    if isinstance(df_reposicao_base, pd.DataFrame) and not df_reposicao_base.empty:
-        rep = df_reposicao_base.copy()
-        col_acao = "ACAO" if "ACAO" in rep.columns else None
-        if col_acao:
-            comprar = rep[rep[col_acao].isin(["Comprar já", "Planejar compra", "Teste leve"])].copy()
-            if "PRIORIDADE" in comprar.columns:
-                comprar = comprar.sort_values("PRIORIDADE", ascending=False)
-            for _, r in comprar.head(6).iterrows():
-                produto = str(r.get("PRODUTO", ""))
-                acao = str(r.get(col_acao, "Repor"))
-                est = safe_num(r.get("ESTOQUE_ATUAL", 0))
-                sugestao = r.get("SUGESTAO_COMPRA", r.get("SUGESTAO", ""))
-                tarefas.append({"TIPO":"🟢 Comprar/repor", "PRODUTO":produto, "AÇÃO":acao, "MOTIVO":f"Estoque {int(est)}. Sugestão: {sugestao}", "CLASSE":"todo-buy"})
-
-    if not estoque.empty and "PRODUTO" in estoque.columns and not vendas.empty:
-        vendas30 = vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)].groupby("PRODUTO", as_index=False).agg(QTD30=("QTD","sum"), LUCRO30=("LUCRO","sum"), RECEITA30=("VALOR_TOTAL","sum"))
-        e = estoque.copy()
-        if "SALDO_QTD" in e.columns:
-            e["SALDO_QTD"] = e["SALDO_QTD"].apply(parse_money).astype(float)
-        else:
-            e["SALDO_QTD"] = 0
-        falta = vendas30.merge(e[["PRODUTO","SALDO_QTD"]], on="PRODUTO", how="left").fillna({"SALDO_QTD":0})
-        falta = falta[(falta["QTD30"] > 0) & (falta["SALDO_QTD"] <= 0)].sort_values(["LUCRO30","QTD30"], ascending=False)
-        for _, r in falta.head(5).iterrows():
-            tarefas.append({"TIPO":"🟢 Reposição urgente", "PRODUTO":r["PRODUTO"], "AÇÃO":"Comprar já", "MOTIVO":f"Vendeu {int(r['QTD30'])} un. nos últimos 30 dias e estoque está zerado.", "CLASSE":"todo-buy"})
-
-    # Promoção/queima: lote muito parado e com valor empatado.
-    if not lotes.empty and {"PRODUTO","QTD_REMANESCENTE","VALOR_LOTE","DIAS_PARADO_LOTE"}.issubset(lotes.columns):
-        l = lotes.copy()
-        l["QTD_REMANESCENTE"] = l["QTD_REMANESCENTE"].apply(parse_money).astype(float)
-        l["VALOR_LOTE"] = l["VALOR_LOTE"].apply(parse_money).astype(float)
-        l["DIAS_PARADO_LOTE"] = pd.to_numeric(l["DIAS_PARADO_LOTE"], errors="coerce").fillna(0)
-        parado = l.groupby("PRODUTO", as_index=False).agg(QTD=("QTD_REMANESCENTE","sum"), VALOR=("VALOR_LOTE","sum"), DIAS=("DIAS_PARADO_LOTE","max"))
-        parado = parado[(parado["QTD"] > 0) & (parado["DIAS"] >= 60)].sort_values(["DIAS","VALOR"], ascending=False)
-        for _, r in parado.head(6).iterrows():
-            tarefas.append({"TIPO":"🟠 Fazer promoção", "PRODUTO":r["PRODUTO"], "AÇÃO":"Queimar/impulsionar", "MOTIVO":f"{int(r['QTD'])} un. paradas; lote mais antigo com {int(r['DIAS'])} dias; {format_reais(r['VALOR'])} empatado.", "CLASSE":"todo-promo"})
-
-    # Preço/margem ruim.
-    if not vendas.empty:
-        margem = vendas.groupby("PRODUTO", as_index=False).agg(RECEITA=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), QTD=("QTD","sum"))
-        margem["MARGEM_%"] = np.where(margem["RECEITA"] > 0, margem["LUCRO"] / margem["RECEITA"] * 100, 0)
-        ruim = margem[(margem["QTD"] > 0) & (margem["MARGEM_%"] < 20)].sort_values("RECEITA", ascending=False)
-        for _, r in ruim.head(5).iterrows():
-            tarefas.append({"TIPO":"🔵 Rever preço", "PRODUTO":r["PRODUTO"], "AÇÃO":"Subir preço ou negociar custo", "MOTIVO":f"Margem média {r['MARGEM_%']:.1f}% em {int(r['QTD'])} un. vendidas.", "CLASSE":"todo-price"})
-
-    df_tarefas = pd.DataFrame(tarefas).drop_duplicates(subset=["TIPO","PRODUTO"], keep="first") if tarefas else pd.DataFrame(columns=["TIPO","PRODUTO","AÇÃO","MOTIVO","CLASSE"])
-    return cards, df_tarefas.head(20)
-
-
-def render_acao_cards(cards: dict):
-    itens = []
-    descr = {
-        "Faturamento 30d":"vendas recentes",
-        "Lucro 30d":"lucro real FIFO",
-        "Itens vendidos 30d":"unidades giradas",
-        "Dinheiro em estoque":"capital parado/ativo",
-    }
-    for k, v in cards.items():
-        itens.append(f'<div class="action-card"><div class="title">{_safe(k)}</div><div class="value">{_safe(v)}</div><div class="sub">{_safe(descr.get(k,""))}</div></div>')
-    st.markdown('<div class="action-grid">' + ''.join(itens) + '</div>', unsafe_allow_html=True)
-
-
-def render_tarefas_do_dia(df_tarefas: pd.DataFrame):
-    if df_tarefas.empty:
-        st.success("Nenhuma ação urgente encontrada hoje. Continue acompanhando as vendas e o estoque.")
-        return
-    for _, r in df_tarefas.iterrows():
-        produto = _safe(r.get("PRODUTO", ""))
-        tipo = _safe(r.get("TIPO", ""))
-        acao = _safe(r.get("AÇÃO", ""))
-        motivo = _safe(r.get("MOTIVO", ""))
-        classe = _safe(r.get("CLASSE", "todo-card"))
-        link = criar_link_lupa(produto, title="Abrir ficha do produto")
-        st.markdown(f'<div class="todo-card {classe}"><b>{tipo} — {produto}</b> {link}<div class="meta"><b>Ação:</b> {acao}<br><b>Motivo:</b> {motivo}</div></div>', unsafe_allow_html=True)
-
-
-def montar_resumo_vendas(df_fifo_base):
-    vendas = preparar_base_vendas(df_fifo_base)
-    if vendas.empty:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    por_dia = vendas.groupby("DATA_DIA", as_index=False).agg(FATURAMENTO=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), QTD=("QTD","sum"), VENDAS=("PRODUTO","count"))
-    por_produto = vendas.groupby("PRODUTO", as_index=False).agg(QTD=("QTD","sum"), FATURAMENTO=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), ULTIMA_VENDA=("DATA","max"))
-    por_produto["MARGEM_%"] = np.where(por_produto["FATURAMENTO"]>0, por_produto["LUCRO"]/por_produto["FATURAMENTO"]*100, 0)
-    por_cliente = vendas.groupby("CLIENTE", as_index=False).agg(FATURAMENTO=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), COMPRAS=("PRODUTO","count")) if "CLIENTE" in vendas.columns else pd.DataFrame()
-    return por_dia, por_produto, por_cliente
-
-
-# --------------------------------------------------
-# LANÇAMENTO DE VENDA PELO APP
-# --------------------------------------------------
-def _pick_col(df: pd.DataFrame, candidatos):
-    cols_norm = {str(c).strip().upper(): c for c in ensure_df(df).columns}
-    for c in candidatos:
-        if str(c).strip().upper() in cols_norm:
-            return cols_norm[str(c).strip().upper()]
-    return None
-
-
-def montar_catalogo_lancamento(df_estoque_planilha_base, df_estoque_fifo_base, df_fifo_base, df_compras_base):
-    """Monta uma base única para a tela de lançar venda, sem depender do Excel preencher fórmula."""
-    est_plan = ensure_df(df_estoque_planilha_base).copy()
-    est_fifo = ensure_df(df_estoque_fifo_base).copy()
-    vendas = preparar_base_vendas(df_fifo_base)
-    compras = ensure_df(df_compras_base).copy()
-
-    linhas = []
-
-    if not est_plan.empty:
-        col_prod = _pick_col(est_plan, ["PRODUTO", "ITEM", "DESCRICAO"])
-        col_qtd = _pick_col(est_plan, ["EM ESTOQUE", "ESTOQUE", "SALDO", "SALDO_QTD"])
-        col_custo = _pick_col(est_plan, ["MEDIA C. UNITARIO", "MÉDIA C. UNITÁRIO", "CUSTO MEDIO", "CUSTO MÉDIO", "CUSTO_MEDIO_FIFO"])
-        col_preco = _pick_col(est_plan, ["VALOR VENDA SUGERIDO", "PREÇO SUGERIDO", "PRECO SUGERIDO", "VALOR SUGERIDO"])
-        for _, r in est_plan.iterrows():
-            prod = str(r.get(col_prod, "")).strip() if col_prod else ""
-            if not prod or prod.lower() == "nan":
-                continue
-            linhas.append({
-                "PRODUTO": prod,
-                "ESTOQUE_ATUAL": parse_money(r.get(col_qtd, 0)) if col_qtd else 0,
-                "CUSTO_MEDIO": parse_money(r.get(col_custo, 0)) if col_custo else 0,
-                "PRECO_SUGERIDO": parse_money(r.get(col_preco, 0)) if col_preco else 0,
-                "ORIGEM": "ESTOQUE",
-            })
-
-    if not est_fifo.empty and "PRODUTO" in est_fifo.columns:
-        for _, r in est_fifo.iterrows():
-            prod = str(r.get("PRODUTO", "")).strip()
-            if not prod or prod.lower() == "nan":
-                continue
-            linhas.append({
-                "PRODUTO": prod,
-                "ESTOQUE_ATUAL": parse_money(r.get("SALDO_QTD", 0)),
-                "CUSTO_MEDIO": parse_money(r.get("CUSTO_MEDIO_FIFO", 0)),
-                "PRECO_SUGERIDO": 0,
-                "ORIGEM": "FIFO",
-            })
-
-    if not compras.empty and "PRODUTO" in compras.columns:
-        for prod in compras["PRODUTO"].dropna().astype(str).str.strip().unique().tolist():
-            if prod and prod.lower() != "nan":
-                linhas.append({"PRODUTO": prod, "ESTOQUE_ATUAL": 0, "CUSTO_MEDIO": 0, "PRECO_SUGERIDO": 0, "ORIGEM": "COMPRAS"})
-
-    if not vendas.empty and "PRODUTO" in vendas.columns:
-        for prod in vendas["PRODUTO"].dropna().astype(str).str.strip().unique().tolist():
-            if prod and prod.lower() != "nan":
-                linhas.append({"PRODUTO": prod, "ESTOQUE_ATUAL": 0, "CUSTO_MEDIO": 0, "PRECO_SUGERIDO": 0, "ORIGEM": "VENDAS"})
-
-    cat = pd.DataFrame(linhas)
-    if cat.empty:
-        return pd.DataFrame(columns=["PRODUTO", "ESTOQUE_ATUAL", "CUSTO_MEDIO", "PRECO_SUGERIDO", "PRECO_MEDIO_VENDA", "ULTIMA_VENDA"])
-
-    # Consolida priorizando valores positivos vindos da aba ESTOQUE/FIFO.
-    cat["ESTOQUE_ATUAL"] = cat["ESTOQUE_ATUAL"].apply(parse_money).astype(float)
-    cat["CUSTO_MEDIO"] = cat["CUSTO_MEDIO"].apply(parse_money).astype(float)
-    cat["PRECO_SUGERIDO"] = cat["PRECO_SUGERIDO"].apply(parse_money).astype(float)
-
-    agg = cat.groupby("PRODUTO", as_index=False).agg(
-        ESTOQUE_ATUAL=("ESTOQUE_ATUAL", "max"),
-        CUSTO_MEDIO=("CUSTO_MEDIO", "max"),
-        PRECO_SUGERIDO=("PRECO_SUGERIDO", "max"),
-    )
-
-    if not vendas.empty:
-        hist = vendas.groupby("PRODUTO", as_index=False).agg(
-            PRECO_MEDIO_VENDA=("VALOR_TOTAL", lambda x: float(x.sum()) / max(float(vendas.loc[x.index, "QTD"].sum()), 1)),
-            ULTIMA_VENDA=("DATA", "max"),
-            QTD_VENDIDA=("QTD", "sum"),
-        )
-        agg = agg.merge(hist, on="PRODUTO", how="left")
-    else:
-        agg["PRECO_MEDIO_VENDA"] = 0.0
-        agg["ULTIMA_VENDA"] = pd.NaT
-        agg["QTD_VENDIDA"] = 0.0
-
-    # Se não tiver preço sugerido na aba ESTOQUE, sugere com base no histórico; se não tiver histórico, usa custo x 2,5.
-    agg["PRECO_FINAL_SUGERIDO"] = agg["PRECO_SUGERIDO"]
-    agg.loc[agg["PRECO_FINAL_SUGERIDO"] <= 0, "PRECO_FINAL_SUGERIDO"] = agg.loc[agg["PRECO_FINAL_SUGERIDO"] <= 0, "PRECO_MEDIO_VENDA"].fillna(0)
-    mask_sem = agg["PRECO_FINAL_SUGERIDO"].fillna(0) <= 0
-    agg.loc[mask_sem, "PRECO_FINAL_SUGERIDO"] = agg.loc[mask_sem, "CUSTO_MEDIO"].fillna(0) * 2.5
-    return agg.sort_values(["ESTOQUE_ATUAL", "PRODUTO"], ascending=[False, True]).reset_index(drop=True)
-
-
-def preparar_linha_venda_para_planilha(data_venda, produto, qtd, valor_unit, status, cliente, obs=""):
-    qtd = float(qtd or 0)
-    valor_unit = float(valor_unit or 0)
-    valor_total = qtd * valor_unit
-    data_txt = pd.to_datetime(data_venda).strftime("%d/%m/%Y")
-    # Ordem real da sua aba VENDAS: coluna A vazia, DATA, PRODUTO, QTD, VALOR VENDA, VALOR TOTAL,
-    # as colunas de custo/lucro ficam para a planilha calcular quando existir fórmula.
-    return ["", data_txt, produto, qtd, valor_unit, valor_total, "", "", "", "", status, cliente, obs]
-
-
-def tentar_append_venda_google(row_values):
-    """Tenta gravar direto no Google Sheets. Se não tiver credencial no Streamlit, devolve instrução."""
-    try:
-        import gspread
-    except Exception as e:
-        return False, "Biblioteca gspread não instalada. Instale com: pip install gspread google-auth"
-
-    try:
-        if "gcp_service_account" not in st.secrets:
-            return False, "Credencial não configurada em st.secrets['gcp_service_account']."
-        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
-        sh = gc.open_by_key(PLANILHA_ID)
-        ws = sh.worksheet(ABA_VENDAS_NOME)
-        ws.append_row(row_values, value_input_option="USER_ENTERED")
-        return True, "Venda lançada no Google Sheets. Clique em Atualizar dados da planilha para recalcular o painel."
-    except Exception as e:
-        return False, f"Não consegui gravar no Google Sheets: {e}"
-
-
-def render_lancar_venda(df_estoque_planilha_base, df_estoque_fifo_base, df_fifo_base, df_compras_base):
-    st.markdown("""
-<div class="section-title">🛒 Lançar venda pelo app</div>
-<div class="section-sub">Aqui você não precisa digitar o produto na planilha. Escolha o item, o app puxa estoque, custo e preço sugerido, calcula o total e prepara a venda.</div>
-""", unsafe_allow_html=True)
-
-    cat = montar_catalogo_lancamento(df_estoque_planilha_base, df_estoque_fifo_base, df_fifo_base, df_compras_base)
-    if cat.empty:
-        st.error("Não encontrei produtos nas abas ESTOQUE, COMPRAS ou VENDAS.")
-        return
-
-    busca = st.text_input("Buscar produto", placeholder="Ex: JBL, fone, controle, k500...")
-    cat_view = cat.copy()
-    if busca.strip():
-        q = normalize_name(busca)
-        cat_view["_score"] = cat_view["PRODUTO"].apply(lambda p: _score_busca_produto(p, q))
-        cat_view = cat_view[cat_view["_score"] >= 18].sort_values(["_score", "ESTOQUE_ATUAL"], ascending=[False, False])
-    else:
-        cat_view = cat_view.sort_values(["ESTOQUE_ATUAL", "PRODUTO"], ascending=[False, True])
-
-    if cat_view.empty:
-        st.warning("Nenhum produto encontrado nessa busca.")
-        return
-
-    def _label_prod(prod):
-        row = cat[cat["PRODUTO"] == prod].iloc[0]
-        est = int(round(float(row.get("ESTOQUE_ATUAL", 0) or 0)))
-        preco = float(row.get("PRECO_FINAL_SUGERIDO", 0) or 0)
-        return f"{prod} — estoque {est} — sugerido {format_reais(preco)}"
-
-    produtos_opcoes = cat_view["PRODUTO"].head(120).tolist()
-    produto = st.selectbox("Produto", options=produtos_opcoes, format_func=_label_prod)
-    row = cat[cat["PRODUTO"] == produto].iloc[0]
-    estoque_disp = float(row.get("ESTOQUE_ATUAL", 0) or 0)
-    custo = float(row.get("CUSTO_MEDIO", 0) or 0)
-    preco_sug = float(row.get("PRECO_FINAL_SUGERIDO", 0) or 0)
-    ult = row.get("ULTIMA_VENDA")
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Estoque</div><div class="kpi-value">{int(round(estoque_disp))}</div><div class="kpi-pill">unidades disponíveis</div></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Custo médio</div><div class="kpi-value">{format_reais(custo)}</div><div class="kpi-pill">base estoque/FIFO</div></div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Preço sugerido</div><div class="kpi-value">{format_reais(preco_sug)}</div><div class="kpi-pill">puxado da aba estoque</div></div>', unsafe_allow_html=True)
-    with c4:
-        ult_txt = pd.to_datetime(ult).strftime("%d/%m/%Y") if pd.notna(ult) else "sem histórico"
-        st.markdown(f'<div class="kpi-card"><div class="kpi-label">Última venda</div><div class="kpi-value" style="font-size:18px">{ult_txt}</div><div class="kpi-pill">histórico do produto</div></div>', unsafe_allow_html=True)
-
-    with st.form("form_lancar_venda", clear_on_submit=False):
-        a, b, c = st.columns(3)
-        with a:
-            data_venda = st.date_input("Data da venda", value=pd.Timestamp.now().date())
-            qtd = st.number_input("Quantidade", min_value=1, max_value=999, value=1, step=1)
-        with b:
-            valor_unit = st.number_input("Valor de venda unitário", min_value=0.0, value=float(round(preco_sug, 2)), step=1.0, format="%.2f")
-            status = st.selectbox("Status", ["FATURADO", "PAGO", "A PRAZO", "PENDENTE", "CANCELADO"], index=0)
-        with c:
-            cliente = st.text_input("Cliente", placeholder="Nome do cliente")
-            obs = st.text_input("Observação", placeholder="Ex: Marketplace, Pix, entrega...")
-
-        valor_total = float(qtd) * float(valor_unit)
-        lucro_prev = valor_total - (float(qtd) * custo)
-        margem_prev = (lucro_prev / valor_total * 100) if valor_total else 0
-        st.markdown(f"**Total:** {format_reais(valor_total)}  |  **Lucro previsto:** {format_reais(lucro_prev)}  |  **Margem:** {margem_prev:.1f}%")
-
-        if estoque_disp <= 0:
-            st.warning("Atenção: esse produto aparece com estoque zerado. Confira antes de vender.")
-        elif qtd > estoque_disp:
-            st.warning(f"Atenção: você está vendendo {qtd}, mas o estoque calculado é {int(round(estoque_disp))}.")
-
-        salvar = st.form_submit_button("✅ Salvar venda")
-
-    if salvar:
-        linha = preparar_linha_venda_para_planilha(data_venda, produto, qtd, valor_unit, status, cliente, obs)
-        ok, msg = tentar_append_venda_google(linha)
-        if ok:
-            st.success(msg)
-            st.cache_data.clear()
-        else:
-            st.warning("Não gravei automaticamente ainda, mas deixei a linha pronta para colar na aba VENDAS.")
-            st.caption(msg)
-            st.code("\t".join([str(x) for x in linha]), language="text")
-            with st.expander("Como ativar gravação automática no Google Sheets"):
-                st.markdown("""
-1. Compartilhe sua planilha com o e-mail da conta de serviço do Google Cloud.
-2. No Streamlit, crie o segredo `gcp_service_account` com o JSON da conta de serviço.
-3. Instale as bibliotecas `gspread` e `google-auth`.
-4. Depois disso, o botão **Salvar venda** grava direto na aba VENDAS.
-
-Enquanto isso, a linha acima já sai na ordem certa para colar na sua planilha.
-""")
-
 # --------------------------------------------------
 # NAVEGAÇÃO (no lugar de st.tabs, pra permitir ir pra Pesquisa via 🔍)
 # --------------------------------------------------
 if "nav_tab" not in st.session_state:
-    st.session_state.nav_tab = "🚀 Ação do dia"
+    st.session_state.nav_tab = "📊 Dashboard"
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
 
@@ -2805,9 +2396,9 @@ if "_nav_pending" in st.session_state:
     st.session_state.nav_tab = st.session_state["_nav_pending"]
     del st.session_state["_nav_pending"]
 
-NAV_OPTS = ["🚀 Ação do dia", "🛒 Lançar venda", "📊 Dashboard", "💰 Vendas", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧠 IA de reposição", "🧾 Compras"]
+NAV_OPTS = ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧠 IA de reposição", "🧾 Compras"]
 if st.session_state.nav_tab not in NAV_OPTS:
-    st.session_state.nav_tab = "🚀 Ação do dia"
+    st.session_state.nav_tab = "📊 Dashboard"
 
 nav_index = NAV_OPTS.index(st.session_state.nav_tab)
 
@@ -2825,96 +2416,6 @@ nav = st.session_state.nav_tab
 # --------------------------------------------------
 # TELAS
 # --------------------------------------------------
-
-if nav == "🚀 Ação do dia":
-    st.markdown("""
-<div class="section-title">🚀 Ação do dia</div>
-<div class="section-sub">O que olhar primeiro para vender mais, não deixar dinheiro parado e comprar com mais segurança.</div>
-""", unsafe_allow_html=True)
-
-    try:
-        df_reposicao_tmp = build_reposicao_inteligente(df_fifo, df_estoque, df_compras)
-    except Exception:
-        df_reposicao_tmp = pd.DataFrame()
-
-    cards, df_tarefas = montar_acao_do_dia(df_fifo, df_estoque, df_lotes_fifo, df_reposicao_tmp)
-    render_acao_cards(cards)
-
-    st.markdown('<div class="section-title">✅ Lista prática para hoje</div>', unsafe_allow_html=True)
-    render_tarefas_do_dia(df_tarefas)
-
-    st.markdown('<div class="section-title">🧹 Saúde da planilha</div>', unsafe_allow_html=True)
-    diag = diagnosticar_planilha(df_compras, df_vendas)
-    st.dataframe(diag, use_container_width=True, hide_index=True)
-
-    st.markdown("""
-<div class="clean-box">
-<b>Como usar:</b> comece pelos produtos marcados como reposição urgente, depois faça promoção nos parados e revise preço dos itens com margem baixa. A lupa abre a ficha completa do produto.
-</div>
-""", unsafe_allow_html=True)
-
-elif nav == "🛒 Lançar venda":
-    render_lancar_venda(df_estoque_planilha, df_estoque, df_fifo, df_compras)
-
-elif nav == "💰 Vendas":
-    st.markdown("""
-<div class="section-title">💰 Central de vendas</div>
-<div class="section-sub">Resumo de vendas, clientes, margem e produtos que mais giram.</div>
-""", unsafe_allow_html=True)
-
-    vendas = preparar_base_vendas(df_fifo)
-    min_data = vendas["DATA"].min().date() if vendas["DATA"].notna().any() else pd.Timestamp.now().date()
-    max_data = vendas["DATA"].max().date() if vendas["DATA"].notna().any() else pd.Timestamp.now().date()
-    c1, c2, c3 = st.columns([1,1,2])
-    with c1:
-        data_ini = st.date_input("De", value=min_data)
-    with c2:
-        data_fim = st.date_input("Até", value=max_data)
-    with c3:
-        busca_venda = st.text_input("Buscar produto/cliente", value="", placeholder="Ex: JBL, controle, Maria...")
-
-    vf = vendas[(vendas["DATA"].dt.date >= data_ini) & (vendas["DATA"].dt.date <= data_fim)].copy()
-    if busca_venda.strip():
-        q = normalize_name(busca_venda)
-        vf = vf[vf.apply(lambda r: q in normalize_name(r.get("PRODUTO", "")) or q in normalize_name(r.get("CLIENTE", "")), axis=1)]
-
-    k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Faturamento</div><div class="kpi-value">{format_reais(vf["VALOR_TOTAL"].sum())}</div><div class="kpi-pill">período filtrado</div></div>', unsafe_allow_html=True)
-    with k2: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Lucro</div><div class="kpi-value">{format_reais(vf["LUCRO"].sum())}</div><div class="kpi-pill">FIFO real</div></div>', unsafe_allow_html=True)
-    with k3: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Qtd vendida</div><div class="kpi-value">{int(vf["QTD"].sum())}</div><div class="kpi-pill">unidades</div></div>', unsafe_allow_html=True)
-    ticket = vf["VALOR_TOTAL"].sum()/vf["QTD"].sum() if vf["QTD"].sum() else 0
-    with k4: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Ticket médio</div><div class="kpi-value">{format_reais(ticket)}</div><div class="kpi-pill">por unidade</div></div>', unsafe_allow_html=True)
-
-    por_dia, por_produto, por_cliente = montar_resumo_vendas(vf)
-    if not por_dia.empty:
-        fig = px.line(por_dia.sort_values("DATA_DIA"), x="DATA_DIA", y=["FATURAMENTO", "LUCRO"], markers=True, title="Faturamento x lucro por dia")
-        fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig, use_container_width=True)
-
-    cprod, ccli = st.columns(2)
-    with cprod:
-        st.markdown("### 🏆 Produtos que mais vendem")
-        show = por_produto.sort_values("FATURAMENTO", ascending=False).head(30).copy() if not por_produto.empty else pd.DataFrame()
-        if not show.empty:
-            show["FATURAMENTO"] = show["FATURAMENTO"].map(format_reais)
-            show["LUCRO"] = show["LUCRO"].map(format_reais)
-            show["MARGEM_%"] = show["MARGEM_%"].map(lambda x: f"{x:.1f}%")
-        st.dataframe(show, use_container_width=True, hide_index=True)
-    with ccli:
-        st.markdown("### 👤 Clientes")
-        showc = por_cliente.sort_values("FATURAMENTO", ascending=False).head(30).copy() if isinstance(por_cliente, pd.DataFrame) and not por_cliente.empty else pd.DataFrame()
-        if not showc.empty:
-            showc["FATURAMENTO"] = showc["FATURAMENTO"].map(format_reais)
-            showc["LUCRO"] = showc["LUCRO"].map(format_reais)
-        st.dataframe(showc, use_container_width=True, hide_index=True)
-
-    st.markdown("### 🧾 Vendas detalhadas")
-    detalhes = vf.sort_values("DATA", ascending=False).copy()
-    detalhes["DATA"] = detalhes["DATA"].dt.strftime("%d/%m/%Y")
-    for col in ["VALOR_TOTAL", "CUSTO_TOTAL", "LUCRO"]:
-        detalhes[col] = detalhes[col].map(format_reais)
-    st.dataframe(detalhes[[c for c in ["DATA","PRODUTO","CLIENTE","STATUS","QTD","VALOR_TOTAL","CUSTO_TOTAL","LUCRO"] if c in detalhes.columns]], use_container_width=True, hide_index=True)
-
 if nav == "📊 Dashboard":
 
     st.markdown(
