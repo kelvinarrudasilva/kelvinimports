@@ -737,6 +737,24 @@ div[role="radiogroup"]{
   }
 }
 
+
+
+/* ===== MELHORIAS LOJA: cards de ação e mobile ===== */
+.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px;margin:12px 0 18px 0;}
+.action-card{padding:15px 16px;border-radius:20px;background:linear-gradient(180deg,rgba(17,24,39,.96),rgba(10,15,22,.96));border:1px solid rgba(148,163,184,.14);box-shadow:0 12px 30px rgba(0,0,0,.22);}
+.action-card .title{font-size:13px;font-weight:800;color:#eef2ff;margin-bottom:5px;}
+.action-card .value{font-size:22px;font-weight:900;letter-spacing:-.03em;}
+.action-card .sub{font-size:12px;color:#94a3b8;line-height:1.35;margin-top:5px;}
+.todo-card{padding:13px 14px;border-radius:18px;border:1px solid rgba(148,163,184,.14);background:#0b1118;margin:8px 0;}
+.todo-card b{color:#f8fafc;}
+.todo-card .meta{font-size:12px;color:#94a3b8;margin-top:4px;}
+.todo-buy{border-left:4px solid #22c55e;}
+.todo-promo{border-left:4px solid #f59e0b;}
+.todo-risk{border-left:4px solid #ef4444;}
+.todo-price{border-left:4px solid #60a5fa;}
+.clean-box{padding:14px 16px;border-radius:18px;background:rgba(15,23,42,.58);border:1px solid rgba(148,163,184,.13);margin:10px 0;}
+@media(max-width:768px){.action-grid{grid-template-columns:1fr}.action-card .value{font-size:19px}.compact-grid td,.compact-grid th{padding:8px 9px!important;font-size:11px!important}}
+
 </style>
 """
 
@@ -2358,11 +2376,169 @@ def render_product_details(prod_sel, busca_produto, todos_produtos, df_fifo, df_
     )
 
 
+
+
+# --------------------------------------------------
+# MELHORIAS LOJA: PAINEL DE AÇÃO, QUALIDADE E VENDAS
+# --------------------------------------------------
+def safe_num(v, default=0.0):
+    try:
+        if pd.isna(v):
+            return default
+        return float(v)
+    except Exception:
+        return default
+
+
+def preparar_base_vendas(df_fifo_base: pd.DataFrame) -> pd.DataFrame:
+    df = ensure_df(df_fifo_base).copy()
+    df = normalize_sales_like(df)
+    df = ensure_datetime_series(df, "DATA")
+    for col in ["QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "LUCRO"]:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = df[col].apply(parse_money).astype(float)
+    df["MARGEM_%"] = np.where(df["VALOR_TOTAL"] > 0, (df["LUCRO"] / df["VALOR_TOTAL"]) * 100, 0)
+    df["DATA_DIA"] = df["DATA"].dt.normalize()
+    df["SEMANA"] = df["DATA"].dt.to_period("W").astype(str)
+    df["MES_ANO"] = df["DATA"].dt.strftime("%Y-%m")
+    return df
+
+
+def diagnosticar_planilha(df_compras_base: pd.DataFrame, df_vendas_base: pd.DataFrame) -> pd.DataFrame:
+    linhas = []
+    for nome, df, obrig in [
+        ("COMPRAS", ensure_df(df_compras_base), ["DATA", "PRODUTO", "STATUS", "QUANTIDADE", "CUSTO UNITÁRIO"]),
+        ("VENDAS", ensure_df(df_vendas_base), ["DATA", "PRODUTO", "QTD", "VALOR TOTAL", "STATUS", "CLIENTE"]),
+    ]:
+        cols = [str(c).strip().upper() for c in df.columns]
+        faltando = [c for c in obrig if c not in cols]
+        datas_invalidas = 0
+        if "DATA" in cols:
+            try:
+                col_real = df.columns[cols.index("DATA")]
+                datas_invalidas = int(pd.to_datetime(df[col_real], errors="coerce", dayfirst=True).isna().sum())
+            except Exception:
+                datas_invalidas = 0
+        linhas.append({
+            "ABA": nome,
+            "LINHAS": len(df),
+            "COLUNAS": len(df.columns),
+            "FALTANDO": ", ".join(faltando) if faltando else "OK",
+            "DATAS_INVÁLIDAS": datas_invalidas,
+        })
+    return pd.DataFrame(linhas)
+
+
+def montar_acao_do_dia(df_fifo_base, df_estoque_base, df_lotes_base, df_reposicao_base=None):
+    vendas = preparar_base_vendas(df_fifo_base)
+    estoque = ensure_df(df_estoque_base).copy()
+    lotes = ensure_df(df_lotes_base).copy()
+    hoje = pd.Timestamp.now().normalize()
+
+    cards = {}
+    cards["Faturamento 30d"] = format_reais(vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)]["VALOR_TOTAL"].sum())
+    cards["Lucro 30d"] = format_reais(vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)]["LUCRO"].sum())
+    cards["Itens vendidos 30d"] = int(vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)]["QTD"].sum())
+    if not estoque.empty and "VALOR_ESTOQUE" in estoque.columns:
+        cards["Dinheiro em estoque"] = format_reais(estoque["VALOR_ESTOQUE"].apply(parse_money).sum())
+    else:
+        cards["Dinheiro em estoque"] = format_reais(0)
+
+    tarefas = []
+
+    # Reposição: usa IA existente se disponível, senão calcula por vendas recentes sem estoque.
+    if isinstance(df_reposicao_base, pd.DataFrame) and not df_reposicao_base.empty:
+        rep = df_reposicao_base.copy()
+        col_acao = "ACAO" if "ACAO" in rep.columns else None
+        if col_acao:
+            comprar = rep[rep[col_acao].isin(["Comprar já", "Planejar compra", "Teste leve"])].copy()
+            if "PRIORIDADE" in comprar.columns:
+                comprar = comprar.sort_values("PRIORIDADE", ascending=False)
+            for _, r in comprar.head(6).iterrows():
+                produto = str(r.get("PRODUTO", ""))
+                acao = str(r.get(col_acao, "Repor"))
+                est = safe_num(r.get("ESTOQUE_ATUAL", 0))
+                sugestao = r.get("SUGESTAO_COMPRA", r.get("SUGESTAO", ""))
+                tarefas.append({"TIPO":"🟢 Comprar/repor", "PRODUTO":produto, "AÇÃO":acao, "MOTIVO":f"Estoque {int(est)}. Sugestão: {sugestao}", "CLASSE":"todo-buy"})
+
+    if not estoque.empty and "PRODUTO" in estoque.columns and not vendas.empty:
+        vendas30 = vendas[vendas["DATA"] >= hoje - pd.Timedelta(days=30)].groupby("PRODUTO", as_index=False).agg(QTD30=("QTD","sum"), LUCRO30=("LUCRO","sum"), RECEITA30=("VALOR_TOTAL","sum"))
+        e = estoque.copy()
+        if "SALDO_QTD" in e.columns:
+            e["SALDO_QTD"] = e["SALDO_QTD"].apply(parse_money).astype(float)
+        else:
+            e["SALDO_QTD"] = 0
+        falta = vendas30.merge(e[["PRODUTO","SALDO_QTD"]], on="PRODUTO", how="left").fillna({"SALDO_QTD":0})
+        falta = falta[(falta["QTD30"] > 0) & (falta["SALDO_QTD"] <= 0)].sort_values(["LUCRO30","QTD30"], ascending=False)
+        for _, r in falta.head(5).iterrows():
+            tarefas.append({"TIPO":"🟢 Reposição urgente", "PRODUTO":r["PRODUTO"], "AÇÃO":"Comprar já", "MOTIVO":f"Vendeu {int(r['QTD30'])} un. nos últimos 30 dias e estoque está zerado.", "CLASSE":"todo-buy"})
+
+    # Promoção/queima: lote muito parado e com valor empatado.
+    if not lotes.empty and {"PRODUTO","QTD_REMANESCENTE","VALOR_LOTE","DIAS_PARADO_LOTE"}.issubset(lotes.columns):
+        l = lotes.copy()
+        l["QTD_REMANESCENTE"] = l["QTD_REMANESCENTE"].apply(parse_money).astype(float)
+        l["VALOR_LOTE"] = l["VALOR_LOTE"].apply(parse_money).astype(float)
+        l["DIAS_PARADO_LOTE"] = pd.to_numeric(l["DIAS_PARADO_LOTE"], errors="coerce").fillna(0)
+        parado = l.groupby("PRODUTO", as_index=False).agg(QTD=("QTD_REMANESCENTE","sum"), VALOR=("VALOR_LOTE","sum"), DIAS=("DIAS_PARADO_LOTE","max"))
+        parado = parado[(parado["QTD"] > 0) & (parado["DIAS"] >= 60)].sort_values(["DIAS","VALOR"], ascending=False)
+        for _, r in parado.head(6).iterrows():
+            tarefas.append({"TIPO":"🟠 Fazer promoção", "PRODUTO":r["PRODUTO"], "AÇÃO":"Queimar/impulsionar", "MOTIVO":f"{int(r['QTD'])} un. paradas; lote mais antigo com {int(r['DIAS'])} dias; {format_reais(r['VALOR'])} empatado.", "CLASSE":"todo-promo"})
+
+    # Preço/margem ruim.
+    if not vendas.empty:
+        margem = vendas.groupby("PRODUTO", as_index=False).agg(RECEITA=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), QTD=("QTD","sum"))
+        margem["MARGEM_%"] = np.where(margem["RECEITA"] > 0, margem["LUCRO"] / margem["RECEITA"] * 100, 0)
+        ruim = margem[(margem["QTD"] > 0) & (margem["MARGEM_%"] < 20)].sort_values("RECEITA", ascending=False)
+        for _, r in ruim.head(5).iterrows():
+            tarefas.append({"TIPO":"🔵 Rever preço", "PRODUTO":r["PRODUTO"], "AÇÃO":"Subir preço ou negociar custo", "MOTIVO":f"Margem média {r['MARGEM_%']:.1f}% em {int(r['QTD'])} un. vendidas.", "CLASSE":"todo-price"})
+
+    df_tarefas = pd.DataFrame(tarefas).drop_duplicates(subset=["TIPO","PRODUTO"], keep="first") if tarefas else pd.DataFrame(columns=["TIPO","PRODUTO","AÇÃO","MOTIVO","CLASSE"])
+    return cards, df_tarefas.head(20)
+
+
+def render_acao_cards(cards: dict):
+    itens = []
+    descr = {
+        "Faturamento 30d":"vendas recentes",
+        "Lucro 30d":"lucro real FIFO",
+        "Itens vendidos 30d":"unidades giradas",
+        "Dinheiro em estoque":"capital parado/ativo",
+    }
+    for k, v in cards.items():
+        itens.append(f'<div class="action-card"><div class="title">{_safe(k)}</div><div class="value">{_safe(v)}</div><div class="sub">{_safe(descr.get(k,""))}</div></div>')
+    st.markdown('<div class="action-grid">' + ''.join(itens) + '</div>', unsafe_allow_html=True)
+
+
+def render_tarefas_do_dia(df_tarefas: pd.DataFrame):
+    if df_tarefas.empty:
+        st.success("Nenhuma ação urgente encontrada hoje. Continue acompanhando as vendas e o estoque.")
+        return
+    for _, r in df_tarefas.iterrows():
+        produto = _safe(r.get("PRODUTO", ""))
+        tipo = _safe(r.get("TIPO", ""))
+        acao = _safe(r.get("AÇÃO", ""))
+        motivo = _safe(r.get("MOTIVO", ""))
+        classe = _safe(r.get("CLASSE", "todo-card"))
+        link = criar_link_lupa(produto, title="Abrir ficha do produto")
+        st.markdown(f'<div class="todo-card {classe}"><b>{tipo} — {produto}</b> {link}<div class="meta"><b>Ação:</b> {acao}<br><b>Motivo:</b> {motivo}</div></div>', unsafe_allow_html=True)
+
+
+def montar_resumo_vendas(df_fifo_base):
+    vendas = preparar_base_vendas(df_fifo_base)
+    if vendas.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    por_dia = vendas.groupby("DATA_DIA", as_index=False).agg(FATURAMENTO=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), QTD=("QTD","sum"), VENDAS=("PRODUTO","count"))
+    por_produto = vendas.groupby("PRODUTO", as_index=False).agg(QTD=("QTD","sum"), FATURAMENTO=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), ULTIMA_VENDA=("DATA","max"))
+    por_produto["MARGEM_%"] = np.where(por_produto["FATURAMENTO"]>0, por_produto["LUCRO"]/por_produto["FATURAMENTO"]*100, 0)
+    por_cliente = vendas.groupby("CLIENTE", as_index=False).agg(FATURAMENTO=("VALOR_TOTAL","sum"), LUCRO=("LUCRO","sum"), COMPRAS=("PRODUTO","count")) if "CLIENTE" in vendas.columns else pd.DataFrame()
+    return por_dia, por_produto, por_cliente
+
 # --------------------------------------------------
 # NAVEGAÇÃO (no lugar de st.tabs, pra permitir ir pra Pesquisa via 🔍)
 # --------------------------------------------------
 if "nav_tab" not in st.session_state:
-    st.session_state.nav_tab = "📊 Dashboard"
+    st.session_state.nav_tab = "🚀 Ação do dia"
 if "produto_pesquisa" not in st.session_state:
     st.session_state.produto_pesquisa = None
 
@@ -2396,9 +2572,9 @@ if "_nav_pending" in st.session_state:
     st.session_state.nav_tab = st.session_state["_nav_pending"]
     del st.session_state["_nav_pending"]
 
-NAV_OPTS = ["📊 Dashboard", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧠 IA de reposição", "🧾 Compras"]
+NAV_OPTS = ["🚀 Ação do dia", "📊 Dashboard", "💰 Vendas", "🔎 Pesquisa de produto", "⚠️ Alertas", "🧠 IA de reposição", "🧾 Compras"]
 if st.session_state.nav_tab not in NAV_OPTS:
-    st.session_state.nav_tab = "📊 Dashboard"
+    st.session_state.nav_tab = "🚀 Ação do dia"
 
 nav_index = NAV_OPTS.index(st.session_state.nav_tab)
 
@@ -2416,6 +2592,93 @@ nav = st.session_state.nav_tab
 # --------------------------------------------------
 # TELAS
 # --------------------------------------------------
+
+if nav == "🚀 Ação do dia":
+    st.markdown("""
+<div class="section-title">🚀 Ação do dia</div>
+<div class="section-sub">O que olhar primeiro para vender mais, não deixar dinheiro parado e comprar com mais segurança.</div>
+""", unsafe_allow_html=True)
+
+    try:
+        df_reposicao_tmp = build_reposicao_inteligente(df_fifo, df_estoque, df_compras)
+    except Exception:
+        df_reposicao_tmp = pd.DataFrame()
+
+    cards, df_tarefas = montar_acao_do_dia(df_fifo, df_estoque, df_lotes_fifo, df_reposicao_tmp)
+    render_acao_cards(cards)
+
+    st.markdown('<div class="section-title">✅ Lista prática para hoje</div>', unsafe_allow_html=True)
+    render_tarefas_do_dia(df_tarefas)
+
+    st.markdown('<div class="section-title">🧹 Saúde da planilha</div>', unsafe_allow_html=True)
+    diag = diagnosticar_planilha(df_compras, df_vendas)
+    st.dataframe(diag, use_container_width=True, hide_index=True)
+
+    st.markdown("""
+<div class="clean-box">
+<b>Como usar:</b> comece pelos produtos marcados como reposição urgente, depois faça promoção nos parados e revise preço dos itens com margem baixa. A lupa abre a ficha completa do produto.
+</div>
+""", unsafe_allow_html=True)
+
+elif nav == "💰 Vendas":
+    st.markdown("""
+<div class="section-title">💰 Central de vendas</div>
+<div class="section-sub">Resumo de vendas, clientes, margem e produtos que mais giram.</div>
+""", unsafe_allow_html=True)
+
+    vendas = preparar_base_vendas(df_fifo)
+    min_data = vendas["DATA"].min().date() if vendas["DATA"].notna().any() else pd.Timestamp.now().date()
+    max_data = vendas["DATA"].max().date() if vendas["DATA"].notna().any() else pd.Timestamp.now().date()
+    c1, c2, c3 = st.columns([1,1,2])
+    with c1:
+        data_ini = st.date_input("De", value=min_data)
+    with c2:
+        data_fim = st.date_input("Até", value=max_data)
+    with c3:
+        busca_venda = st.text_input("Buscar produto/cliente", value="", placeholder="Ex: JBL, controle, Maria...")
+
+    vf = vendas[(vendas["DATA"].dt.date >= data_ini) & (vendas["DATA"].dt.date <= data_fim)].copy()
+    if busca_venda.strip():
+        q = normalize_name(busca_venda)
+        vf = vf[vf.apply(lambda r: q in normalize_name(r.get("PRODUTO", "")) or q in normalize_name(r.get("CLIENTE", "")), axis=1)]
+
+    k1,k2,k3,k4 = st.columns(4)
+    with k1: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Faturamento</div><div class="kpi-value">{format_reais(vf["VALOR_TOTAL"].sum())}</div><div class="kpi-pill">período filtrado</div></div>', unsafe_allow_html=True)
+    with k2: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Lucro</div><div class="kpi-value">{format_reais(vf["LUCRO"].sum())}</div><div class="kpi-pill">FIFO real</div></div>', unsafe_allow_html=True)
+    with k3: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Qtd vendida</div><div class="kpi-value">{int(vf["QTD"].sum())}</div><div class="kpi-pill">unidades</div></div>', unsafe_allow_html=True)
+    ticket = vf["VALOR_TOTAL"].sum()/vf["QTD"].sum() if vf["QTD"].sum() else 0
+    with k4: st.markdown(f'<div class="kpi-card"><div class="kpi-label">Ticket médio</div><div class="kpi-value">{format_reais(ticket)}</div><div class="kpi-pill">por unidade</div></div>', unsafe_allow_html=True)
+
+    por_dia, por_produto, por_cliente = montar_resumo_vendas(vf)
+    if not por_dia.empty:
+        fig = px.line(por_dia.sort_values("DATA_DIA"), x="DATA_DIA", y=["FATURAMENTO", "LUCRO"], markers=True, title="Faturamento x lucro por dia")
+        fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig, use_container_width=True)
+
+    cprod, ccli = st.columns(2)
+    with cprod:
+        st.markdown("### 🏆 Produtos que mais vendem")
+        show = por_produto.sort_values("FATURAMENTO", ascending=False).head(30).copy() if not por_produto.empty else pd.DataFrame()
+        if not show.empty:
+            show["FATURAMENTO"] = show["FATURAMENTO"].map(format_reais)
+            show["LUCRO"] = show["LUCRO"].map(format_reais)
+            show["MARGEM_%"] = show["MARGEM_%"].map(lambda x: f"{x:.1f}%")
+        st.dataframe(show, use_container_width=True, hide_index=True)
+    with ccli:
+        st.markdown("### 👤 Clientes")
+        showc = por_cliente.sort_values("FATURAMENTO", ascending=False).head(30).copy() if isinstance(por_cliente, pd.DataFrame) and not por_cliente.empty else pd.DataFrame()
+        if not showc.empty:
+            showc["FATURAMENTO"] = showc["FATURAMENTO"].map(format_reais)
+            showc["LUCRO"] = showc["LUCRO"].map(format_reais)
+        st.dataframe(showc, use_container_width=True, hide_index=True)
+
+    st.markdown("### 🧾 Vendas detalhadas")
+    detalhes = vf.sort_values("DATA", ascending=False).copy()
+    detalhes["DATA"] = detalhes["DATA"].dt.strftime("%d/%m/%Y")
+    for col in ["VALOR_TOTAL", "CUSTO_TOTAL", "LUCRO"]:
+        detalhes[col] = detalhes[col].map(format_reais)
+    st.dataframe(detalhes[[c for c in ["DATA","PRODUTO","CLIENTE","STATUS","QTD","VALOR_TOTAL","CUSTO_TOTAL","LUCRO"] if c in detalhes.columns]], use_container_width=True, hide_index=True)
+
 if nav == "📊 Dashboard":
 
     st.markdown(
