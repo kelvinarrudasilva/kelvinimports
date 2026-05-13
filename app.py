@@ -881,11 +881,28 @@ def normalize_sales_like(df: pd.DataFrame):
     return df
 
 
+def _norm_col(c):
+    """Normaliza cabeçalho da planilha sem deixar None/vazio virar NAN."""
+    if pd.isna(c):
+        return ""
+    s = str(c).strip().upper()
+    if s in ("", "NAN", "NONE"):
+        return ""
+    return s
+
+
 def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
-    # procura até 200 linhas
+    """Acha a linha do cabeçalho mesmo quando a coluna DATA está vazia.
+
+    Na sua aba VENDAS, a célula do cabeçalho da DATA está em branco,
+    mas a linha correta tem PRODUTO, QTD, VALOR TOTAL, STATUS e CLIENTE.
+    A versão antiga exigia a palavra DATA e caía para a linha 0, onde só existe
+    o título "VENDAS"; por isso todas as colunas viravam NAN.
+    """
     max_linhas = min(200, len(df_raw))
     for i in range(max_linhas):
-        linha = " ".join([str(x).upper() for x in df_raw.iloc[i].tolist()])
+        cols = [_norm_col(x) for x in df_raw.iloc[i].tolist()]
+        linha = " ".join([c for c in cols if c])
         if all(pal in linha for pal in must_have):
             return i
     return None
@@ -893,22 +910,54 @@ def detectar_linha_cabecalho(df_raw: pd.DataFrame, must_have):
 
 def limpar_aba(xls, nome_aba):
     df_raw = pd.read_excel(xls, sheet_name=nome_aba, header=None)
+    aba = nome_aba.upper().strip()
 
-    if nome_aba.upper() == "COMPRAS":
+    if aba == "COMPRAS":
+        # COMPRAS tem DATA escrita no cabeçalho.
         must_have = ["DATA", "PRODUTO", "STATUS", "QUANT", "CUSTO"]
-    elif nome_aba.upper() == "VENDAS":
-        must_have = ["DATA", "PRODUTO", "QTD", "VALOR", "STATUS", "CLIENTE"]
+    elif aba == "VENDAS":
+        # Na sua planilha, a célula da DATA na linha de cabeçalho está em branco.
+        # Então NÃO podemos exigir DATA para encontrar a linha correta.
+        must_have = ["PRODUTO", "QTD", "VALOR", "STATUS", "CLIENTE"]
     else:
-        must_have = ["DATA", "PRODUTO"]
+        must_have = ["PRODUTO"]
 
     linha_header = detectar_linha_cabecalho(df_raw, must_have)
     if linha_header is None:
-        linha_header = 0
+        st.error(f"Não encontrei o cabeçalho da aba {nome_aba}. Verifique se a linha contém: {must_have}")
+        st.stop()
 
-    cabecalho = df_raw.iloc[linha_header]
+    cabecalho = [_norm_col(c) for c in df_raw.iloc[linha_header].tolist()]
+
+    # Correção específica do seu arquivo: em VENDAS, a primeira coluna útil
+    # antes de PRODUTO é a DATA, mas o cabeçalho está vazio.
+    if aba == "VENDAS" and "PRODUTO" in cabecalho:
+        idx_produto = cabecalho.index("PRODUTO")
+        for j in range(idx_produto - 1, -1, -1):
+            if cabecalho[j] == "":
+                cabecalho[j] = "DATA"
+                break
+
+    # Remove colunas totalmente vazias antes de aplicar os nomes.
     df = df_raw.iloc[linha_header + 1 :].copy()
-    df.columns = [str(c).strip().upper() for c in cabecalho]
-    df = df.loc[:, ~df.isna().all()]
+    keep = ~df.isna().all(axis=0)
+    df = df.loc[:, keep]
+    cabecalho = [c for c, k in zip(cabecalho, keep.tolist()) if k]
+
+    # Evita nomes vazios/duplicados no pandas.
+    vistos = {}
+    nomes = []
+    for pos, c in enumerate(cabecalho):
+        if not c:
+            c = f"COLUNA_{pos+1}"
+        if c in vistos:
+            vistos[c] += 1
+            c = f"{c}_{vistos[c]}"
+        else:
+            vistos[c] = 1
+        nomes.append(c)
+
+    df.columns = nomes
     df = df.dropna(how="all").reset_index(drop=True)
     return df
 
