@@ -810,6 +810,36 @@ def format_reais(v):
     return f"R$ {s}"
 
 
+
+
+def calcular_saldo_a_receber(row):
+    """Saldo real do fiado. RESTANTE vazio = deve VALOR_TOTAL; preenchido = deve RESTANTE."""
+    valor_total = parse_money(row.get("VALOR_TOTAL", row.get("VALOR TOTAL", 0)))
+    restante_raw = row.get("RESTANTE", "")
+    if pd.isna(restante_raw) or str(restante_raw).strip() == "":
+        return float(valor_total)
+    return max(0.0, float(parse_money(restante_raw)))
+
+
+def calcular_lucro_a_receber(row):
+    """Lucro proporcional ao saldo que ainda falta receber."""
+    valor_total = parse_money(row.get("VALOR_TOTAL", row.get("VALOR TOTAL", 0)))
+    lucro_total = parse_money(row.get("LUCRO", 0))
+    saldo = calcular_saldo_a_receber(row)
+    if valor_total <= 0:
+        return 0.0
+    return float(lucro_total) * min(1.0, saldo / float(valor_total))
+
+
+def calcular_custo_proporcional_a_receber(row):
+    """Custo proporcional ao saldo que ainda falta receber."""
+    valor_total = parse_money(row.get("VALOR_TOTAL", row.get("VALOR TOTAL", 0)))
+    custo_total = parse_money(row.get("CUSTO_TOTAL", 0))
+    saldo = calcular_saldo_a_receber(row)
+    if valor_total <= 0:
+        return 0.0
+    return float(custo_total) * min(1.0, saldo / float(valor_total))
+
 def ensure_df(obj):
     """Garante um DataFrame (mesmo se vier torto)."""
     if isinstance(obj, pd.DataFrame):
@@ -857,6 +887,9 @@ def normalize_sales_like(df: pd.DataFrame):
         "QUANTIDADE": "QTD",
         "QUANT": "QTD",
         "QNT": "QTD",
+        "VALOR RESTANTE": "RESTANTE",
+        "SALDO RESTANTE": "RESTANTE",
+        "RESTA": "RESTANTE",
     })
     # garante colunas essenciais
     df = ensure_col_from_aliases(df, "DATA", ["DATA", "DATA_VENDA", "DIA"], default=pd.NaT)
@@ -875,6 +908,7 @@ def normalize_sales_like(df: pd.DataFrame):
     # cliente/status (não quebra se não existir)
     df = ensure_col_from_aliases(df, "CLIENTE", ["CLIENTE", "NOME", "COMPRADOR"], default="")
     df = ensure_col_from_aliases(df, "STATUS", ["STATUS", "SITUACAO"], default="")
+    df = ensure_col_from_aliases(df, "RESTANTE", ["RESTANTE", "VALOR RESTANTE", "SALDO RESTANTE", "RESTA"], default="")
 
     # lucro (se faltar, cria 0)
     df = ensure_col_from_aliases(df, "LUCRO", ["LUCRO", "LUCRO_TOTAL", "LUCRO TOTAL"], default=0.0)
@@ -1073,6 +1107,7 @@ def calcular_fifo(df_compras_raw: pd.DataFrame, df_vendas_raw: pd.DataFrame):
                 "CUSTO_TOTAL": custo_total,
                 "CLIENTE": row.get("CLIENTE"),
                 "STATUS": row.get("STATUS"),
+                "RESTANTE": row.get("RESTANTE", ""),
             }
         )
 
@@ -2446,7 +2481,8 @@ if nav == "📊 Dashboard":
     df_fifo_faturado_filt = df_fifo_filt[status_filtro_periodo == "FATURADO"].copy()
 
     status_geral = df_fifo.get("STATUS", "").astype(str).str.strip().str.upper()
-    valor_a_receber_nao_faturado = df_fifo.loc[status_geral != "FATURADO", "VALOR_TOTAL"].sum()
+    df_receber_geral = normalize_sales_like(df_fifo.loc[status_geral != "FATURADO"].copy())
+    valor_a_receber_nao_faturado = df_receber_geral.apply(calcular_saldo_a_receber, axis=1).sum() if not df_receber_geral.empty else 0.0
 
     qtd_total = df_fifo_faturado_filt["QTD"].sum()
     total_vendido = df_fifo_faturado_filt["VALOR_TOTAL"].sum()
@@ -2473,7 +2509,7 @@ if nav == "📊 Dashboard":
 <div class="kpi-card">
   <div class="kpi-label">A receber</div>
   <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
-  <div class="kpi-pill">Geral: vendas com STATUS diferente de FATURADO</div>
+  <div class="kpi-pill">Saldo real: RESTANTE vazio = valor total</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -2988,10 +3024,12 @@ elif nav == "💵 Fiados / Não faturados":
     st.markdown(
         """
 <div class="section-title">💵 Fiados / Não faturados</div>
-<div class="section-sub">Tela enxuta para controlar dinheiro fiado: custo das mercadorias, venda pendente, lucro previsto, atraso e clientes que mais devem.</div>
+<div class="section-sub">Controle enxuto dos fiados: valor a receber, custo preso, lucro previsto e atraso real. Cliente que deve mais não é tratado como pior cliente automaticamente.</div>
 """,
         unsafe_allow_html=True,
     )
+
+    DIAS_PARA_CONSIDERAR_ATRASO = 30
 
     df_receber = normalize_sales_like(df_fifo).copy()
     df_receber = ensure_datetime_series(df_receber, "DATA")
@@ -3015,14 +3053,27 @@ elif nav == "💵 Fiados / Não faturados":
         hoje = pd.Timestamp.now().normalize()
         df_receber["DIAS_EM_ABERTO"] = (hoje - df_receber["DATA"].dt.normalize()).dt.days
         df_receber["DIAS_EM_ABERTO"] = df_receber["DIAS_EM_ABERTO"].fillna(0).clip(lower=0).astype(int)
-        df_receber["CLIENTE_VIEW"] = df_receber["CLIENTE"].astype(str).str.strip().replace("", "SEM CLIENTE")
+        df_receber["DIAS_ATRASO_REAL"] = (df_receber["DIAS_EM_ABERTO"] - DIAS_PARA_CONSIDERAR_ATRASO).clip(lower=0).astype(int)
+        df_receber["CLIENTE_VIEW"] = df_receber["CLIENTE"].astype(str).str.strip()
+        df_receber.loc[df_receber["CLIENTE_VIEW"].eq(""), "CLIENTE_VIEW"] = "SEM CLIENTE"
+
+        df_receber["SALDO_A_RECEBER"] = df_receber.apply(calcular_saldo_a_receber, axis=1).astype(float)
+        df_receber["VALOR_JA_PAGO"] = (df_receber["VALOR_TOTAL"] - df_receber["SALDO_A_RECEBER"]).clip(lower=0)
+        df_receber["CUSTO_PROPORCIONAL"] = df_receber.apply(calcular_custo_proporcional_a_receber, axis=1).astype(float)
+        df_receber["LUCRO_A_RECEBER"] = df_receber.apply(calcular_lucro_a_receber, axis=1).astype(float)
 
         total_venda = float(df_receber["VALOR_TOTAL"].sum())
+        total_a_receber = float(df_receber["SALDO_A_RECEBER"].sum())
+        total_ja_pago = float(df_receber["VALOR_JA_PAGO"].sum())
         total_custo = float(df_receber["CUSTO_TOTAL"].sum())
+        custo_saldo = float(df_receber["CUSTO_PROPORCIONAL"].sum())
         lucro_previsto = float(df_receber["LUCRO"].sum())
+        lucro_a_receber = float(df_receber["LUCRO_A_RECEBER"].sum())
         margem = (lucro_previsto / total_venda * 100) if total_venda else 0.0
         qtd_fiados = int(len(df_receber))
         dias_mais_antigo = int(df_receber["DIAS_EM_ABERTO"].max()) if qtd_fiados else 0
+        vendas_vencidas = int((df_receber["DIAS_ATRASO_REAL"] > 0).sum())
+        valor_vencido = float(df_receber.loc[df_receber["DIAS_ATRASO_REAL"] > 0, "SALDO_A_RECEBER"].sum())
 
         resumo_cliente = (
             df_receber.groupby("CLIENTE_VIEW", as_index=False)
@@ -3030,40 +3081,54 @@ elif nav == "💵 Fiados / Não faturados":
                 VENDAS=("VALOR_TOTAL", "count"),
                 ITENS=("QTD", "sum"),
                 PRECO_VENDA=("VALOR_TOTAL", "sum"),
+                JA_PAGO=("VALOR_JA_PAGO", "sum"),
+                A_RECEBER=("SALDO_A_RECEBER", "sum"),
                 CUSTO_TOTAL=("CUSTO_TOTAL", "sum"),
+                CUSTO_SALDO=("CUSTO_PROPORCIONAL", "sum"),
                 LUCRO_PREVISTO=("LUCRO", "sum"),
-                DIAS_ATRASADO=("DIAS_EM_ABERTO", "max"),
+                LUCRO_A_RECEBER=("LUCRO_A_RECEBER", "sum"),
+                DIAS_EM_ABERTO=("DIAS_EM_ABERTO", "max"),
+                ATRASO_REAL=("DIAS_ATRASO_REAL", "max"),
             )
-            .sort_values(["PRECO_VENDA", "DIAS_ATRASADO"], ascending=[False, False])
+        )
+        resumo_cliente["MARGEM"] = np.where(
+            resumo_cliente["PRECO_VENDA"] > 0,
+            resumo_cliente["LUCRO_PREVISTO"] / resumo_cliente["PRECO_VENDA"] * 100,
+            0,
         )
 
-        pior_cliente = resumo_cliente.iloc[0] if not resumo_cliente.empty else None
-        nome_pior = str(pior_cliente["CLIENTE_VIEW"]) if pior_cliente is not None else "-"
-        valor_pior = float(pior_cliente["PRECO_VENDA"]) if pior_cliente is not None else 0.0
-        dias_pior = int(pior_cliente["DIAS_ATRASADO"]) if pior_cliente is not None else 0
+        maior_devedor = resumo_cliente.sort_values(["A_RECEBER", "DIAS_EM_ABERTO"], ascending=[False, False]).iloc[0]
+        clientes_atrasados = resumo_cliente[resumo_cliente["ATRASO_REAL"] > 0].copy()
+        if clientes_atrasados.empty:
+            cliente_critico_nome = "Nenhum crítico"
+            cliente_critico_info = f"Nenhum cliente passou de {DIAS_PARA_CONSIDERAR_ATRASO} dias"
+        else:
+            cliente_critico = clientes_atrasados.sort_values(["ATRASO_REAL", "PRECO_VENDA"], ascending=[False, False]).iloc[0]
+            cliente_critico_nome = str(cliente_critico["CLIENTE_VIEW"])
+            cliente_critico_info = f"{int(cliente_critico['ATRASO_REAL'])} dias de atraso real • {format_reais(float(cliente_critico['A_RECEBER']))} em aberto"
 
         st.markdown(
             f"""
 <div class="kpi-row">
   <div class="kpi-card">
-    <div class="kpi-label">Preço de venda fiado</div>
-    <div class="kpi-value">{format_reais(total_venda)}</div>
-    <div class="kpi-pill">Dinheiro que ainda falta receber</div>
+    <div class="kpi-label">Saldo real a receber</div>
+    <div class="kpi-value">{format_reais(total_a_receber)}</div>
+    <div class="kpi-pill">Usa RESTANTE quando preenchido • já pago: {format_reais(total_ja_pago)}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Custo das mercadorias</div>
+    <div class="kpi-label">Custo total dos produtos</div>
     <div class="kpi-value">{format_reais(total_custo)}</div>
-    <div class="kpi-pill">Seu dinheiro preso em produto</div>
+    <div class="kpi-pill">Custo FIFO das vendas fiadas • custo do saldo: {format_reais(custo_saldo)}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Lucro quando receber</div>
+    <div class="kpi-label">Lucro final previsto</div>
     <div class="kpi-value">{format_reais(lucro_previsto)}</div>
-    <div class="kpi-pill">Margem prevista: {margem:.1f}%</div>
+    <div class="kpi-pill">Lucro ainda no saldo: {format_reais(lucro_a_receber)} • margem {margem:.1f}%</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Mais atrasado</div>
-    <div class="kpi-value">{dias_mais_antigo} dias</div>
-    <div class="kpi-pill">{qtd_fiados} venda(s) em aberto</div>
+    <div class="kpi-label">Vencido acima de {DIAS_PARA_CONSIDERAR_ATRASO} dias</div>
+    <div class="kpi-value">{format_reais(valor_vencido)}</div>
+    <div class="kpi-pill">{vendas_vencidas} venda(s) vencida(s) • mais antigo: {dias_mais_antigo} dias</div>
   </div>
 </div>
 """,
@@ -3074,9 +3139,14 @@ elif nav == "💵 Fiados / Não faturados":
             f"""
 <div class="kpi-row">
   <div class="kpi-card">
-    <div class="kpi-label">Pior cliente</div>
-    <div class="kpi-value" style="font-size:20px;line-height:1.15;">{_safe(nome_pior)}</div>
-    <div class="kpi-pill">Deve {format_reais(valor_pior)} • atraso máximo: {dias_pior} dias</div>
+    <div class="kpi-label">Maior valor a receber</div>
+    <div class="kpi-value" style="font-size:20px;line-height:1.15;">{_safe(str(maior_devedor['CLIENTE_VIEW']))}</div>
+    <div class="kpi-pill">Saldo {format_reais(float(maior_devedor['A_RECEBER']))} • já pagou {format_reais(float(maior_devedor['JA_PAGO']))}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Cliente mais atrasado</div>
+    <div class="kpi-value" style="font-size:20px;line-height:1.15;">{_safe(cliente_critico_nome)}</div>
+    <div class="kpi-pill">{_safe(cliente_critico_info)}</div>
   </div>
 </div>
 """,
@@ -3084,42 +3154,44 @@ elif nav == "💵 Fiados / Não faturados":
         )
 
         st.markdown("<div class='section-title'>🧮 Somatório por cliente</div>", unsafe_allow_html=True)
-        resumo_fmt = resumo_cliente.copy()
-        resumo_fmt["MARGEM"] = np.where(
-            resumo_fmt["PRECO_VENDA"] > 0,
-            resumo_fmt["LUCRO_PREVISTO"] / resumo_fmt["PRECO_VENDA"] * 100,
-            0,
-        )
+        resumo_fmt = resumo_cliente.sort_values(["ATRASO_REAL", "PRECO_VENDA"], ascending=[False, False]).copy()
         resumo_fmt = resumo_fmt.rename(columns={
             "CLIENTE_VIEW": "CLIENTE",
-            "PRECO_VENDA": "PREÇO DE VENDA",
-            "CUSTO_TOTAL": "CUSTO",
-            "LUCRO_PREVISTO": "LUCRO PREVISTO",
-            "DIAS_ATRASADO": "DIAS ATRASADO",
+            "PRECO_VENDA": "PREÇO VENDA",
+            "JA_PAGO": "JÁ PAGO",
+            "A_RECEBER": "A RECEBER",
+            "CUSTO_TOTAL": "CUSTO TOTAL",
+            "CUSTO_SALDO": "CUSTO DO SALDO",
+            "LUCRO_PREVISTO": "LUCRO FINAL",
+            "LUCRO_A_RECEBER": "LUCRO DO SALDO",
+            "DIAS_EM_ABERTO": "DIAS EM ABERTO",
+            "ATRASO_REAL": "ATRASO REAL",
         })
-        for col in ["PREÇO DE VENDA", "CUSTO", "LUCRO PREVISTO"]:
+        for col in ["PREÇO VENDA", "JÁ PAGO", "A RECEBER", "CUSTO TOTAL", "CUSTO DO SALDO", "LUCRO FINAL", "LUCRO DO SALDO"]:
             resumo_fmt[col] = resumo_fmt[col].map(format_reais)
         resumo_fmt["MARGEM"] = resumo_fmt["MARGEM"].apply(lambda x: f"{float(x):.1f}%")
         resumo_fmt["ITENS"] = resumo_fmt["ITENS"].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
         st.dataframe(
-            resumo_fmt[["CLIENTE", "VENDAS", "ITENS", "PREÇO DE VENDA", "CUSTO", "LUCRO PREVISTO", "MARGEM", "DIAS ATRASADO"]],
+            resumo_fmt[["CLIENTE", "VENDAS", "ITENS", "PREÇO VENDA", "JÁ PAGO", "A RECEBER", "CUSTO TOTAL", "LUCRO FINAL", "DIAS EM ABERTO", "ATRASO REAL"]],
             use_container_width=True,
             hide_index=True,
         )
 
-        st.markdown("<div class='section-title'>📋 Fiados em aberto</div>", unsafe_allow_html=True)
-        df_view = df_receber.sort_values(["DIAS_EM_ABERTO", "VALOR_TOTAL"], ascending=[False, False]).copy()
+        st.markdown("<div class='section-title'>📋 Vendas fiadas</div>", unsafe_allow_html=True)
+        df_view = df_receber.sort_values(["DIAS_ATRASO_REAL", "DIAS_EM_ABERTO", "SALDO_A_RECEBER"], ascending=[False, False, False]).copy()
         df_view["DATA"] = df_view["DATA"].dt.strftime("%d/%m/%Y").fillna("")
-        df_view["PREÇO DE VENDA"] = df_view["VALOR_TOTAL"].map(format_reais)
+        df_view["PREÇO VENDA"] = df_view["VALOR_TOTAL"].map(format_reais)
+        df_view["JÁ PAGO"] = df_view["VALOR_JA_PAGO"].map(format_reais)
+        df_view["A RECEBER"] = df_view["SALDO_A_RECEBER"].map(format_reais)
         df_view["CUSTO"] = df_view["CUSTO_TOTAL"].map(format_reais)
-        df_view["LUCRO PREVISTO"] = df_view["LUCRO"].map(format_reais)
+        df_view["LUCRO FINAL"] = df_view["LUCRO"].map(format_reais)
         df_view["QTD"] = df_view["QTD"].apply(lambda x: int(round(float(x))) if pd.notna(x) else 0)
-        df_view = df_view.rename(columns={"DIAS_EM_ABERTO": "DIAS ATRASADO"})
-        cols = ["DATA", "CLIENTE", "PRODUTO", "QTD", "PREÇO DE VENDA", "CUSTO", "LUCRO PREVISTO", "DIAS ATRASADO", "STATUS"]
+        df_view = df_view.rename(columns={"DIAS_EM_ABERTO": "DIAS EM ABERTO", "DIAS_ATRASO_REAL": "ATRASO REAL"})
+        cols = ["DATA", "CLIENTE", "PRODUTO", "QTD", "PREÇO VENDA", "JÁ PAGO", "A RECEBER", "CUSTO", "LUCRO FINAL", "DIAS EM ABERTO", "ATRASO REAL", "STATUS"]
         cols = [c for c in cols if c in df_view.columns]
         st.dataframe(df_view[cols].head(300), use_container_width=True, hide_index=True)
 
-        csv_cols = [c for c in ["DATA", "CLIENTE", "PRODUTO", "QTD", "VALOR_TOTAL", "CUSTO_TOTAL", "LUCRO", "DIAS ATRASADO", "STATUS"] if c in df_view.columns]
+        csv_cols = [c for c in ["DATA", "CLIENTE", "PRODUTO", "QTD", "VALOR_TOTAL", "VALOR_JA_PAGO", "SALDO_A_RECEBER", "CUSTO_TOTAL", "LUCRO", "DIAS EM ABERTO", "ATRASO REAL", "STATUS", "RESTANTE"] if c in df_view.columns]
         csv = df_view[csv_cols].to_csv(index=False, sep=";").encode("utf-8-sig")
         st.download_button(
             "⬇️ Baixar fiados em CSV",
