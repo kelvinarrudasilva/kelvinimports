@@ -2504,18 +2504,19 @@ if nav == "📊 Dashboard":
 <div class="kpi-card">
   <div class="kpi-label">Faturamento</div>
   <div class="kpi-value">{format_reais(total_vendido)}</div>
-  <div class="kpi-pill">Somente vendas com STATUS = FATURADO</div>
+  <div class="kpi-pill">Recebido no mês/filtro • STATUS FATURADO</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
     with k2:
+        cor_lucro = "badge-green" if total_lucro >= 0 else "badge-red"
         st.markdown(
             f"""
 <div class="kpi-card">
-  <div class="kpi-label">Fiados em aberto</div>
-  <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
-  <div class="kpi-pill">Saldo real ainda não recebido</div>
+  <div class="kpi-label">Lucro faturado</div>
+  <div class="kpi-value">{format_reais(total_lucro)}</div>
+  <div class="kpi-pill"><span class="badge-soft {cor_lucro}">Venda recebida − custo FIFO</span></div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -2524,21 +2525,20 @@ if nav == "📊 Dashboard":
         st.markdown(
             f"""
 <div class="kpi-card">
-  <div class="kpi-label">Custo (FIFO)</div>
-  <div class="kpi-value">{format_reais(total_custo)}</div>
-  <div class="kpi-pill">Somatório de CUSTO_TOTAL</div>
+  <div class="kpi-label">A receber</div>
+  <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
+  <div class="kpi-pill">Saldo real dos fiados em aberto</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
     with k4:
-        cor_lucro = "badge-green" if total_lucro >= 0 else "badge-red"
         st.markdown(
             f"""
 <div class="kpi-card">
-  <div class="kpi-label">Lucro (FIFO)</div>
-  <div class="kpi-value">{format_reais(total_lucro)}</div>
-  <div class="kpi-pill"><span class="badge-soft {cor_lucro}">Lucro = Venda − Custo FIFO</span></div>
+  <div class="kpi-label">Lucro previsto</div>
+  <div class="kpi-value">{format_reais(lucro_previsto)}</div>
+  <div class="kpi-pill">Lucro proporcional quando receber tudo</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -2547,9 +2547,9 @@ if nav == "📊 Dashboard":
         st.markdown(
             f"""
 <div class="kpi-card">
-  <div class="kpi-label">Ticket médio</div>
-  <div class="kpi-value">{format_reais(ticket_medio)}</div>
-  <div class="kpi-pill">Faturamento FATURADO / Qtd. faturada</div>
+  <div class="kpi-label">Custo preso</div>
+  <div class="kpi-value">{format_reais(custo_preso)}</div>
+  <div class="kpi-pill">Custo proporcional dos produtos fiados</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -2558,16 +2558,15 @@ if nav == "📊 Dashboard":
         st.markdown(
             f"""
 <div class="kpi-card">
-  <div class="kpi-label">Nº de vendas</div>
-  <div class="kpi-value">{num_vendas}</div>
-  <div class="kpi-pill">Registros FATURADOS no filtro</div>
+  <div class="kpi-label">Fiados</div>
+  <div class="kpi-value">{qtd_nao_faturadas}</div>
+  <div class="kpi-pill">{clientes_devendo} cliente(s) devendo</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
 
-    # Fiados já aparecem no card "Fiados em aberto" acima.
-    # A análise completa fica na aba própria "💵 Fiados / Não faturados".
+    # A análise completa dos fiados fica na aba própria "💵 Fiados / Não faturados".
 
     # Valor de estoque total (FIFO) e compras no período
     if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
@@ -3120,19 +3119,19 @@ elif nav == "💵 Fiados / Não faturados":
             f"""
 <div class="kpi-row">
   <div class="kpi-card">
-    <div class="kpi-label">A receber</div>
+    <div class="kpi-label">Saldo em aberto</div>
     <div class="kpi-value">{format_reais(total_a_receber)}</div>
     <div class="kpi-pill">Já pago: {format_reais(total_ja_pago)}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Custo dos produtos</div>
-    <div class="kpi-value">{format_reais(total_custo)}</div>
-    <div class="kpi-pill">Custo do saldo: {format_reais(custo_saldo)}</div>
+    <div class="kpi-label">Custo preso</div>
+    <div class="kpi-value">{format_reais(custo_saldo)}</div>
+    <div class="kpi-pill">Custo total original: {format_reais(total_custo)}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Lucro previsto</div>
-    <div class="kpi-value">{format_reais(lucro_previsto)}</div>
-    <div class="kpi-pill">Lucro no saldo: {format_reais(lucro_a_receber)} • {margem:.1f}%</div>
+    <div class="kpi-label">Lucro ao receber</div>
+    <div class="kpi-value">{format_reais(lucro_a_receber)}</div>
+    <div class="kpi-pill">Lucro final da venda: {format_reais(lucro_previsto)} • {margem:.1f}%</div>
   </div>
   <div class="kpi-card">
     <div class="kpi-label">Atrasado +{DIAS_PARA_CONSIDERAR_ATRASO} dias</div>
@@ -3161,9 +3160,6 @@ elif nav == "💵 Fiados / Não faturados":
 """,
             unsafe_allow_html=True,
         )
-
-        maior_devedor_info = f"{str(maior_devedor['CLIENTE_VIEW'])}: {format_reais(float(maior_devedor['A_RECEBER']))}"
-        st.info(f"Resumo: {qtd_fiados} venda(s) em fiado, {len(resumo_cliente)} cliente(s) devendo. Maior valor a receber: {maior_devedor_info}. Cliente mais atrasado: {cliente_critico_nome}.")
 
         st.markdown("<div class='section-title'>🧮 Somatório por cliente</div>", unsafe_allow_html=True)
         resumo_fmt = resumo_cliente.sort_values(["ATRASO_REAL", "PRECO_VENDA"], ascending=[False, False]).copy()
