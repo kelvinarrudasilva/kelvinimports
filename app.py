@@ -2491,6 +2491,12 @@ if nav == "📊 Dashboard":
     ticket_medio = total_vendido / qtd_total if qtd_total else 0.0
     num_vendas = len(df_fifo_faturado_filt)
 
+    # Indicadores de não faturados
+    lucro_previsto = df_receber_geral.apply(calcular_lucro_a_receber, axis=1).sum() if not df_receber_geral.empty else 0.0
+    custo_preso = df_receber_geral.apply(calcular_custo_proporcional_a_receber, axis=1).sum() if not df_receber_geral.empty else 0.0
+    qtd_nao_faturadas = len(df_receber_geral)
+    clientes_devendo = df_receber_geral["CLIENTE"].astype(str).nunique() if (not df_receber_geral.empty and "CLIENTE" in df_receber_geral.columns) else 0
+
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     with k1:
         st.markdown(
@@ -2559,6 +2565,19 @@ if nav == "📊 Dashboard":
 """,
             unsafe_allow_html=True,
         )
+
+    st.markdown("### 💰 Não Faturado")
+    n1, n2, n3, n4, n5 = st.columns(5)
+    with n1:
+        st.metric("A Receber", format_reais(valor_a_receber_nao_faturado))
+    with n2:
+        st.metric("Lucro Previsto", format_reais(lucro_previsto))
+    with n3:
+        st.metric("Custo Preso", format_reais(custo_preso))
+    with n4:
+        st.metric("Fiados", qtd_nao_faturadas)
+    with n5:
+        st.metric("Clientes Devendo", clientes_devendo)
 
     # Valor de estoque total (FIFO) e compras no período
     if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
