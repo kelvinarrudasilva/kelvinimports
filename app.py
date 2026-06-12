@@ -2513,9 +2513,9 @@ if nav == "📊 Dashboard":
         st.markdown(
             f"""
 <div class="kpi-card">
-  <div class="kpi-label">A receber</div>
+  <div class="kpi-label">Fiados em aberto</div>
   <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
-  <div class="kpi-pill">Saldo real: RESTANTE vazio = valor total</div>
+  <div class="kpi-pill">Saldo real ainda não recebido</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -2566,18 +2566,8 @@ if nav == "📊 Dashboard":
             unsafe_allow_html=True,
         )
 
-    st.markdown("### 💰 Não Faturado")
-    n1, n2, n3, n4, n5 = st.columns(5)
-    with n1:
-        st.metric("A Receber", format_reais(valor_a_receber_nao_faturado))
-    with n2:
-        st.metric("Lucro Previsto", format_reais(lucro_previsto))
-    with n3:
-        st.metric("Custo Preso", format_reais(custo_preso))
-    with n4:
-        st.metric("Fiados", qtd_nao_faturadas)
-    with n5:
-        st.metric("Clientes Devendo", clientes_devendo)
+    # Fiados já aparecem no card "Fiados em aberto" acima.
+    # A análise completa fica na aba própria "💵 Fiados / Não faturados".
 
     # Valor de estoque total (FIFO) e compras no período
     if not df_estoque.empty and "VALOR_ESTOQUE" in df_estoque.columns:
@@ -3042,8 +3032,8 @@ if nav == "📊 Dashboard":
 elif nav == "💵 Fiados / Não faturados":
     st.markdown(
         """
-<div class="section-title">💵 Fiados / Não faturados</div>
-<div class="section-sub">Controle enxuto dos fiados: valor a receber, custo preso, lucro previsto e atraso real. Cliente que deve mais não é tratado como pior cliente automaticamente.</div>
+<div class="section-title">💵 Fiados</div>
+<div class="section-sub">Controle direto do que falta receber: saldo, custo, lucro e atraso por cliente.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -3130,24 +3120,24 @@ elif nav == "💵 Fiados / Não faturados":
             f"""
 <div class="kpi-row">
   <div class="kpi-card">
-    <div class="kpi-label">Saldo real a receber</div>
+    <div class="kpi-label">A receber</div>
     <div class="kpi-value">{format_reais(total_a_receber)}</div>
-    <div class="kpi-pill">Usa RESTANTE quando preenchido • já pago: {format_reais(total_ja_pago)}</div>
+    <div class="kpi-pill">Já pago: {format_reais(total_ja_pago)}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Custo total dos produtos</div>
+    <div class="kpi-label">Custo dos produtos</div>
     <div class="kpi-value">{format_reais(total_custo)}</div>
-    <div class="kpi-pill">Custo FIFO das vendas fiadas • custo do saldo: {format_reais(custo_saldo)}</div>
+    <div class="kpi-pill">Custo do saldo: {format_reais(custo_saldo)}</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Lucro final previsto</div>
+    <div class="kpi-label">Lucro previsto</div>
     <div class="kpi-value">{format_reais(lucro_previsto)}</div>
-    <div class="kpi-pill">Lucro ainda no saldo: {format_reais(lucro_a_receber)} • margem {margem:.1f}%</div>
+    <div class="kpi-pill">Lucro no saldo: {format_reais(lucro_a_receber)} • {margem:.1f}%</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Vencido acima de {DIAS_PARA_CONSIDERAR_ATRASO} dias</div>
+    <div class="kpi-label">Atrasado +{DIAS_PARA_CONSIDERAR_ATRASO} dias</div>
     <div class="kpi-value">{format_reais(valor_vencido)}</div>
-    <div class="kpi-pill">{vendas_vencidas} venda(s) vencida(s) • mais antigo: {dias_mais_antigo} dias</div>
+    <div class="kpi-pill">{vendas_vencidas} venda(s) • mais antigo: {dias_mais_antigo} dias</div>
   </div>
 </div>
 """,
@@ -3171,6 +3161,9 @@ elif nav == "💵 Fiados / Não faturados":
 """,
             unsafe_allow_html=True,
         )
+
+        maior_devedor_info = f"{str(maior_devedor['CLIENTE_VIEW'])}: {format_reais(float(maior_devedor['A_RECEBER']))}"
+        st.info(f"Resumo: {qtd_fiados} venda(s) em fiado, {len(resumo_cliente)} cliente(s) devendo. Maior valor a receber: {maior_devedor_info}. Cliente mais atrasado: {cliente_critico_nome}.")
 
         st.markdown("<div class='section-title'>🧮 Somatório por cliente</div>", unsafe_allow_html=True)
         resumo_fmt = resumo_cliente.sort_values(["ATRASO_REAL", "PRECO_VENDA"], ascending=[False, False]).copy()
