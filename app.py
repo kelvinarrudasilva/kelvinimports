@@ -2440,26 +2440,45 @@ if nav == "📊 Dashboard":
     else:
         df_fifo_filt = df_fifo[df_fifo["MES_ANO"] == mes_selecionado].copy()
 
-    qtd_total = df_fifo_filt["QTD"].sum()
-    total_vendido = df_fifo_filt["VALOR_TOTAL"].sum()
-    total_custo = df_fifo_filt["CUSTO_TOTAL"].sum()
-    total_lucro = df_fifo_filt["LUCRO"].sum()
-    ticket_medio = total_vendido / qtd_total if qtd_total else 0.0
-    num_vendas = len(df_fifo_filt)
+    # Faturamento real: considera somente vendas com STATUS = FATURADO.
+    # O valor a receber fica geral, sem filtro de mês, somando tudo que NÃO está faturado.
+    status_filtro_periodo = df_fifo_filt.get("STATUS", "").astype(str).str.strip().str.upper()
+    df_fifo_faturado_filt = df_fifo_filt[status_filtro_periodo == "FATURADO"].copy()
 
-    k1, k2, k3, k4, k5 = st.columns(5)
+    status_geral = df_fifo.get("STATUS", "").astype(str).str.strip().str.upper()
+    valor_a_receber_nao_faturado = df_fifo.loc[status_geral != "FATURADO", "VALOR_TOTAL"].sum()
+
+    qtd_total = df_fifo_faturado_filt["QTD"].sum()
+    total_vendido = df_fifo_faturado_filt["VALOR_TOTAL"].sum()
+    total_custo = df_fifo_faturado_filt["CUSTO_TOTAL"].sum()
+    total_lucro = df_fifo_faturado_filt["LUCRO"].sum()
+    ticket_medio = total_vendido / qtd_total if qtd_total else 0.0
+    num_vendas = len(df_fifo_faturado_filt)
+
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
     with k1:
         st.markdown(
             f"""
 <div class="kpi-card">
   <div class="kpi-label">Faturamento</div>
   <div class="kpi-value">{format_reais(total_vendido)}</div>
-  <div class="kpi-pill">Somatório de VALOR TOTAL</div>
+  <div class="kpi-pill">Somente vendas com STATUS = FATURADO</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
     with k2:
+        st.markdown(
+            f"""
+<div class="kpi-card">
+  <div class="kpi-label">A receber</div>
+  <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
+  <div class="kpi-pill">Geral: vendas com STATUS diferente de FATURADO</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+    with k3:
         st.markdown(
             f"""
 <div class="kpi-card">
@@ -2470,7 +2489,7 @@ if nav == "📊 Dashboard":
 """,
             unsafe_allow_html=True,
         )
-    with k3:
+    with k4:
         cor_lucro = "badge-green" if total_lucro >= 0 else "badge-red"
         st.markdown(
             f"""
@@ -2482,24 +2501,24 @@ if nav == "📊 Dashboard":
 """,
             unsafe_allow_html=True,
         )
-    with k4:
+    with k5:
         st.markdown(
             f"""
 <div class="kpi-card">
   <div class="kpi-label">Ticket médio</div>
   <div class="kpi-value">{format_reais(ticket_medio)}</div>
-  <div class="kpi-pill">Faturamento / Qtd. total vendida</div>
+  <div class="kpi-pill">Faturamento FATURADO / Qtd. faturada</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
-    with k5:
+    with k6:
         st.markdown(
             f"""
 <div class="kpi-card">
   <div class="kpi-label">Nº de vendas</div>
   <div class="kpi-value">{num_vendas}</div>
-  <div class="kpi-pill">Registros de venda no filtro</div>
+  <div class="kpi-pill">Registros FATURADOS no filtro</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -2557,12 +2576,14 @@ if nav == "📊 Dashboard":
     st.markdown(
         """
 <div class="section-title">📈 Faturamento & Lucro – mês atual e 2 anteriores</div>
-<div class="section-sub">Dois termômetros do caixa: o que entrou e o que sobrou (lucro FIFO), lado a lado.</div>
+<div class="section-sub">Dois termômetros do caixa: o que entrou com STATUS = FATURADO e o que sobrou (lucro FIFO), lado a lado.</div>
 """,
         unsafe_allow_html=True,
     )
 
     df_mes = df_fifo.dropna(subset=["MES_ANO"]).copy()
+    if "STATUS" in df_mes.columns:
+        df_mes = df_mes[df_mes["STATUS"].astype(str).str.strip().str.upper() == "FATURADO"].copy()
     if df_mes.empty:
         st.info("Sem dados suficientes para montar o gráfico mensal.")
     else:
