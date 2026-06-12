@@ -2497,74 +2497,48 @@ if nav == "📊 Dashboard":
     qtd_nao_faturadas = len(df_receber_geral)
     clientes_devendo = df_receber_geral["CLIENTE"].astype(str).nunique() if (not df_receber_geral.empty and "CLIENTE" in df_receber_geral.columns) else 0
 
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    with k1:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Faturamento</div>
-  <div class="kpi-value">{format_reais(total_vendido)}</div>
-  <div class="kpi-pill">Recebido no mês/filtro • STATUS FATURADO</div>
+    st.markdown(
+        f"""
+<div class="kpi-row">
+  <div class="kpi-card">
+    <div class="kpi-label">Faturamento recebido</div>
+    <div class="kpi-value">{format_reais(total_vendido)}</div>
+    <div class="kpi-pill">STATUS FATURADO • {num_vendas} venda(s)</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Custo vendido faturado</div>
+    <div class="kpi-value">{format_reais(total_custo)}</div>
+    <div class="kpi-pill">Custo FIFO das mercadorias já recebidas</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Lucro realizado</div>
+    <div class="kpi-value">{format_reais(total_lucro)}</div>
+    <div class="kpi-pill">Recebido − custo vendido faturado</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">A receber</div>
+    <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
+    <div class="kpi-pill">{qtd_nao_faturadas} fiado(s) • {clientes_devendo} cliente(s)</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Custo preso</div>
+    <div class="kpi-value">{format_reais(custo_preso)}</div>
+    <div class="kpi-pill">Custo proporcional do saldo em aberto</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Lucro previsto</div>
+    <div class="kpi-value">{format_reais(lucro_previsto)}</div>
+    <div class="kpi-pill">Lucro proporcional ao receber fiados</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Ticket médio recebido</div>
+    <div class="kpi-value">{format_reais(ticket_medio)}</div>
+    <div class="kpi-pill">Base: vendas faturadas do filtro</div>
+  </div>
 </div>
 """,
-            unsafe_allow_html=True,
-        )
-    with k2:
-        cor_lucro = "badge-green" if total_lucro >= 0 else "badge-red"
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Lucro faturado</div>
-  <div class="kpi-value">{format_reais(total_lucro)}</div>
-  <div class="kpi-pill"><span class="badge-soft {cor_lucro}">Venda recebida − custo FIFO</span></div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with k3:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">A receber</div>
-  <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
-  <div class="kpi-pill">Saldo real dos fiados em aberto</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with k4:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Lucro previsto</div>
-  <div class="kpi-value">{format_reais(lucro_previsto)}</div>
-  <div class="kpi-pill">Lucro proporcional quando receber tudo</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with k5:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Custo preso</div>
-  <div class="kpi-value">{format_reais(custo_preso)}</div>
-  <div class="kpi-pill">Custo proporcional dos produtos fiados</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with k6:
-        st.markdown(
-            f"""
-<div class="kpi-card">
-  <div class="kpi-label">Fiados</div>
-  <div class="kpi-value">{qtd_nao_faturadas}</div>
-  <div class="kpi-pill">{clientes_devendo} cliente(s) devendo</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
+        unsafe_allow_html=True,
+    )
 
     # A análise completa dos fiados fica na aba própria "💵 Fiados / Não faturados".
 
