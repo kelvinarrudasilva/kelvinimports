@@ -2738,8 +2738,11 @@ if nav == "📊 Dashboard":
     if df_fifo_filt.empty:
         st.info("Nenhuma venda no período selecionado para montar o ranking de produtos.")
     else:
+        # Rankings usam somente vendas FATURADAS
+        base_rankings = df_fifo_faturado_filt.copy()
+
         top_prod = (
-            df_fifo_filt.groupby("PRODUTO", as_index=False)
+            base_rankings.groupby("PRODUTO", as_index=False)
             .agg(
                 QTD_VENDIDA=("QTD", "sum"),
                 RECEITA=("VALOR_TOTAL", "sum"),
