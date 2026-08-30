@@ -2572,10 +2572,14 @@ if nav == "📊 Dashboard":
     else:
         total_compras_periodo = dfc.loc[dfc["MES_ANO"] == mes_selecionado, "CUSTO_TOTAL"].sum()
 
+    # Resultado Líquido de Caixa: dinheiro faturado que efetivamente permaneceu
+    # após descontar as compras ENTREGUES no período selecionado.
+    resultado_liquido_caixa = total_vendido - total_compras_periodo
+
     st.markdown(
         """
 <div class="section-title">Operação</div>
-<div class="section-sub">Estoque, compras e ritmo médio das vendas faturadas.</div>
+<div class="section-sub">Estoque, compras, caixa e ritmo médio das vendas faturadas.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -2583,6 +2587,11 @@ if nav == "📊 Dashboard":
     st.markdown(
         f"""
 <div class="kpi-row">
+  <div class="kpi-card">
+    <div class="kpi-label">Resultado Líquido de Caixa</div>
+    <div class="kpi-value">{format_reais(resultado_liquido_caixa)}</div>
+    <div class="kpi-pill">Faturamento recebido − compras entregues</div>
+  </div>
   <div class="kpi-card">
     <div class="kpi-label">Estoque a custo</div>
     <div class="kpi-value">{format_reais(valor_estoque_total)}</div>
