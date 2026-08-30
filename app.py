@@ -2498,42 +2498,45 @@ if nav == "📊 Dashboard":
     clientes_devendo = df_receber_geral["CLIENTE"].astype(str).nunique() if (not df_receber_geral.empty and "CLIENTE" in df_receber_geral.columns) else 0
 
     st.markdown(
+        """
+<div class="section-title">Resultado do período</div>
+<div class="section-sub">Só o essencial do que já foi faturado.</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
         f"""
 <div class="kpi-row">
   <div class="kpi-card">
-    <div class="kpi-label">Faturamento recebido</div>
+    <div class="kpi-label">Faturamento</div>
     <div class="kpi-value">{format_reais(total_vendido)}</div>
-    <div class="kpi-pill">STATUS FATURADO • {num_vendas} venda(s)</div>
+    <div class="kpi-pill">{num_vendas} venda(s) faturada(s)</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Custo vendido faturado</div>
+    <div class="kpi-label">Custo das vendas</div>
     <div class="kpi-value">{format_reais(total_custo)}</div>
-    <div class="kpi-pill">Custo FIFO das mercadorias já recebidas</div>
+    <div class="kpi-pill">Custo FIFO do que foi faturado</div>
   </div>
   <div class="kpi-card">
     <div class="kpi-label">Lucro realizado</div>
     <div class="kpi-value">{format_reais(total_lucro)}</div>
-    <div class="kpi-pill">Recebido − custo vendido faturado</div>
+    <div class="kpi-pill">Faturamento − custo</div>
   </div>
+</div>
+
+<div class="section-title">Em aberto</div>
+<div class="section-sub">Valores que ainda não viraram faturamento.</div>
+<div class="kpi-row">
   <div class="kpi-card">
     <div class="kpi-label">A receber</div>
     <div class="kpi-value">{format_reais(valor_a_receber_nao_faturado)}</div>
     <div class="kpi-pill">{qtd_nao_faturadas} fiado(s) • {clientes_devendo} cliente(s)</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Custo preso</div>
-    <div class="kpi-value">{format_reais(custo_preso)}</div>
-    <div class="kpi-pill">Custo proporcional do saldo em aberto</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Lucro previsto</div>
+    <div class="kpi-label">Lucro a receber</div>
     <div class="kpi-value">{format_reais(lucro_previsto)}</div>
-    <div class="kpi-pill">Lucro proporcional ao receber fiados</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Ticket médio recebido</div>
-    <div class="kpi-value">{format_reais(ticket_medio)}</div>
-    <div class="kpi-pill">Base: vendas faturadas do filtro</div>
+    <div class="kpi-pill">Custo ainda preso: {format_reais(custo_preso)}</div>
   </div>
 </div>
 """,
@@ -2570,17 +2573,30 @@ if nav == "📊 Dashboard":
         total_compras_periodo = dfc.loc[dfc["MES_ANO"] == mes_selecionado, "CUSTO_TOTAL"].sum()
 
     st.markdown(
+        """
+<div class="section-title">Operação</div>
+<div class="section-sub">Estoque, compras e ritmo médio das vendas faturadas.</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
         f"""
 <div class="kpi-row">
   <div class="kpi-card">
-    <div class="kpi-label">Valor do estoque (FIFO)</div>
+    <div class="kpi-label">Estoque a custo</div>
     <div class="kpi-value">{format_reais(valor_estoque_total)}</div>
-    <div class="kpi-pill">Soma do valor em estoque de todos os produtos (custo FIFO)</div>
+    <div class="kpi-pill">Valor FIFO atual</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-label">Compras no período</div>
+    <div class="kpi-label">Compras entregues</div>
     <div class="kpi-value">{format_reais(total_compras_periodo)}</div>
-    <div class="kpi-pill">Somatório de compras com STATUS = ENTREGUE no filtro</div>
+    <div class="kpi-pill">No período selecionado</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Venda média por unidade</div>
+    <div class="kpi-value">{format_reais(ticket_medio)}</div>
+    <div class="kpi-pill">Faturamento ÷ quantidade vendida</div>
   </div>
 </div>
 """,
@@ -2589,12 +2605,12 @@ if nav == "📊 Dashboard":
 
     
     # --------------------------------------------------
-    # GRÁFICO – FATURAMENTO + LUCRO (mês atual e 2 anteriores)
+    # GRÁFICOS – RESULTADO + REPOSIÇÃO (mês atual e 2 anteriores)
     # --------------------------------------------------
     st.markdown(
         """
 <div class="section-title">📈 Faturamento & Lucro – mês atual e 2 anteriores</div>
-<div class="section-sub">Dois termômetros do caixa: o que entrou com STATUS = FATURADO e o que sobrou (lucro FIFO), lado a lado.</div>
+<div class="section-sub">Visão limpa do resultado: faturamento recebido e lucro FIFO.</div>
 """,
         unsafe_allow_html=True,
     )
@@ -2602,127 +2618,191 @@ if nav == "📊 Dashboard":
     df_mes = df_fifo.dropna(subset=["MES_ANO"]).copy()
     if "STATUS" in df_mes.columns:
         df_mes = df_mes[df_mes["STATUS"].astype(str).str.strip().str.upper() == "FATURADO"].copy()
+
     if df_mes.empty:
         st.info("Sem dados suficientes para montar o gráfico mensal.")
     else:
-        # --- Resumo de VENDAS (faturamento + lucro) por mês ---
         resumo_vendas = (
-            df_mes.groupby("MES_ANO", as_index=False)[["VALOR_TOTAL", "LUCRO"]]
+            df_mes.groupby("MES_ANO", as_index=False)[["VALOR_TOTAL", "LUCRO", "QTD"]]
             .sum()
             .sort_values("MES_ANO")
         )
 
-        # --- Resumo de COMPRAS (ENTREGUE) por mês ---
+        # Compras ENTREGUES + custo médio ponderado por produto.
+        # Esse custo médio serve como referência de quanto custaria repor o que foi vendido.
         dfc_graf = df_compras.copy()
-        if isinstance(dfc_graf, pd.DataFrame) and not dfc_graf.empty:
-            dfc_graf.columns = [str(c).strip().upper() for c in dfc_graf.columns]
-            if "STATUS" in dfc_graf.columns:
-                dfc_graf = dfc_graf[dfc_graf["STATUS"].astype(str).str.upper() == "ENTREGUE"].copy()
-            if "DATA" in dfc_graf.columns:
-                dfc_graf["DATA"] = pd.to_datetime(dfc_graf["DATA"], errors="coerce", dayfirst=True)
-                dfc_graf["MES_ANO"] = dfc_graf["DATA"].dt.strftime("%Y-%m")
-            if "QUANTIDADE" in dfc_graf.columns:
-                dfc_graf["QUANTIDADE"] = dfc_graf["QUANTIDADE"].apply(parse_money).astype(float)
-            if "CUSTO UNITÁRIO" in dfc_graf.columns:
-                dfc_graf["CUSTO UNITÁRIO"] = dfc_graf["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
-            if "MES_ANO" in dfc_graf.columns:
-                dfc_graf["CUSTO_TOTAL"] = dfc_graf.get("QUANTIDADE", 0) * dfc_graf.get("CUSTO UNITÁRIO", 0)
-                resumo_compras = (
-                    dfc_graf.groupby("MES_ANO", as_index=False)["CUSTO_TOTAL"]
-                    .sum()
-                    .rename(columns={"CUSTO_TOTAL": "COMPRAS"})
-                )
-            else:
-                resumo_compras = pd.DataFrame(columns=["MES_ANO", "COMPRAS"])
+        dfc_graf.columns = [str(c).strip().upper() for c in dfc_graf.columns]
+        if "STATUS" in dfc_graf.columns:
+            dfc_graf = dfc_graf[dfc_graf["STATUS"].astype(str).str.strip().str.upper() == "ENTREGUE"].copy()
+        if "DATA" in dfc_graf.columns:
+            dfc_graf["DATA"] = pd.to_datetime(dfc_graf["DATA"], errors="coerce", dayfirst=True)
+            dfc_graf["MES_ANO"] = dfc_graf["DATA"].dt.strftime("%Y-%m")
+        if "QUANTIDADE" in dfc_graf.columns:
+            dfc_graf["QUANTIDADE"] = dfc_graf["QUANTIDADE"].apply(parse_money).astype(float)
         else:
+            dfc_graf["QUANTIDADE"] = 0.0
+        if "CUSTO UNITÁRIO" in dfc_graf.columns:
+            dfc_graf["CUSTO UNITÁRIO"] = dfc_graf["CUSTO UNITÁRIO"].apply(parse_money).astype(float)
+        else:
+            dfc_graf["CUSTO UNITÁRIO"] = 0.0
+        dfc_graf["CUSTO_TOTAL"] = dfc_graf["QUANTIDADE"] * dfc_graf["CUSTO UNITÁRIO"]
+
+        compras_validas = dfc_graf[
+            (dfc_graf["QUANTIDADE"] > 0)
+            & (dfc_graf["CUSTO UNITÁRIO"] >= 0)
+            & (dfc_graf["CUSTO UNITÁRIO"] <= CUSTO_MAX_PLAUSIVEL)
+        ].copy()
+
+        if compras_validas.empty:
+            custo_medio_produto = pd.DataFrame(columns=["PRODUTO", "CUSTO_MEDIO_COMPRA"])
             resumo_compras = pd.DataFrame(columns=["MES_ANO", "COMPRAS"])
-
-        resumo_mes = resumo_vendas.merge(resumo_compras, on="MES_ANO", how="left")
-        resumo_mes["COMPRAS"] = resumo_mes["COMPRAS"].fillna(0.0)
-
-        # --- Escolhe mês atual + 2 anteriores (se existir) ---
-        meses_unicos = resumo_mes["MES_ANO"].dropna().tolist()
-        if not meses_unicos:
-            st.info("Sem meses para exibir no gráfico.")
         else:
-            mes_atual_data = pd.Timestamp.now().strftime("%Y-%m")
-            if mes_atual_data in meses_unicos:
-                idx_atual = meses_unicos.index(mes_atual_data)
-                start_idx = max(0, idx_atual - 2)
-                meses_plot = meses_unicos[start_idx : idx_atual + 1]
-            else:
-                meses_plot = meses_unicos[-3:]
+            custo_medio_produto = (
+                compras_validas.groupby("PRODUTO", as_index=False)
+                .agg(QTD_COMPRADA=("QUANTIDADE", "sum"), VALOR_COMPRADO=("CUSTO_TOTAL", "sum"))
+            )
+            custo_medio_produto["CUSTO_MEDIO_COMPRA"] = (
+                custo_medio_produto["VALOR_COMPRADO"]
+                / custo_medio_produto["QTD_COMPRADA"].replace(0, pd.NA)
+            ).fillna(0.0)
 
-            resumo_mes = resumo_mes[resumo_mes["MES_ANO"].isin(meses_plot)].copy()
-            resumo_mes = resumo_mes.sort_values("MES_ANO")
-
-            # --- Rótulo de mês bonito (pt-BR) ---
-            _month_map = {
-                1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
-                7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
-            }
-            resumo_mes["_MES_DT"] = pd.to_datetime(resumo_mes["MES_ANO"] + "-01", errors="coerce")
-            resumo_mes["MES_LABEL"] = resumo_mes["_MES_DT"].apply(
-                lambda d: f"{_month_map.get(int(d.month), '')}/{int(d.year)}" if pd.notna(d) else ""
+            resumo_compras = (
+                compras_validas.groupby("MES_ANO", as_index=False)["CUSTO_TOTAL"]
+                .sum()
+                .rename(columns={"CUSTO_TOTAL": "COMPRAS"})
             )
 
-            # --- Formato longo para plotar 3 métricas ---
-            plot_df = resumo_mes.melt(
-                id_vars=["MES_ANO", "MES_LABEL"],
-                value_vars=["VALOR_TOTAL", "LUCRO", "COMPRAS"],
-                var_name="MÉTRICA",
-                value_name="VALOR",
-            )
-            plot_df["MÉTRICA"] = plot_df["MÉTRICA"].map(
-                {"VALOR_TOTAL": "Faturamento", "LUCRO": "Lucro (FIFO)", "COMPRAS": "Compras (ENTREGUE)"}
-            )
-            plot_df["VALOR_FMT"] = plot_df["VALOR"].map(format_reais)
+        # Reposição de referência: quantidade faturada vendida × custo médio de compra do produto.
+        vendas_reposicao = df_mes[["MES_ANO", "PRODUTO", "QTD"]].copy()
+        vendas_reposicao = vendas_reposicao.merge(
+            custo_medio_produto[["PRODUTO", "CUSTO_MEDIO_COMPRA"]],
+            on="PRODUTO",
+            how="left",
+        )
+        vendas_reposicao["CUSTO_MEDIO_COMPRA"] = vendas_reposicao["CUSTO_MEDIO_COMPRA"].fillna(0.0)
+        vendas_reposicao["REPOSICAO_REFERENCIA"] = vendas_reposicao["QTD"] * vendas_reposicao["CUSTO_MEDIO_COMPRA"]
+        resumo_reposicao = (
+            vendas_reposicao.groupby("MES_ANO", as_index=False)["REPOSICAO_REFERENCIA"].sum()
+        )
 
-            # Garante ordem correta no eixo X
-            ordem_x = resumo_mes["MES_LABEL"].tolist()
+        resumo_mes = (
+            resumo_vendas
+            .merge(resumo_compras, on="MES_ANO", how="left")
+            .merge(resumo_reposicao, on="MES_ANO", how="left")
+        )
+        resumo_mes[["COMPRAS", "REPOSICAO_REFERENCIA"]] = resumo_mes[["COMPRAS", "REPOSICAO_REFERENCIA"]].fillna(0.0)
 
-            fig = px.bar(
-                plot_df,
-                x="MES_LABEL",
-                y="VALOR",
-                color="MÉTRICA",
-                barmode="group",
-                text="VALOR_FMT",
-                labels={"MES_LABEL": "Mês", "VALOR": "Valor (R$)"},
-                category_orders={"MES_LABEL": ordem_x},
-                color_discrete_map={
-                    "Faturamento": "#22c55e",
-                    "Lucro (FIFO)": "#14b8a6",
-                    "Compras (ENTREGUE)": "#f97316",
-                },
-            )
-            fig.update_traces(
-                textposition="inside",
-                texttemplate="<b>%{text}</b>",
-                insidetextanchor="middle",
-                textfont_size=12,
-            )
-            fig.update_layout(
-                height=390,
-                yaxis_title="R$",
-                xaxis_title="",
-                bargap=0.22,
-                bargroupgap=0.10,
-                uniformtext_minsize=9,
-                uniformtext_mode="hide",
-                plot_bgcolor="#050505",
-                paper_bgcolor="#050505",
-                font=dict(
-                    family="system-ui, -apple-system, 'Segoe UI', sans-serif",
-                    color="#e5e5e5",
-                ),
-                legend_title_text="",
-                margin=dict(l=10, r=10, t=10, b=10),
-            )
-            fig.update_xaxes(showgrid=False)
-            fig.update_yaxes(showgrid=True, gridcolor="#1f2937", zeroline=False)
+        meses_unicos = resumo_mes["MES_ANO"].dropna().sort_values().unique().tolist()
+        mes_atual_data = pd.Timestamp.now().strftime("%Y-%m")
+        if mes_atual_data in meses_unicos:
+            idx_atual = meses_unicos.index(mes_atual_data)
+            meses_plot = meses_unicos[max(0, idx_atual - 2): idx_atual + 1]
+        else:
+            meses_plot = meses_unicos[-3:]
 
-            st.plotly_chart(fig, use_container_width=True)
+        resumo_mes = resumo_mes[resumo_mes["MES_ANO"].isin(meses_plot)].copy().sort_values("MES_ANO")
+
+        _month_map = {
+            1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+            7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
+        }
+        resumo_mes["_MES_DT"] = pd.to_datetime(resumo_mes["MES_ANO"] + "-01", errors="coerce")
+        resumo_mes["MES_LABEL"] = resumo_mes["_MES_DT"].apply(
+            lambda d: f"{_month_map.get(int(d.month), '')}/{int(d.year)}" if pd.notna(d) else ""
+        )
+        ordem_x = resumo_mes["MES_LABEL"].tolist()
+
+        # Gráfico principal: só resultado financeiro.
+        plot_resultado = resumo_mes.melt(
+            id_vars=["MES_ANO", "MES_LABEL"],
+            value_vars=["VALOR_TOTAL", "LUCRO"],
+            var_name="MÉTRICA",
+            value_name="VALOR",
+        )
+        plot_resultado["MÉTRICA"] = plot_resultado["MÉTRICA"].map(
+            {"VALOR_TOTAL": "Faturamento", "LUCRO": "Lucro (FIFO)"}
+        )
+        plot_resultado["VALOR_FMT"] = plot_resultado["VALOR"].map(format_reais)
+
+        fig = px.bar(
+            plot_resultado,
+            x="MES_LABEL",
+            y="VALOR",
+            color="MÉTRICA",
+            barmode="group",
+            text="VALOR_FMT",
+            labels={"MES_LABEL": "Mês", "VALOR": "Valor (R$)"},
+            category_orders={"MES_LABEL": ordem_x},
+            color_discrete_map={"Faturamento": "#22c55e", "Lucro (FIFO)": "#14b8a6"},
+        )
+        fig.update_traces(textposition="inside", texttemplate="<b>%{text}</b>", insidetextanchor="middle", textfont_size=12)
+        fig.update_layout(
+            height=365, yaxis_title="R$", xaxis_title="", bargap=0.24, bargroupgap=0.10,
+            uniformtext_minsize=9, uniformtext_mode="hide", plot_bgcolor="#050505", paper_bgcolor="#050505",
+            font=dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color="#e5e5e5"),
+            legend_title_text="", margin=dict(l=10, r=10, t=10, b=10),
+        )
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(showgrid=True, gridcolor="#1f2937", zeroline=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Segundo gráfico: disciplina de compras/reposição. Separado para não confundir com lucro.
+        st.markdown(
+            """
+<div class="section-title">🛒 Compras x reposição necessária</div>
+<div class="section-sub">Compara o que você comprou com o custo médio estimado para repor exatamente o que vendeu. Idealmente, compras acompanham essa referência ao longo do tempo — podendo ficar acima ou abaixo em meses específicos.</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        plot_reposicao = resumo_mes.melt(
+            id_vars=["MES_ANO", "MES_LABEL"],
+            value_vars=["COMPRAS", "REPOSICAO_REFERENCIA"],
+            var_name="MÉTRICA",
+            value_name="VALOR",
+        )
+        plot_reposicao["MÉTRICA"] = plot_reposicao["MÉTRICA"].map(
+            {"COMPRAS": "Compras realizadas", "REPOSICAO_REFERENCIA": "Reposição de referência"}
+        )
+        plot_reposicao["VALOR_FMT"] = plot_reposicao["VALOR"].map(format_reais)
+
+        fig_rep = px.bar(
+            plot_reposicao,
+            x="MES_LABEL",
+            y="VALOR",
+            color="MÉTRICA",
+            barmode="group",
+            text="VALOR_FMT",
+            labels={"MES_LABEL": "Mês", "VALOR": "Valor (R$)"},
+            category_orders={"MES_LABEL": ordem_x},
+            color_discrete_map={"Compras realizadas": "#f97316", "Reposição de referência": "#60a5fa"},
+        )
+        fig_rep.update_traces(textposition="inside", texttemplate="<b>%{text}</b>", insidetextanchor="middle", textfont_size=12)
+        fig_rep.update_layout(
+            height=350, yaxis_title="R$", xaxis_title="", bargap=0.24, bargroupgap=0.10,
+            uniformtext_minsize=9, uniformtext_mode="hide", plot_bgcolor="#050505", paper_bgcolor="#050505",
+            font=dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color="#e5e5e5"),
+            legend_title_text="", margin=dict(l=10, r=10, t=10, b=10),
+        )
+        fig_rep.update_xaxes(showgrid=False)
+        fig_rep.update_yaxes(showgrid=True, gridcolor="#1f2937", zeroline=False)
+        st.plotly_chart(fig_rep, use_container_width=True)
+
+        # Leitura rápida do mês mais recente exibido.
+        if not resumo_mes.empty:
+            ult = resumo_mes.iloc[-1]
+            compras_ult = float(ult.get("COMPRAS", 0) or 0)
+            repos_ult = float(ult.get("REPOSICAO_REFERENCIA", 0) or 0)
+            diferenca_ult = compras_ult - repos_ult
+            if repos_ult > 0:
+                cobertura_pct = (compras_ult / repos_ult) * 100
+                leitura = "acima" if diferenca_ult > 0 else "abaixo" if diferenca_ult < 0 else "em linha"
+                st.caption(
+                    f"No mês mais recente, você comprou {format_reais(compras_ult)} para uma reposição de referência de "
+                    f"{format_reais(repos_ult)} — {leitura} em {format_reais(abs(diferenca_ult))} "
+                    f"({cobertura_pct:.0f}% da referência)."
+                )
+
 
     st.markdown("---")
 
